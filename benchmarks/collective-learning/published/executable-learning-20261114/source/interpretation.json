@@ -1,0 +1,104 @@
+{
+  "classification": "Exploratory local executable-reuse result on eight authored paired instances of one DOCX workflow.",
+  "directRepair": {
+    "originalPassed": 26,
+    "repairedPassed": 30,
+    "total": 30,
+    "originalRegressionPanelRetained": 12,
+    "limit": "Direct checks establish behavior on this panel, not statistical lifecycle promotion."
+  },
+  "agentSuccess": {
+    "baseline": 7,
+    "learned": 8,
+    "totalPerArm": 8,
+    "descriptivePercentagePointDifference": 12.5,
+    "limit": "One discordant pair does not establish a general accuracy benefit."
+  },
+  "reuse": {
+    "wholeSkillReads": 8,
+    "successfulHelperCommands": 8,
+    "total": 8
+  },
+  "cost": {
+    "baselineTotalUsd": 2.957636,
+    "learnedTotalUsd": 1.1540205,
+    "reductionPerScheduledTask": 0.6098165900063429,
+    "baselinePerVerifiedCompletionUsd": 0.42251942857142855,
+    "learnedPerVerifiedCompletionUsd": 0.1442525625,
+    "reductionPerVerifiedCompletion": 0.6585895162555501,
+    "lowerCostPairs": 8,
+    "allSavedResponseUsageAgrees": true,
+    "interpretation": "Usage-derived provider charges, including failed task costs and cached tokens; not invoices. Verification has no provider charge here, but its wall time is recorded."
+  },
+  "latency": [
+    {
+      "arm": "frozen",
+      "runs": 8,
+      "medianMs": 90927,
+      "meanMs": 90923,
+      "agentExcludingChecker": {
+        "medianMs": 86978.5,
+        "meanMs": 86414.875
+      },
+      "excludingFirstPair": {
+        "runs": 7,
+        "medianMs": 85623,
+        "meanMs": 87152.57142857143,
+        "agentMedianMs": 81625,
+        "agentMeanMs": 82801.42857142857
+      }
+    },
+    {
+      "arm": "learned",
+      "runs": 8,
+      "medianMs": 35227,
+      "meanMs": 35166.5,
+      "agentExcludingChecker": {
+        "medianMs": 30603,
+        "meanMs": 30240.25
+      },
+      "excludingFirstPair": {
+        "runs": 7,
+        "medianMs": 35112,
+        "meanMs": 34791.142857142855,
+        "agentMedianMs": 30082,
+        "agentMeanMs": 30114
+      }
+    }
+  ],
+  "predeclaredTarget": {
+    "met": false,
+    "explanation": "The frozen target additionally required both arms to pass all eight tasks. The baseline failed one, so that exact target is not met despite lower cost and more checked successes with the helper. The criterion was not changed after observing results."
+  },
+  "learningEconomics": {
+    "knownLearningUsd": 3.07113425,
+    "unresolvedLearningHoldUsd": 14.4,
+    "observedEightCompletionAmortizedKnownUsd": 0.52814434375,
+    "observedEightCompletionAmortizedFullHoldUsd": 2.32814434375,
+    "projectedBreakEvenKnown": 12,
+    "projectedBreakEvenFullHold": 63,
+    "interpretation": "The eight observed helper tasks have not repaid the known learning cost. Break-even is an extrapolation assuming the observed cost per verified completion persists; retained holds are unresolved, not assumed charges."
+  },
+  "budget": {
+    "knownUsd": 4.613980249999999,
+    "heldUsd": 0,
+    "unresolved": 0,
+    "stageRemainingUsd": 10.98601975,
+    "cumulativeKnownUsd": 120.13346299999999,
+    "priorReserveUsd": 28.8,
+    "remainingUsd": 101.066537
+  },
+  "whatChanged": "The model completed a retained partial executable repair using independently reproduced return-shape diagnostics. The host did not edit candidate code. Ordinary agents subsequently discovered and used the complete immutable package through the normal skill loader.",
+  "limits": [
+    "Eight authored task pairs; no population noninferiority claim.",
+    "This measures a supplied shadow package, not production promotion or actual mesh transfer.",
+    "One family and one originating host; pooled evidence benefit remains unproven.",
+    "No 24-hour retention or visual-fidelity rating.",
+    "Provider charges are usage-derived; prior unresolved reserve remains held.",
+    "No blinded visual-fidelity assessment; checks cover bounded content and placement contracts.",
+    "Repeated authored variants share mechanisms and one environment; these are not independent task families.",
+    "The helpful intervention contains instructions and executable code together; this study does not isolate their individual effects.",
+    "Earlier failures and unresolved costs remain preserved. This is not proof of recursive self-improvement or pooled-evidence benefit."
+  ],
+  "nextDiscriminatingTest": "Transfer the unchanged package to a separate recipient and environment; preregister new task families and compare package reuse with and without pooled evidence under equal budgets. No new paid test is authorized by this report."
+}

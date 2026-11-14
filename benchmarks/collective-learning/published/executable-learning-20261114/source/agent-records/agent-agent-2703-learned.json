@@ -1,0 +1,164 @@
+{
+  "id": "agent-agent-2703-learned",
+  "caseId": "agent-2703",
+  "arm": "learned",
+  "runId": "39a8c057-2a11-4add-b2c5-c08e16dabe4d",
+  "cost": {
+    "providerUsd": 0.1587055,
+    "toolCalls": 9,
+    "wallMs": 34120
+  },
+  "tokens": 78793,
+  "outcome": "pass",
+  "grade": {
+    "status": "pass",
+    "issues": [],
+    "details": {
+      "effectiveSections": 2,
+      "relocationIncluded": false
+    }
+  },
+  "reads": [
+    "SKILL.md",
+    "helpers/fill_docx.py"
+  ],
+  "helperInvocations": [
+    {
+      "name": "exec",
+      "id": "toolu_018Fqeq7pM8cHXguGYPc6vKE",
+      "arguments": {
+        "command": "cd /workspace && python3 skill/helpers/fill_docx.py --template inputs/offer_letter_template.docx --data inputs/employee_data.json --output output/offer_letter_filled.docx; echo \"EXIT: $?\""
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    }
+  ],
+  "toolActions": [
+    {
+      "name": "read",
+      "id": "toolu_01EEjKGk3i8UaTnhCYqruqw1",
+      "arguments": {
+        "path": "/workspace/skill/SKILL.md"
+      },
+      "result": [
+        {
+          "isError": false
+        }
+      ]
+    },
+    {
+      "name": "read",
+      "id": "toolu_014BQvjsAz4W1gganHij1b7R",
+      "arguments": {
+        "path": "inputs/employee_data.json"
+      },
+      "result": [
+        {
+          "isError": false
+        }
+      ]
+    },
+    {
+      "name": "exec",
+      "id": "toolu_01FD7Ke8k9rg6m44fucPcUXq",
+      "arguments": {
+        "command": "ls -la inputs/ output/ skill/helpers/ 2>&1; echo \"---\"; python3 -c \"import docx, lxml; print('deps ok')\""
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    },
+    {
+      "name": "read",
+      "id": "toolu_01Tu75bS5k5ebrWXQchREAoc",
+      "arguments": {
+        "path": "skill/helpers/fill_docx.py"
+      },
+      "result": [
+        {
+          "isError": false
+        }
+      ]
+    },
+    {
+      "name": "exec",
+      "id": "toolu_018Fqeq7pM8cHXguGYPc6vKE",
+      "arguments": {
+        "command": "cd /workspace && python3 skill/helpers/fill_docx.py --template inputs/offer_letter_template.docx --data inputs/employee_data.json --output output/offer_letter_filled.docx; echo \"EXIT: $?\""
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    },
+    {
+      "name": "exec",
+      "id": "toolu_01MLUidMsRHWMcZ7LRzhEFgG",
+      "arguments": {
+        "command": "cd /workspace && python3 -c \"\nimport docx\nd=docx.Document('output/offer_letter_filled.docx')\ndef paras(doc):\n    for p in doc.paragraphs: yield p\n    for t in doc.tables:\n        for r in t.rows:\n            for c in r.cells:\n                for p in c.paragraphs: yield p\ntxt='\\n'.join(p.text for p in paras(d))\nprint('LEFTOVER {{' , '{{' in txt)\nprint('has Zoë Okafor:', 'Zoë Okafor' in txt)\nprint('mentions relocation(lower):', 'relocation' in txt.lower())\nprint('----BODY----')\nprint(txt)\n\""
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    },
+    {
+      "name": "exec",
+      "id": "toolu_01S53QyoDcYzHuM8JLg4xvCH",
+      "arguments": {
+        "command": "cd /workspace && ls -la output/ && md5sum inputs/* "
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    },
+    {
+      "name": "exec",
+      "id": "toolu_016DzjMsV1CS1LtGSCcJPcqY",
+      "arguments": {
+        "command": "cd /workspace && python3 -c \"\nimport docx,re\nd=docx.Document('output/offer_letter_filled.docx')\nmarkers=[]\nfor s in d.sections:\n    for part in (s.header,s.first_page_header,s.even_page_header,s.footer,s.first_page_footer,s.even_page_footer):\n        if part is None: continue\n        for p in part.paragraphs:\n            if '{{' in p.text: markers.append(p.text)\nprint('header/footer leftover markers:', markers)\nprint('OK' if not markers else 'FAIL')\n\""
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    }
+  ],
+  "inputUnchanged": true,
+  "packageUnchanged": true,
+  "outputHash": "4d200c8d6b45048198815389da863a1366e0ba4ad2bf2382ce52813d1bcabb35",
+  "latencyMs": 34122,
+  "checkerWallMs": 4040,
+  "diagnostic": null,
+  "usage": {
+    "input": 14,
+    "output": 1558,
+    "cacheRead": 63121,
+    "cacheWrite": 14100,
+    "total": 78793
+  },
+  "modelMessages": 7,
+  "sessionHash": "df4b01fb67152cb29e54bb43106c916c965481f5193544ab738bb043a38a20bd"
+}

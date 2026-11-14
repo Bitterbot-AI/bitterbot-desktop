@@ -1,0 +1,17 @@
+{
+  "pid": 23619,
+  "sourcePid": 23586,
+  "recipient": "ed25519:d109c42c88a236affde26038e7b027fc7f160587e9ae6f1e8e3b5de07ce62cf4",
+  "source": "ed25519:0eadcac3500f5070b0a0e77d904efe79a096f8f4ee9f07b3835565250a4bb9b4",
+  "packageHash": "8a9db2fb33657ba8bb6fa9cf571d98bb4776dcb1881b2f130cd40405ac775eef",
+  "manifestUnchanged": true,
+  "filesVerified": 2,
+  "localReceiptsImported": 0,
+  "state": "candidate",
+  "tamperedFileRejected": true,
+  "forgedReleaseRejected": true,
+  "importedAt": 1794679864362,
+  "samePhysicalHost": true,
+  "transport": "operator-assisted offline; no Circle or mesh publication",
+  "modelCalls": 0
+}

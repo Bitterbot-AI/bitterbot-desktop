@@ -1,0 +1,260 @@
+{
+  "id": "agent-evaluation-service-order-4201-frozen",
+  "caseId": "evaluation-service-order-4201",
+  "arm": "frozen",
+  "runId": "4292b31d-3dbc-4437-9657-18fa3be1193e",
+  "cost": {
+    "providerUsd": 0.64198075,
+    "toolCalls": 17,
+    "wallMs": 108684
+  },
+  "tokens": 418737,
+  "outcome": "pass",
+  "grade": {
+    "status": "pass",
+    "issues": [],
+    "details": {
+      "effectiveSections": 2,
+      "relocationIncluded": false
+    }
+  },
+  "reads": [],
+  "helperInvocations": [],
+  "toolActions": [
+    {
+      "name": "exec",
+      "id": "toolu_01NET9aMU3rMr6h2FWciXyBk",
+      "arguments": {
+        "command": "cd /workspace && ls -la && echo \"---\" && ls -la inputs/ && echo \"---\" && cat inputs/employee_data.json"
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    },
+    {
+      "name": "exec",
+      "id": "toolu_01B48emgD1C9rsaWpzPPnaPo",
+      "arguments": {
+        "command": "cd /workspace && mkdir -p /tmp/docx && cd /tmp/docx && unzip -o /workspace/inputs/offer_letter_template.docx -d extracted >/dev/null && find extracted -type f | sort"
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "error"
+        }
+      ]
+    },
+    {
+      "name": "exec",
+      "id": "toolu_01VM666g7nWo6hKtjYmi9TrZ",
+      "arguments": {
+        "command": "cd /workspace && python3 -c \"import zipfile; z=zipfile.ZipFile('inputs/offer_letter_template.docx'); print('\\n'.join(z.namelist()))\""
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    },
+    {
+      "name": "exec",
+      "id": "toolu_011EyuUFX4oQL7qKYqKWmWcE",
+      "arguments": {
+        "command": "cd /workspace && python3 -c \"\nimport zipfile,re\nz=zipfile.ZipFile('inputs/offer_letter_template.docx')\nd=z.read('word/document.xml').decode('utf-8')\n# find all uppercase placeholder-like tokens by concatenating text\nimport xml.etree.ElementTree as ET\n# crude: extract text per paragraph\nprint(len(d))\n# find tokens matching A-Z_ runs across text nodes - first strip tags to see text\ntxt=re.sub(r'<[^>]+>','',d)\ntoks=set(re.findall(r'[A-Z][A-Z_]{3,}',txt))\nprint(sorted(toks))\n\""
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    },
+    {
+      "name": "exec",
+      "id": "toolu_013NY9RYLuTQnVHj7zpUhS4n",
+      "arguments": {
+        "command": "cd /workspace && python3 << 'EOF'\nimport zipfile, re\nimport xml.etree.ElementTree as ET\nz=zipfile.ZipFile('inputs/offer_letter_template.docx')\nW='{http://schemas.openxmlformats.org/wordprocessingml/2006/main}'\ntargets=[n for n in z.namelist() if n.startswith('word/') and (n.endswith('document.xml') or 'header' in n or 'footer' in n)]\nalltoks=set()\nfor n in targets:\n    d=z.read(n).decode('utf-8')\n    root=ET.fromstring(d)\n    # reconstruct text per paragraph\n    for p in root.iter(W+'p'):\n        texts=[]\n        for t in p.iter(W+'t'):\n            texts.append(t.text or '')\n        full=''.join(texts)\n        toks=re.findall(r'[A-Z][A-Z_]{3,}',full)\n        for tk in toks:\n            alltoks.add((n,tk))\nfor n,tk in sorted(alltoks):\n    print(n, tk)\nEOF"
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    },
+    {
+      "name": "exec",
+      "id": "toolu_01FjTUWKx6us2u3hfP9pFw3d",
+      "arguments": {
+        "command": "cd /workspace && python3 << 'EOF'\nimport zipfile\nz=zipfile.ZipFile('inputs/offer_letter_template.docx')\nd=z.read('word/document.xml').decode('utf-8')\nimport re\n# show sectPr references\nfor m in re.finditer(r'<w:(headerReference|footerReference)[^>]*/>', d):\n    print(m.group(0))\nprint('--- rels ---')\nprint(z.read('word/_rels/document.xml.rels').decode('utf-8'))\nEOF"
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    },
+    {
+      "name": "exec",
+      "id": "toolu_017cQRqcZMkCtt3EXjk3vMRi",
+      "arguments": {
+        "command": "cd /workspace && python3 << 'EOF'\nimport zipfile,re\nz=zipfile.ZipFile('inputs/offer_letter_template.docx')\nd=z.read('word/document.xml').decode('utf-8')\n# split into sectPr blocks\nfor i,m in enumerate(re.finditer(r'<w:sectPr\\b.*?</w:sectPr>', d, re.S)):\n    print(f\"=== sectPr {i} ===\")\n    print(m.group(0))\n    print()\nEOF"
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    },
+    {
+      "name": "read",
+      "id": "toolu_01N7Mj9dXRFseBnNP8bdaWTN",
+      "arguments": {
+        "path": "/workspace/inputs/offer_letter_template.docx"
+      },
+      "result": [
+        {
+          "isError": false
+        }
+      ]
+    },
+    {
+      "name": "exec",
+      "id": "toolu_01EmywnWC6eCdUDMv9Fktw47",
+      "arguments": {
+        "command": "cd /workspace && python3 << 'EOF'\nimport zipfile\nz=zipfile.ZipFile('inputs/offer_letter_template.docx')\nd=z.read('word/document.xml').decode('utf-8')\nimport re\n# pretty print by inserting newlines before tags of interest\npp=re.sub(r'(<w:(?:p|tbl|tr|tc|/tbl|/tr|/tc|/p)\\b[^>]*>)', r'\\n\\1', d)\nprint(pp)\nEOF"
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    },
+    {
+      "name": "exec",
+      "id": "toolu_01MpPyg2nAfz9dx7sUVPDCHP",
+      "arguments": {
+        "command": "cd /workspace && python3 << 'EOF'\nimport zipfile,re\nz=zipfile.ZipFile('inputs/offer_letter_template.docx')\nfor n in ['word/header1.xml','word/footer1.xml']:\n    d=z.read(n).decode('utf-8')\n    pp=re.sub(r'(<w:p\\b[^>]*>)', r'\\n\\1', d)\n    print('====',n)\n    print(pp[-1500:])\nEOF"
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    },
+    {
+      "name": "write",
+      "id": "toolu_01EfzzG6MQiTKBSDFTdK83jQ",
+      "arguments": {
+        "path": "/workspace/fill.py",
+        "content": "#!/usr/bin/env python3\nimport sys, json, re, zipfile, shutil, os\nimport xml.etree.ElementTree as ET\n\nW = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'\nWNS = '{%s}' % W\nET.register_namespace('w', W)\n# register other common namespaces to preserve prefixes\nNS = {\n 'wpc':'http://schemas.microsoft.com/office/word/2010/wordprocessingCanvas',\n 'mo':'http://schemas.microsoft.com/office/mac/office/2008/main',\n 'mc':'http://schemas.openxmlformats.org/markup-compatibility/2006',\n 'mv':'urn:schemas-microsoft-com:mac:vml',\n 'o':'urn:schemas-microsoft-com:office:office',\n 'r':'http://schemas.openxmlformats.org/officeDocument/2006/relationships',\n 'm':'http://schemas.openxmlformats.org/officeDocument/2006/math',\n 'v':'urn:schemas-microsoft-com:vml',\n 'wp14':'http://schemas.microsoft.com/office/word/2010/wordprocessingDrawing',\n 'wp':'http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing',\n 'w10':'urn:schemas-microsoft-com:office:word',\n 'w':W,\n 'w14':'http://schemas.microsoft.com/office/word/2010/wordml',\n 'wpg':'http://schemas.microsoft.com/office/word/2010/wordprocessingGroup',\n 'wpi':'http://schemas.microsoft.com/office/word/2010/wordprocessingInk',\n 'wne':'http://schemas.microsoft.com/office/word/2006/wordml',\n 'wps':'http://schemas.microsoft.com/office/word/2010/wordprocessingShape',\n}\nfor k,v in NS.items():\n    ET.register_namespace(k, v)\n\nINP_DOCX = 'inputs/offer_letter_template.docx'\nINP_JSON = 'inputs/employee_data.json'\nOUT_DOCX = 'output/offer_letter_filled.docx'\n\nPH = re.compile(r'\\{\\{([A-Z_][A-Z0-9_]*)\\}\\}')\nCOND = re.compile(r'\\{\\{IF_RELOCATION\\}\\}(.*?)\\{\\{END_IF_RELOCATION\\}\\}', re.S)\n\ndef fail(msg):\n    sys.stderr.write('ERROR: ' + msg + '\\n')\n    sys.exit(2)\n\ndef load_data():\n    with open(INP_JSON, encoding='utf-8') as f:\n        return json.load(f)\n\ndef apply_conditional(text, data, missing):\n    # IF_RELOCATION governed solely by RELOCATION_PACKAGE\n    def repl(m):\n        if 'RELOCATION_PACKAGE' not in data:\n            missing.add('RELOCATION_PACKAGE')\n            return ''  # placeholder; will fail later\n        keep = (data['RELOCATION_PACKAGE'] == 'Yes')\n        return m.group(1) if keep else ''\n    return COND.sub(repl, text)\n\ndef apply_fields(text, data, missing):\n    def repl(m):\n        name = m.group(1)\n        if name in ('IF_RELOCATION','END_IF_RELOCATION'):\n            # leftover (shouldn't happen) -> leave to detect\n            return m.group(0)\n        if name not in data:\n            missing.add(name)\n            return m.group(0)\n        return str(data[name])\n    return PH.sub(repl, text)\n\ndef get_t_nodes(p):\n    return [t for t in p.iter(WNS+'t')]\n\ndef para_has_cond(p):\n    full = ''.join((t.text or '') for t in get_t_nodes(p))\n    return ('IF_RELOCATION' in full) or ('{{' in full)\n\ndef process_paragraph(p, data, missing):\n    tnodes = get_t_nodes(p)\n    if not tnodes:\n        return\n    full = ''.join((t.text or '') for t in tnodes)\n    if '{{' not in full:\n        return\n    new = apply_conditional(full, data, missing)\n    new = apply_fields(new, data, missing)\n    if new == full:\n        return\n    # Put all text in first t node, clear the rest\n    first = tnodes[0]\n    first.text = new\n    # preserve space on first node\n    first.set('{http://www.w3.org/XML/1998/namespace}space','preserve')\n    for t in tnodes[1:]:\n        t.text = ''\n\ndef process_part(xml_bytes, data, missing):\n    root = ET.fromstring(xml_bytes)\n    for p in root.iter(WNS+'p'):\n        process_paragraph(p, data, missing)\n    return ET.tostring(root, encoding='UTF-8', xml_declaration=True)\n\ndef main():\n    data = load_data()\n    zin = zipfile.ZipFile(INP_DOCX)\n    names = zin.namelist()\n    parts = [n for n in names if n.startswith('word/') and\n             (n.endswith('document.xml') or\n              re.match(r'word/header\\d+\\.xml$', n) or\n              re.match(r'word/footer\\d+\\.xml$', n))]\n    missing = set()\n    outbuf = {}\n    for n in parts:\n        outbuf[n] = process_part(zin.read(n), data, missing)\n\n    # Validate: any remaining {{...}} tokens anywhere in processed parts?\n    leftover = set()\n    for n, b in outbuf.items():\n        s = b.decode('utf-8')\n        txt = re.sub(r'<[^>]+>','', s)\n        for m in PH.finditer(txt):\n            leftover.add(m.group(1))\n        if 'IF_RELOCATION' in txt or 'END_IF_RELOCATION' in txt:\n            leftover.add('IF_RELOCATION')\n\n    problems = set(missing) | leftover\n    if problems:\n        zin.close()\n        fail('Missing required field(s): ' + ', '.join(sorted(problems)))\n\n    os.makedirs(os.path.dirname(OUT_DOCX), exist_ok=True)\n    with zipfile.ZipFile(OUT_DOCX, 'w', zipfile.ZIP_DEFLATED) as zout:\n        for item in zin.infolist():\n            data_bytes = outbuf.get(item.filename)\n            if data_bytes is None:\n                data_bytes = zin.read(item.filename)\n            zout.writestr(item, data_bytes)\n    zin.close()\n    print('Wrote', OUT_DOCX)\n\nif __name__ == '__main__':\n    main()\n"
+      },
+      "result": [
+        {
+          "isError": false
+        }
+      ]
+    },
+    {
+      "name": "exec",
+      "id": "toolu_01EsGce3Rz7F4x3acY9vZYNJ",
+      "arguments": {
+        "command": "cd /workspace && python3 fill.py; echo \"exit=$?\""
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    },
+    {
+      "name": "exec",
+      "id": "toolu_01Ahs6vYUTWpitvL3gVwb6yM",
+      "arguments": {
+        "command": "cd /workspace && python3 << 'EOF'\nimport zipfile,re\nimport xml.etree.ElementTree as ET\nW='{http://schemas.openxmlformats.org/wordprocessingml/2006/main}'\nz=zipfile.ZipFile('output/offer_letter_filled.docx')\ndef paras(n):\n    root=ET.fromstring(z.read(n))\n    out=[]\n    for p in root.iter(W+'p'):\n        txt=''.join((t.text or '') for t in p.iter(W+'t'))\n        out.append(txt)\n    return out\nfor n in ['word/document.xml','word/header1.xml','word/footer1.xml','word/header4.xml','word/footer4.xml']:\n    print('====',n)\n    for t in paras(n):\n        if t.strip():\n            print('  |',repr(t))\n# leftover check across all parts\nprint('--- leftover scan ---')\nfor n in z.namelist():\n    if n.endswith('.xml'):\n        s=z.read(n).decode('utf-8',errors='ignore')\n        txt=re.sub(r'<[^>]+>','',s)\n        if '{{' in txt or 'IF_RELOCATION' in txt:\n            print('LEFTOVER in',n, re.findall(r'\\{\\{[^}]*\\}\\}|IF_RELOCATION',txt))\nprint('done')\nEOF"
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    },
+    {
+      "name": "exec",
+      "id": "toolu_015LSM96imjp4QDUi4GZZfvf",
+      "arguments": {
+        "command": "cd /workspace && python3 << 'EOF'\nimport zipfile,re\nz=zipfile.ZipFile('output/offer_letter_filled.docx')\nd=z.read('word/document.xml').decode('utf-8')\n# show the former conditional paragraph region\nimport re\npp=re.sub(r'(<w:p\\b[^>]*>)', r'\\n\\1', d)\nfor line in pp.split('\\n'):\n    if 'Relocation' in line or 'Reviewed under' in line or ('<w:p>' in line and 'w:t' in line and 'record' in line):\n        print(repr(line))\n# find the paragraph that had the conditional (between Address table and Reviewed)\nidx=pp.find('Reviewed under')\nprint('--- around conditional ---')\nprint(pp[idx-260:idx])\n# structure sanity: count tbl/tr/tc\nfor tag in ['w:tbl','w:tr','w:tc','w:sectPr']:\n    print(tag, d.count('<'+tag))\nEOF"
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    },
+    {
+      "name": "exec",
+      "id": "toolu_01RvvVRfHZr5wXghGj7GarST",
+      "arguments": {
+        "command": "cd /workspace && mkdir -p /tmp/t/inputs /tmp/t/output && cp inputs/offer_letter_template.docx /tmp/t/inputs/ && python3 -c \"\nimport json\nd=json.load(open('inputs/employee_data.json'))\ndel d['RELOCATION_PACKAGE']\njson.dump(d,open('/tmp/t/inputs/employee_data.json','w'))\n\" && cd /tmp/t && python3 /workspace/fill.py; echo \"exit=$?\""
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    },
+    {
+      "name": "exec",
+      "id": "toolu_01StfJ5b6akdWJLA9eind1Sk",
+      "arguments": {
+        "command": "cd /workspace && md5sum inputs/* && echo \"--- output ---\" && python3 -c \"\nimport zipfile\nz=zipfile.ZipFile('output/offer_letter_filled.docx')\nbad=z.testzip()\nprint('zip ok' if bad is None else 'BAD:'+bad)\nprint('entries match template order:', zipfile.ZipFile('inputs/offer_letter_template.docx').namelist()==z.namelist())\nimport xml.etree.ElementTree as ET\nfor n in z.namelist():\n    if n.endswith('.xml'):\n        ET.fromstring(z.read(n))\nprint('all xml parses')\n\""
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    }
+  ],
+  "inputUnchanged": true,
+  "packageUnchanged": true,
+  "outputHash": "19c7727d996b88dd7a86ae1e540994687939b02f13e82e47499c6ed5a142a02a",
+  "latencyMs": 108687,
+  "checkerWallMs": 4086,
+  "diagnostic": null,
+  "usage": {
+    "input": 34,
+    "output": 7756,
+    "cacheRead": 368784,
+    "cacheWrite": 42163,
+    "total": 418737
+  },
+  "modelMessages": 17,
+  "sessionHash": "a3bb44bd23399dc4bae6082a1f86917e8027b13700f4504f56f2d0ceb4bd0fd5"
+}

@@ -1,0 +1,123 @@
+{
+  "id": "agent-agent-2706-learned",
+  "caseId": "agent-2706",
+  "arm": "learned",
+  "runId": "6c8982fa-1c59-4b86-8d21-44757cfced78",
+  "cost": {
+    "providerUsd": 0.11190475,
+    "toolCalls": 6,
+    "wallMs": 25897
+  },
+  "tokens": 43621,
+  "outcome": "pass",
+  "grade": {
+    "status": "pass",
+    "issues": [],
+    "details": {
+      "effectiveSections": 2,
+      "relocationIncluded": true
+    }
+  },
+  "reads": [
+    "SKILL.md"
+  ],
+  "helperInvocations": [
+    {
+      "name": "exec",
+      "id": "toolu_01X9S2z8ozPJZEV14rLAMwPs",
+      "arguments": {
+        "command": "mkdir -p output && python3 /workspace/skill/helpers/fill_docx.py --template inputs/offer_letter_template.docx --data inputs/employee_data.json --output output/offer_letter_filled.docx; echo \"EXIT=$?\""
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    }
+  ],
+  "toolActions": [
+    {
+      "name": "read",
+      "id": "toolu_01HBc8xn3eJFgWYdBewHpJ2G",
+      "arguments": {
+        "path": "/workspace/skill/SKILL.md"
+      },
+      "result": [
+        {
+          "isError": false
+        }
+      ]
+    },
+    {
+      "name": "read",
+      "id": "toolu_015KEzb1fSSNKK647gbbPE6U",
+      "arguments": {
+        "path": "inputs/employee_data.json"
+      },
+      "result": [
+        {
+          "isError": false
+        }
+      ]
+    },
+    {
+      "name": "exec",
+      "id": "toolu_01Vmdvh2SG6c9zFJpSaJj7fZ",
+      "arguments": {
+        "command": "ls -la /workspace/skill/helpers/ && ls -la inputs/ && python3 -c \"import docx, lxml; print('deps ok')\""
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    },
+    {
+      "name": "exec",
+      "id": "toolu_01X9S2z8ozPJZEV14rLAMwPs",
+      "arguments": {
+        "command": "mkdir -p output && python3 /workspace/skill/helpers/fill_docx.py --template inputs/offer_letter_template.docx --data inputs/employee_data.json --output output/offer_letter_filled.docx; echo \"EXIT=$?\""
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    },
+    {
+      "name": "exec",
+      "id": "toolu_01D7kEvqo5FJpp9zZQUMcC9y",
+      "arguments": {
+        "command": "cd /workspace && python3 - <<'PY'\nimport docx\nd = docx.Document(\"output/offer_letter_filled.docx\")\ntexts=[]\ndef walk_tables(tables):\n    for t in tables:\n        for r in t.rows:\n            for c in r.cells:\n                for p in c.paragraphs:\n                    texts.append(p.text)\n                walk_tables(c.tables)\nfor p in d.paragraphs: texts.append(p.text)\nwalk_tables(d.tables)\nfor s in d.sections:\n    for hf in (s.header, s.first_page_header, s.even_page_header, s.footer, s.first_page_footer, s.even_page_footer):\n        for p in hf.paragraphs: texts.append(p.text)\nfull=\"\\n\".join(texts)\nimport re\nleft=re.findall(r\"\\{\\{[^}]*\\}\\}\", full)\nprint(\"UNRESOLVED:\", left)\nprint(\"has IF marker:\", \"IF_\" in full)\nprint(\"Relocation kept:\", \"8,750\" in full or \"RELOCATION_AMOUNT\" not in full and \"reloc\" in full.lower())\nfor t in texts:\n    if t.strip(): print(\"|\", t)\nPY\nls -la output/ inputs/"
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    }
+  ],
+  "inputUnchanged": true,
+  "packageUnchanged": true,
+  "outputHash": "a180d8cf9626843c27add1836ccccd8e132e605d6311cb15b2ad9b3d22922fd1",
+  "latencyMs": 25900,
+  "checkerWallMs": 4124,
+  "diagnostic": null,
+  "usage": {
+    "input": 10,
+    "output": 1287,
+    "cacheRead": 32147,
+    "cacheWrite": 10177,
+    "total": 43621
+  },
+  "modelMessages": 5,
+  "sessionHash": "60dbf26635a23bb6457d447979ddd0d5f000619edc5905edccc26b047ad61b48"
+}

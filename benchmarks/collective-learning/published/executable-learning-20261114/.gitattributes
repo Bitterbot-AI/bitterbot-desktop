@@ -1,0 +1,2 @@
+# Historical bytes retain their original line endings and terminal blank lines.
+* -text whitespace=cr-at-eol,-blank-at-eof

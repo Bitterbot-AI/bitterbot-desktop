@@ -1,0 +1,14 @@
+{
+  "CUSTOMER_NAME": "Amélie Mensah",
+  "SERVICE_DESCRIPTION": "Service order reference 4203",
+  "RECORD_CODE": "ALDER-4203",
+  "ORGANIZATION_NAME": "Alder Field Group 4203",
+  "ISSUE_DATE": "November 4, 2030",
+  "OWNER_NAME": "Jules Okoye",
+  "ADDRESS_LINE": "18 Côte Road, Montréal",
+  "DETAIL_NOTE": "Part A & Part B: Ω check",
+  "RELOCATION_PACKAGE": "YES",
+  "RELOCATION_AMOUNT": "4,125",
+  "RELOCATION": "Yes",
+  "RELOCATION_PACKAGE_BACKUP": "Yes"
+}

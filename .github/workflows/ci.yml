@@ -66,6 +66,16 @@ jobs:
       - name: Unit tests
         run: pnpm test:fast
 
+      - name: Collective learning harness tests
+        if: matrix.os == 'ubuntu-latest'
+        run: pnpm exec vitest run --config benchmarks/collective-learning/vitest.config.ts
+
+      - name: Replay published executable-learning artifacts
+        run: python -B -X utf8 benchmarks/collective-learning/published/executable-learning-20261114/replay.py
+
+      - name: Verify published signed package handoff
+        run: node benchmarks/collective-learning/published/executable-learning-20261114/verify-transfer.mjs
+
       # The gateway suite (src/gateway/**, 635 tests) is EXCLUDED from the unit
       # config, and until 2026-08-26 no workflow ran it at all — every gateway
       # test, including the Control-UI serving and token-handoff ones, guarded

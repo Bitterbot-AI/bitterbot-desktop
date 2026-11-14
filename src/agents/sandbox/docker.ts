@@ -245,7 +245,9 @@ export function buildSandboxCreateArgs(params: {
   validateSandboxSecurity(params.cfg);
 
   const createdAtMs = params.createdAtMs ?? Date.now();
-  const args = ["create", "--name", params.name];
+  // Reap orphaned tool subprocesses so repeated document conversions cannot
+  // exhaust the sandbox's PID limit while its long-lived command stays alive.
+  const args = ["create", "--init", "--name", params.name];
   args.push("--label", "bitterbot.sandbox=1");
   args.push("--label", `bitterbot.sessionKey=${params.scopeKey}`);
   args.push("--label", `bitterbot.createdAtMs=${createdAtMs}`);

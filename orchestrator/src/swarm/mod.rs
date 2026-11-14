@@ -40,9 +40,11 @@ pub const CENSUS_TOPIC: &str = "bitterbot/census/v1";
 pub const QUERIES_TOPIC: &str = "bitterbot/queries/v1";
 /// Signed, expiring capacity descriptors; never workload inputs or credentials.
 pub const COMPUTE_TOPIC: &str = "bitterbot/compute/v1";
+/// Small signed complete-package announcements. Objects travel by bounded peer RPC.
+pub const PACKAGES_TOPIC: &str = "bitterbot/packages/v1";
 
 fn is_gateway_topic(topic: &str) -> bool {
-    topic == COMPUTE_TOPIC || is_circle_topic(topic)
+    topic == COMPUTE_TOPIC || topic == PACKAGES_TOPIC || is_circle_topic(topic)
 }
 
 /// Alongside the exact Compute topic, the gateway may subscribe/publish
@@ -3455,8 +3457,19 @@ pub async fn build_swarm(
 }
 
 #[cfg(test)]
+mod package_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn package_protocol_is_separate_from_legacy_and_circle_topics() {
+        assert!(is_gateway_topic(PACKAGES_TOPIC));
+        assert!(!is_circle_topic(PACKAGES_TOPIC));
+        assert!(!is_gateway_topic("bitterbot/packages/v2"));
+        assert!(!is_gateway_topic("bitterbot/packages/v1/private"));
+        assert!(!is_gateway_topic("bitterbot/packages/v1/"));
+    }
     #[test]
     fn compute_topic_allowlist_is_exact() {
         assert!(is_gateway_topic(COMPUTE_TOPIC));

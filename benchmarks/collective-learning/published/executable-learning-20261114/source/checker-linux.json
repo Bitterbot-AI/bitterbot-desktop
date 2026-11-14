@@ -1,0 +1,1528 @@
+{
+  "platform": "Linux",
+  "checks": 60,
+  "allAgreed": true,
+  "modelCalls": 0,
+  "rows": [
+    {
+      "case": "selection-2501",
+      "mutation": "authored-reference",
+      "result": {
+        "status": "pass",
+        "issues": [],
+        "details": {
+          "effectiveSections": 1,
+          "relocationIncluded": true
+        }
+      },
+      "expected": "pass",
+      "agrees": true
+    },
+    {
+      "case": "selection-2501",
+      "mutation": "unfilled-template",
+      "result": {
+        "status": "task-failure",
+        "issues": [
+          "template-text-or-placement-mismatch:document",
+          "template-text-or-placement-mismatch:section-0:footer:default",
+          "template-text-or-placement-mismatch:section-0:footer:even",
+          "template-text-or-placement-mismatch:section-0:footer:first",
+          "template-text-or-placement-mismatch:section-0:header:default",
+          "template-text-or-placement-mismatch:section-0:header:even",
+          "template-text-or-placement-mismatch:section-0:header:first",
+          "unresolved-placeholder:document",
+          "unresolved-placeholder:section-0:footer:default",
+          "unresolved-placeholder:section-0:footer:even",
+          "unresolved-placeholder:section-0:footer:first",
+          "unresolved-placeholder:section-0:header:default",
+          "unresolved-placeholder:section-0:header:even",
+          "unresolved-placeholder:section-0:header:first",
+          "table-cell-placement-mismatch:document",
+          "table-cell-placement-mismatch:section-0:header:default",
+          "table-cell-placement-mismatch:section-0:header:first",
+          "table-cell-placement-mismatch:section-0:header:even",
+          "table-cell-placement-mismatch:section-0:footer:default",
+          "table-cell-placement-mismatch:section-0:footer:first",
+          "table-cell-placement-mismatch:section-0:footer:even"
+        ],
+        "details": {
+          "effectiveSections": 1,
+          "relocationIncluded": true
+        }
+      },
+      "expected": "task-failure",
+      "agrees": true
+    },
+    {
+      "case": "selection-2501",
+      "mutation": "cell-content",
+      "result": {
+        "status": "task-failure",
+        "issues": [
+          "template-text-or-placement-mismatch:document",
+          "table-cell-placement-mismatch:document"
+        ],
+        "details": {
+          "effectiveSections": 1,
+          "relocationIncluded": true
+        }
+      },
+      "expected": "task-failure",
+      "agrees": true
+    },
+    {
+      "case": "selection-2502",
+      "mutation": "authored-reference",
+      "result": {
+        "status": "pass",
+        "issues": [],
+        "details": {
+          "effectiveSections": 1,
+          "relocationIncluded": false
+        }
+      },
+      "expected": "pass",
+      "agrees": true
+    },
+    {
+      "case": "selection-2502",
+      "mutation": "unfilled-template",
+      "result": {
+        "status": "task-failure",
+        "issues": [
+          "template-text-or-placement-mismatch:document",
+          "template-text-or-placement-mismatch:section-0:footer:default",
+          "template-text-or-placement-mismatch:section-0:footer:even",
+          "template-text-or-placement-mismatch:section-0:footer:first",
+          "template-text-or-placement-mismatch:section-0:header:default",
+          "template-text-or-placement-mismatch:section-0:header:even",
+          "template-text-or-placement-mismatch:section-0:header:first",
+          "unresolved-placeholder:document",
+          "unresolved-placeholder:section-0:footer:default",
+          "unresolved-placeholder:section-0:footer:even",
+          "unresolved-placeholder:section-0:footer:first",
+          "unresolved-placeholder:section-0:header:default",
+          "unresolved-placeholder:section-0:header:even",
+          "unresolved-placeholder:section-0:header:first",
+          "table-cell-placement-mismatch:document",
+          "table-cell-placement-mismatch:section-0:header:default",
+          "table-cell-placement-mismatch:section-0:header:first",
+          "table-cell-placement-mismatch:section-0:header:even",
+          "table-cell-placement-mismatch:section-0:footer:default",
+          "table-cell-placement-mismatch:section-0:footer:first",
+          "table-cell-placement-mismatch:section-0:footer:even"
+        ],
+        "details": {
+          "effectiveSections": 1,
+          "relocationIncluded": false
+        }
+      },
+      "expected": "task-failure",
+      "agrees": true
+    },
+    {
+      "case": "selection-2502",
+      "mutation": "cell-content",
+      "result": {
+        "status": "task-failure",
+        "issues": [
+          "template-text-or-placement-mismatch:document",
+          "table-cell-placement-mismatch:document"
+        ],
+        "details": {
+          "effectiveSections": 1,
+          "relocationIncluded": false
+        }
+      },
+      "expected": "task-failure",
+      "agrees": true
+    },
+    {
+      "case": "selection-2503",
+      "mutation": "authored-reference",
+      "result": {
+        "status": "pass",
+        "issues": [],
+        "details": {
+          "effectiveSections": 2,
+          "relocationIncluded": false
+        }
+      },
+      "expected": "pass",
+      "agrees": true
+    },
+    {
+      "case": "selection-2503",
+      "mutation": "unfilled-template",
+      "result": {
+        "status": "task-failure",
+        "issues": [
+          "template-text-or-placement-mismatch:document",
+          "template-text-or-placement-mismatch:section-0:footer:default",
+          "template-text-or-placement-mismatch:section-0:footer:even",
+          "template-text-or-placement-mismatch:section-0:footer:first",
+          "template-text-or-placement-mismatch:section-0:header:default",
+          "template-text-or-placement-mismatch:section-0:header:even",
+          "template-text-or-placement-mismatch:section-0:header:first",
+          "template-text-or-placement-mismatch:section-1:footer:default",
+          "template-text-or-placement-mismatch:section-1:footer:even",
+          "template-text-or-placement-mismatch:section-1:footer:first",
+          "template-text-or-placement-mismatch:section-1:header:default",
+          "template-text-or-placement-mismatch:section-1:header:even",
+          "template-text-or-placement-mismatch:section-1:header:first",
+          "unresolved-placeholder:document",
+          "unresolved-placeholder:section-0:footer:default",
+          "unresolved-placeholder:section-0:footer:even",
+          "unresolved-placeholder:section-0:footer:first",
+          "unresolved-placeholder:section-0:header:default",
+          "unresolved-placeholder:section-0:header:even",
+          "unresolved-placeholder:section-0:header:first",
+          "unresolved-placeholder:section-1:footer:default",
+          "unresolved-placeholder:section-1:footer:even",
+          "unresolved-placeholder:section-1:footer:first",
+          "unresolved-placeholder:section-1:header:default",
+          "unresolved-placeholder:section-1:header:even",
+          "unresolved-placeholder:section-1:header:first",
+          "table-cell-placement-mismatch:document",
+          "table-cell-placement-mismatch:section-0:header:default",
+          "table-cell-placement-mismatch:section-0:header:first",
+          "table-cell-placement-mismatch:section-0:header:even",
+          "table-cell-placement-mismatch:section-0:footer:default",
+          "table-cell-placement-mismatch:section-0:footer:first",
+          "table-cell-placement-mismatch:section-0:footer:even",
+          "table-cell-placement-mismatch:section-1:header:default",
+          "table-cell-placement-mismatch:section-1:header:first",
+          "table-cell-placement-mismatch:section-1:header:even",
+          "table-cell-placement-mismatch:section-1:footer:default",
+          "table-cell-placement-mismatch:section-1:footer:first",
+          "table-cell-placement-mismatch:section-1:footer:even"
+        ],
+        "details": {
+          "effectiveSections": 2,
+          "relocationIncluded": false
+        }
+      },
+      "expected": "task-failure",
+      "agrees": true
+    },
+    {
+      "case": "selection-2503",
+      "mutation": "cell-content",
+      "result": {
+        "status": "task-failure",
+        "issues": [
+          "template-text-or-placement-mismatch:document",
+          "table-cell-placement-mismatch:document"
+        ],
+        "details": {
+          "effectiveSections": 2,
+          "relocationIncluded": false
+        }
+      },
+      "expected": "task-failure",
+      "agrees": true
+    },
+    {
+      "case": "selection-2504",
+      "mutation": "authored-reference",
+      "result": {
+        "status": "pass",
+        "issues": [],
+        "details": {
+          "effectiveSections": 2,
+          "relocationIncluded": false
+        }
+      },
+      "expected": "pass",
+      "agrees": true
+    },
+    {
+      "case": "selection-2504",
+      "mutation": "unfilled-template",
+      "result": {
+        "status": "task-failure",
+        "issues": [
+          "template-text-or-placement-mismatch:document",
+          "template-text-or-placement-mismatch:section-0:footer:default",
+          "template-text-or-placement-mismatch:section-0:footer:even",
+          "template-text-or-placement-mismatch:section-0:footer:first",
+          "template-text-or-placement-mismatch:section-0:header:default",
+          "template-text-or-placement-mismatch:section-0:header:even",
+          "template-text-or-placement-mismatch:section-0:header:first",
+          "template-text-or-placement-mismatch:section-1:footer:default",
+          "template-text-or-placement-mismatch:section-1:footer:even",
+          "template-text-or-placement-mismatch:section-1:footer:first",
+          "template-text-or-placement-mismatch:section-1:header:default",
+          "template-text-or-placement-mismatch:section-1:header:even",
+          "template-text-or-placement-mismatch:section-1:header:first",
+          "unresolved-placeholder:document",
+          "unresolved-placeholder:section-0:footer:default",
+          "unresolved-placeholder:section-0:footer:even",
+          "unresolved-placeholder:section-0:footer:first",
+          "unresolved-placeholder:section-0:header:default",
+          "unresolved-placeholder:section-0:header:even",
+          "unresolved-placeholder:section-0:header:first",
+          "unresolved-placeholder:section-1:footer:default",
+          "unresolved-placeholder:section-1:footer:even",
+          "unresolved-placeholder:section-1:footer:first",
+          "unresolved-placeholder:section-1:header:default",
+          "unresolved-placeholder:section-1:header:even",
+          "unresolved-placeholder:section-1:header:first",
+          "table-cell-placement-mismatch:document",
+          "table-cell-placement-mismatch:section-0:header:default",
+          "table-cell-placement-mismatch:section-0:header:first",
+          "table-cell-placement-mismatch:section-0:header:even",
+          "table-cell-placement-mismatch:section-0:footer:default",
+          "table-cell-placement-mismatch:section-0:footer:first",
+          "table-cell-placement-mismatch:section-0:footer:even",
+          "table-cell-placement-mismatch:section-1:header:default",
+          "table-cell-placement-mismatch:section-1:header:first",
+          "table-cell-placement-mismatch:section-1:header:even",
+          "table-cell-placement-mismatch:section-1:footer:default",
+          "table-cell-placement-mismatch:section-1:footer:first",
+          "table-cell-placement-mismatch:section-1:footer:even"
+        ],
+        "details": {
+          "effectiveSections": 2,
+          "relocationIncluded": false
+        }
+      },
+      "expected": "task-failure",
+      "agrees": true
+    },
+    {
+      "case": "selection-2504",
+      "mutation": "cell-content",
+      "result": {
+        "status": "task-failure",
+        "issues": [
+          "template-text-or-placement-mismatch:document",
+          "table-cell-placement-mismatch:document"
+        ],
+        "details": {
+          "effectiveSections": 2,
+          "relocationIncluded": false
+        }
+      },
+      "expected": "task-failure",
+      "agrees": true
+    },
+    {
+      "case": "evaluation-2601",
+      "mutation": "authored-reference",
+      "result": {
+        "status": "pass",
+        "issues": [],
+        "details": {
+          "effectiveSections": 1,
+          "relocationIncluded": true
+        }
+      },
+      "expected": "pass",
+      "agrees": true
+    },
+    {
+      "case": "evaluation-2601",
+      "mutation": "unfilled-template",
+      "result": {
+        "status": "task-failure",
+        "issues": [
+          "template-text-or-placement-mismatch:document",
+          "template-text-or-placement-mismatch:section-0:footer:default",
+          "template-text-or-placement-mismatch:section-0:footer:even",
+          "template-text-or-placement-mismatch:section-0:footer:first",
+          "template-text-or-placement-mismatch:section-0:header:default",
+          "template-text-or-placement-mismatch:section-0:header:even",
+          "template-text-or-placement-mismatch:section-0:header:first",
+          "unresolved-placeholder:document",
+          "unresolved-placeholder:section-0:footer:default",
+          "unresolved-placeholder:section-0:footer:even",
+          "unresolved-placeholder:section-0:footer:first",
+          "unresolved-placeholder:section-0:header:default",
+          "unresolved-placeholder:section-0:header:even",
+          "unresolved-placeholder:section-0:header:first",
+          "table-cell-placement-mismatch:document",
+          "table-cell-placement-mismatch:section-0:header:default",
+          "table-cell-placement-mismatch:section-0:header:first",
+          "table-cell-placement-mismatch:section-0:header:even",
+          "table-cell-placement-mismatch:section-0:footer:default",
+          "table-cell-placement-mismatch:section-0:footer:first",
+          "table-cell-placement-mismatch:section-0:footer:even"
+        ],
+        "details": {
+          "effectiveSections": 1,
+          "relocationIncluded": true
+        }
+      },
+      "expected": "task-failure",
+      "agrees": true
+    },
+    {
+      "case": "evaluation-2601",
+      "mutation": "cell-content",
+      "result": {
+        "status": "task-failure",
+        "issues": [
+          "template-text-or-placement-mismatch:document",
+          "table-cell-placement-mismatch:document"
+        ],
+        "details": {
+          "effectiveSections": 1,
+          "relocationIncluded": true
+        }
+      },
+      "expected": "task-failure",
+      "agrees": true
+    },
+    {
+      "case": "evaluation-2602",
+      "mutation": "authored-reference",
+      "result": {
+        "status": "pass",
+        "issues": [],
+        "details": {
+          "effectiveSections": 1,
+          "relocationIncluded": false
+        }
+      },
+      "expected": "pass",
+      "agrees": true
+    },
+    {
+      "case": "evaluation-2602",
+      "mutation": "unfilled-template",
+      "result": {
+        "status": "task-failure",
+        "issues": [
+          "template-text-or-placement-mismatch:document",
+          "template-text-or-placement-mismatch:section-0:footer:default",
+          "template-text-or-placement-mismatch:section-0:footer:even",
+          "template-text-or-placement-mismatch:section-0:footer:first",
+          "template-text-or-placement-mismatch:section-0:header:default",
+          "template-text-or-placement-mismatch:section-0:header:even",
+          "template-text-or-placement-mismatch:section-0:header:first",
+          "unresolved-placeholder:document",
+          "unresolved-placeholder:section-0:footer:default",
+          "unresolved-placeholder:section-0:footer:even",
+          "unresolved-placeholder:section-0:footer:first",
+          "unresolved-placeholder:section-0:header:default",
+          "unresolved-placeholder:section-0:header:even",
+          "unresolved-placeholder:section-0:header:first",
+          "table-cell-placement-mismatch:document",
+          "table-cell-placement-mismatch:section-0:header:default",
+          "table-cell-placement-mismatch:section-0:header:first",
+          "table-cell-placement-mismatch:section-0:header:even",
+          "table-cell-placement-mismatch:section-0:footer:default",
+          "table-cell-placement-mismatch:section-0:footer:first",
+          "table-cell-placement-mismatch:section-0:footer:even"
+        ],
+        "details": {
+          "effectiveSections": 1,
+          "relocationIncluded": false
+        }
+      },
+      "expected": "task-failure",
+      "agrees": true
+    },
+    {
+      "case": "evaluation-2602",
+      "mutation": "cell-content",
+      "result": {
+        "status": "task-failure",
+        "issues": [
+          "template-text-or-placement-mismatch:document",
+          "table-cell-placement-mismatch:document"
+        ],
+        "details": {
+          "effectiveSections": 1,
+          "relocationIncluded": false
+        }
+      },
+      "expected": "task-failure",
+      "agrees": true
+    },
+    {
+      "case": "evaluation-2603",
+      "mutation": "authored-reference",
+      "result": {
+        "status": "pass",
+        "issues": [],
+        "details": {
+          "effectiveSections": 2,
+          "relocationIncluded": false
+        }
+      },
+      "expected": "pass",
+      "agrees": true
+    },
+    {
+      "case": "evaluation-2603",
+      "mutation": "unfilled-template",
+      "result": {
+        "status": "task-failure",
+        "issues": [
+          "template-text-or-placement-mismatch:document",
+          "template-text-or-placement-mismatch:section-0:footer:default",
+          "template-text-or-placement-mismatch:section-0:footer:even",
+          "template-text-or-placement-mismatch:section-0:footer:first",
+          "template-text-or-placement-mismatch:section-0:header:default",
+          "template-text-or-placement-mismatch:section-0:header:even",
+          "template-text-or-placement-mismatch:section-0:header:first",
+          "template-text-or-placement-mismatch:section-1:footer:default",
+          "template-text-or-placement-mismatch:section-1:footer:even",
+          "template-text-or-placement-mismatch:section-1:footer:first",
+          "template-text-or-placement-mismatch:section-1:header:default",
+          "template-text-or-placement-mismatch:section-1:header:even",
+          "template-text-or-placement-mismatch:section-1:header:first",
+          "unresolved-placeholder:document",
+          "unresolved-placeholder:section-0:footer:default",
+          "unresolved-placeholder:section-0:footer:even",
+          "unresolved-placeholder:section-0:footer:first",
+          "unresolved-placeholder:section-0:header:default",
+          "unresolved-placeholder:section-0:header:even",
+          "unresolved-placeholder:section-0:header:first",
+          "unresolved-placeholder:section-1:footer:default",
+          "unresolved-placeholder:section-1:footer:even",
+          "unresolved-placeholder:section-1:footer:first",
+          "unresolved-placeholder:section-1:header:default",
+          "unresolved-placeholder:section-1:header:even",
+          "unresolved-placeholder:section-1:header:first",
+          "table-cell-placement-mismatch:document",
+          "table-cell-placement-mismatch:section-0:header:default",
+          "table-cell-placement-mismatch:section-0:header:first",
+          "table-cell-placement-mismatch:section-0:header:even",
+          "table-cell-placement-mismatch:section-0:footer:default",
+          "table-cell-placement-mismatch:section-0:footer:first",
+          "table-cell-placement-mismatch:section-0:footer:even",
+          "table-cell-placement-mismatch:section-1:header:default",
+          "table-cell-placement-mismatch:section-1:header:first",
+          "table-cell-placement-mismatch:section-1:header:even",
+          "table-cell-placement-mismatch:section-1:footer:default",
+          "table-cell-placement-mismatch:section-1:footer:first",
+          "table-cell-placement-mismatch:section-1:footer:even"
+        ],
+        "details": {
+          "effectiveSections": 2,
+          "relocationIncluded": false
+        }
+      },
+      "expected": "task-failure",
+      "agrees": true
+    },
+    {
+      "case": "evaluation-2603",
+      "mutation": "cell-content",
+      "result": {
+        "status": "task-failure",
+        "issues": [
+          "template-text-or-placement-mismatch:document",
+          "table-cell-placement-mismatch:document"
+        ],
+        "details": {
+          "effectiveSections": 2,
+          "relocationIncluded": false
+        }
+      },
+      "expected": "task-failure",
+      "agrees": true
+    },
+    {
+      "case": "evaluation-2604",
+      "mutation": "authored-reference",
+      "result": {
+        "status": "pass",
+        "issues": [],
+        "details": {
+          "effectiveSections": 2,
+          "relocationIncluded": false
+        }
+      },
+      "expected": "pass",
+      "agrees": true
+    },
+    {
+      "case": "evaluation-2604",
+      "mutation": "unfilled-template",
+      "result": {
+        "status": "task-failure",
+        "issues": [
+          "template-text-or-placement-mismatch:document",
+          "template-text-or-placement-mismatch:section-0:footer:default",
+          "template-text-or-placement-mismatch:section-0:footer:even",
+          "template-text-or-placement-mismatch:section-0:footer:first",
+          "template-text-or-placement-mismatch:section-0:header:default",
+          "template-text-or-placement-mismatch:section-0:header:even",
+          "template-text-or-placement-mismatch:section-0:header:first",
+          "template-text-or-placement-mismatch:section-1:footer:default",
+          "template-text-or-placement-mismatch:section-1:footer:even",
+          "template-text-or-placement-mismatch:section-1:footer:first",
+          "template-text-or-placement-mismatch:section-1:header:default",
+          "template-text-or-placement-mismatch:section-1:header:even",
+          "template-text-or-placement-mismatch:section-1:header:first",
+          "unresolved-placeholder:document",
+          "unresolved-placeholder:section-0:footer:default",
+          "unresolved-placeholder:section-0:footer:even",
+          "unresolved-placeholder:section-0:footer:first",
+          "unresolved-placeholder:section-0:header:default",
+          "unresolved-placeholder:section-0:header:even",
+          "unresolved-placeholder:section-0:header:first",
+          "unresolved-placeholder:section-1:footer:default",
+          "unresolved-placeholder:section-1:footer:even",
+          "unresolved-placeholder:section-1:footer:first",
+          "unresolved-placeholder:section-1:header:default",
+          "unresolved-placeholder:section-1:header:even",
+          "unresolved-placeholder:section-1:header:first",
+          "table-cell-placement-mismatch:document",
+          "table-cell-placement-mismatch:section-0:header:default",
+          "table-cell-placement-mismatch:section-0:header:first",
+          "table-cell-placement-mismatch:section-0:header:even",
+          "table-cell-placement-mismatch:section-0:footer:default",
+          "table-cell-placement-mismatch:section-0:footer:first",
+          "table-cell-placement-mismatch:section-0:footer:even",
+          "table-cell-placement-mismatch:section-1:header:default",
+          "table-cell-placement-mismatch:section-1:header:first",
+          "table-cell-placement-mismatch:section-1:header:even",
+          "table-cell-placement-mismatch:section-1:footer:default",
+          "table-cell-placement-mismatch:section-1:footer:first",
+          "table-cell-placement-mismatch:section-1:footer:even"
+        ],
+        "details": {
+          "effectiveSections": 2,
+          "relocationIncluded": false
+        }
+      },
+      "expected": "task-failure",
+      "agrees": true
+    },
+    {
+      "case": "evaluation-2604",
+      "mutation": "cell-content",
+      "result": {
+        "status": "task-failure",
+        "issues": [
+          "template-text-or-placement-mismatch:document",
+          "table-cell-placement-mismatch:document"
+        ],
+        "details": {
+          "effectiveSections": 2,
+          "relocationIncluded": false
+        }
+      },
+      "expected": "task-failure",
+      "agrees": true
+    },
+    {
+      "case": "evaluation-2605",
+      "mutation": "authored-reference",
+      "result": {
+        "status": "pass",
+        "issues": [],
+        "details": {
+          "effectiveSections": 1,
+          "relocationIncluded": false
+        }
+      },
+      "expected": "pass",
+      "agrees": true
+    },
+    {
+      "case": "evaluation-2605",
+      "mutation": "unfilled-template",
+      "result": {
+        "status": "task-failure",
+        "issues": [
+          "template-text-or-placement-mismatch:document",
+          "template-text-or-placement-mismatch:section-0:footer:default",
+          "template-text-or-placement-mismatch:section-0:footer:even",
+          "template-text-or-placement-mismatch:section-0:footer:first",
+          "template-text-or-placement-mismatch:section-0:header:default",
+          "template-text-or-placement-mismatch:section-0:header:even",
+          "template-text-or-placement-mismatch:section-0:header:first",
+          "unresolved-placeholder:document",
+          "unresolved-placeholder:section-0:footer:default",
+          "unresolved-placeholder:section-0:footer:even",
+          "unresolved-placeholder:section-0:footer:first",
+          "unresolved-placeholder:section-0:header:default",
+          "unresolved-placeholder:section-0:header:even",
+          "unresolved-placeholder:section-0:header:first",
+          "table-cell-placement-mismatch:document",
+          "table-cell-placement-mismatch:section-0:header:default",
+          "table-cell-placement-mismatch:section-0:header:first",
+          "table-cell-placement-mismatch:section-0:header:even",
+          "table-cell-placement-mismatch:section-0:footer:default",
+          "table-cell-placement-mismatch:section-0:footer:first",
+          "table-cell-placement-mismatch:section-0:footer:even"
+        ],
+        "details": {
+          "effectiveSections": 1,
+          "relocationIncluded": false
+        }
+      },
+      "expected": "task-failure",
+      "agrees": true
+    },
+    {
+      "case": "evaluation-2605",
+      "mutation": "cell-content",
+      "result": {
+        "status": "task-failure",
+        "issues": [
+          "template-text-or-placement-mismatch:document",
+          "table-cell-placement-mismatch:document"
+        ],
+        "details": {
+          "effectiveSections": 1,
+          "relocationIncluded": false
+        }
+      },
+      "expected": "task-failure",
+      "agrees": true
+    },
+    {
+      "case": "evaluation-2606",
+      "mutation": "authored-reference",
+      "result": {
+        "status": "pass",
+        "issues": [],
+        "details": {
+          "effectiveSections": 2,
+          "relocationIncluded": true
+        }
+      },
+      "expected": "pass",
+      "agrees": true
+    },
+    {
+      "case": "evaluation-2606",
+      "mutation": "unfilled-template",
+      "result": {
+        "status": "task-failure",
+        "issues": [
+          "template-text-or-placement-mismatch:document",
+          "template-text-or-placement-mismatch:section-0:footer:default",
+          "template-text-or-placement-mismatch:section-0:footer:even",
+          "template-text-or-placement-mismatch:section-0:footer:first",
+          "template-text-or-placement-mismatch:section-0:header:default",
+          "template-text-or-placement-mismatch:section-0:header:even",
+          "template-text-or-placement-mismatch:section-0:header:first",
+          "template-text-or-placement-mismatch:section-1:footer:default",
+          "template-text-or-placement-mismatch:section-1:footer:even",
+          "template-text-or-placement-mismatch:section-1:footer:first",
+          "template-text-or-placement-mismatch:section-1:header:default",
+          "template-text-or-placement-mismatch:section-1:header:even",
+          "template-text-or-placement-mismatch:section-1:header:first",
+          "unresolved-placeholder:document",
+          "unresolved-placeholder:section-0:footer:default",
+          "unresolved-placeholder:section-0:footer:even",
+          "unresolved-placeholder:section-0:footer:first",
+          "unresolved-placeholder:section-0:header:default",
+          "unresolved-placeholder:section-0:header:even",
+          "unresolved-placeholder:section-0:header:first",
+          "unresolved-placeholder:section-1:footer:default",
+          "unresolved-placeholder:section-1:footer:even",
+          "unresolved-placeholder:section-1:footer:first",
+          "unresolved-placeholder:section-1:header:default",
+          "unresolved-placeholder:section-1:header:even",
+          "unresolved-placeholder:section-1:header:first",
+          "table-cell-placement-mismatch:document",
+          "table-cell-placement-mismatch:section-0:header:default",
+          "table-cell-placement-mismatch:section-0:header:first",
+          "table-cell-placement-mismatch:section-0:header:even",
+          "table-cell-placement-mismatch:section-0:footer:default",
+          "table-cell-placement-mismatch:section-0:footer:first",
+          "table-cell-placement-mismatch:section-0:footer:even",
+          "table-cell-placement-mismatch:section-1:header:default",
+          "table-cell-placement-mismatch:section-1:header:first",
+          "table-cell-placement-mismatch:section-1:header:even",
+          "table-cell-placement-mismatch:section-1:footer:default",
+          "table-cell-placement-mismatch:section-1:footer:first",
+          "table-cell-placement-mismatch:section-1:footer:even"
+        ],
+        "details": {
+          "effectiveSections": 2,
+          "relocationIncluded": true
+        }
+      },
+      "expected": "task-failure",
+      "agrees": true
+    },
+    {
+      "case": "evaluation-2606",
+      "mutation": "cell-content",
+      "result": {
+        "status": "task-failure",
+        "issues": [
+          "template-text-or-placement-mismatch:document",
+          "table-cell-placement-mismatch:document"
+        ],
+        "details": {
+          "effectiveSections": 2,
+          "relocationIncluded": true
+        }
+      },
+      "expected": "task-failure",
+      "agrees": true
+    },
+    {
+      "case": "evaluation-2607",
+      "mutation": "authored-reference",
+      "result": {
+        "status": "pass",
+        "issues": [],
+        "details": {
+          "effectiveSections": 1,
+          "relocationIncluded": false
+        }
+      },
+      "expected": "pass",
+      "agrees": true
+    },
+    {
+      "case": "evaluation-2607",
+      "mutation": "unfilled-template",
+      "result": {
+        "status": "task-failure",
+        "issues": [
+          "template-text-or-placement-mismatch:document",
+          "template-text-or-placement-mismatch:section-0:footer:default",
+          "template-text-or-placement-mismatch:section-0:footer:even",
+          "template-text-or-placement-mismatch:section-0:footer:first",
+          "template-text-or-placement-mismatch:section-0:header:default",
+          "template-text-or-placement-mismatch:section-0:header:even",
+          "template-text-or-placement-mismatch:section-0:header:first",
+          "unresolved-placeholder:document",
+          "unresolved-placeholder:section-0:footer:default",
+          "unresolved-placeholder:section-0:footer:even",
+          "unresolved-placeholder:section-0:footer:first",
+          "unresolved-placeholder:section-0:header:default",
+          "unresolved-placeholder:section-0:header:even",
+          "unresolved-placeholder:section-0:header:first",
+          "table-cell-placement-mismatch:document",
+          "table-cell-placement-mismatch:section-0:header:default",
+          "table-cell-placement-mismatch:section-0:header:first",
+          "table-cell-placement-mismatch:section-0:header:even",
+          "table-cell-placement-mismatch:section-0:footer:default",
+          "table-cell-placement-mismatch:section-0:footer:first",
+          "table-cell-placement-mismatch:section-0:footer:even"
+        ],
+        "details": {
+          "effectiveSections": 1,
+          "relocationIncluded": false
+        }
+      },
+      "expected": "task-failure",
+      "agrees": true
+    },
+    {
+      "case": "evaluation-2607",
+      "mutation": "cell-content",
+      "result": {
+        "status": "task-failure",
+        "issues": [
+          "template-text-or-placement-mismatch:document",
+          "table-cell-placement-mismatch:document"
+        ],
+        "details": {
+          "effectiveSections": 1,
+          "relocationIncluded": false
+        }
+      },
+      "expected": "task-failure",
+      "agrees": true
+    },
+    {
+      "case": "evaluation-2608",
+      "mutation": "authored-reference",
+      "result": {
+        "status": "pass",
+        "issues": [],
+        "details": {
+          "effectiveSections": 2,
+          "relocationIncluded": true
+        }
+      },
+      "expected": "pass",
+      "agrees": true
+    },
+    {
+      "case": "evaluation-2608",
+      "mutation": "unfilled-template",
+      "result": {
+        "status": "task-failure",
+        "issues": [
+          "template-text-or-placement-mismatch:document",
+          "template-text-or-placement-mismatch:section-0:footer:default",
+          "template-text-or-placement-mismatch:section-0:footer:even",
+          "template-text-or-placement-mismatch:section-0:footer:first",
+          "template-text-or-placement-mismatch:section-0:header:default",
+          "template-text-or-placement-mismatch:section-0:header:even",
+          "template-text-or-placement-mismatch:section-0:header:first",
+          "template-text-or-placement-mismatch:section-1:footer:default",
+          "template-text-or-placement-mismatch:section-1:footer:even",
+          "template-text-or-placement-mismatch:section-1:footer:first",
+          "template-text-or-placement-mismatch:section-1:header:default",
+          "template-text-or-placement-mismatch:section-1:header:even",
+          "template-text-or-placement-mismatch:section-1:header:first",
+          "unresolved-placeholder:document",
+          "unresolved-placeholder:section-0:footer:default",
+          "unresolved-placeholder:section-0:footer:even",
+          "unresolved-placeholder:section-0:footer:first",
+          "unresolved-placeholder:section-0:header:default",
+          "unresolved-placeholder:section-0:header:even",
+          "unresolved-placeholder:section-0:header:first",
+          "unresolved-placeholder:section-1:footer:default",
+          "unresolved-placeholder:section-1:footer:even",
+          "unresolved-placeholder:section-1:footer:first",
+          "unresolved-placeholder:section-1:header:default",
+          "unresolved-placeholder:section-1:header:even",
+          "unresolved-placeholder:section-1:header:first",
+          "table-cell-placement-mismatch:document",
+          "table-cell-placement-mismatch:section-0:header:default",
+          "table-cell-placement-mismatch:section-0:header:first",
+          "table-cell-placement-mismatch:section-0:header:even",
+          "table-cell-placement-mismatch:section-0:footer:default",
+          "table-cell-placement-mismatch:section-0:footer:first",
+          "table-cell-placement-mismatch:section-0:footer:even",
+          "table-cell-placement-mismatch:section-1:header:default",
+          "table-cell-placement-mismatch:section-1:header:first",
+          "table-cell-placement-mismatch:section-1:header:even",
+          "table-cell-placement-mismatch:section-1:footer:default",
+          "table-cell-placement-mismatch:section-1:footer:first",
+          "table-cell-placement-mismatch:section-1:footer:even"
+        ],
+        "details": {
+          "effectiveSections": 2,
+          "relocationIncluded": true
+        }
+      },
+      "expected": "task-failure",
+      "agrees": true
+    },
+    {
+      "case": "evaluation-2608",
+      "mutation": "cell-content",
+      "result": {
+        "status": "task-failure",
+        "issues": [
+          "template-text-or-placement-mismatch:document",
+          "table-cell-placement-mismatch:document"
+        ],
+        "details": {
+          "effectiveSections": 2,
+          "relocationIncluded": true
+        }
+      },
+      "expected": "task-failure",
+      "agrees": true
+    },
+    {
+      "case": "agent-2701",
+      "mutation": "authored-reference",
+      "result": {
+        "status": "pass",
+        "issues": [],
+        "details": {
+          "effectiveSections": 1,
+          "relocationIncluded": true
+        }
+      },
+      "expected": "pass",
+      "agrees": true
+    },
+    {
+      "case": "agent-2701",
+      "mutation": "unfilled-template",
+      "result": {
+        "status": "task-failure",
+        "issues": [
+          "template-text-or-placement-mismatch:document",
+          "template-text-or-placement-mismatch:section-0:footer:default",
+          "template-text-or-placement-mismatch:section-0:footer:even",
+          "template-text-or-placement-mismatch:section-0:footer:first",
+          "template-text-or-placement-mismatch:section-0:header:default",
+          "template-text-or-placement-mismatch:section-0:header:even",
+          "template-text-or-placement-mismatch:section-0:header:first",
+          "unresolved-placeholder:document",
+          "unresolved-placeholder:section-0:footer:default",
+          "unresolved-placeholder:section-0:footer:even",
+          "unresolved-placeholder:section-0:footer:first",
+          "unresolved-placeholder:section-0:header:default",
+          "unresolved-placeholder:section-0:header:even",
+          "unresolved-placeholder:section-0:header:first",
+          "table-cell-placement-mismatch:document",
+          "table-cell-placement-mismatch:section-0:header:default",
+          "table-cell-placement-mismatch:section-0:header:first",
+          "table-cell-placement-mismatch:section-0:header:even",
+          "table-cell-placement-mismatch:section-0:footer:default",
+          "table-cell-placement-mismatch:section-0:footer:first",
+          "table-cell-placement-mismatch:section-0:footer:even"
+        ],
+        "details": {
+          "effectiveSections": 1,
+          "relocationIncluded": true
+        }
+      },
+      "expected": "task-failure",
+      "agrees": true
+    },
+    {
+      "case": "agent-2701",
+      "mutation": "cell-content",
+      "result": {
+        "status": "task-failure",
+        "issues": [
+          "template-text-or-placement-mismatch:document",
+          "table-cell-placement-mismatch:document"
+        ],
+        "details": {
+          "effectiveSections": 1,
+          "relocationIncluded": true
+        }
+      },
+      "expected": "task-failure",
+      "agrees": true
+    },
+    {
+      "case": "agent-2702",
+      "mutation": "authored-reference",
+      "result": {
+        "status": "pass",
+        "issues": [],
+        "details": {
+          "effectiveSections": 1,
+          "relocationIncluded": false
+        }
+      },
+      "expected": "pass",
+      "agrees": true
+    },
+    {
+      "case": "agent-2702",
+      "mutation": "unfilled-template",
+      "result": {
+        "status": "task-failure",
+        "issues": [
+          "template-text-or-placement-mismatch:document",
+          "template-text-or-placement-mismatch:section-0:footer:default",
+          "template-text-or-placement-mismatch:section-0:footer:even",
+          "template-text-or-placement-mismatch:section-0:footer:first",
+          "template-text-or-placement-mismatch:section-0:header:default",
+          "template-text-or-placement-mismatch:section-0:header:even",
+          "template-text-or-placement-mismatch:section-0:header:first",
+          "unresolved-placeholder:document",
+          "unresolved-placeholder:section-0:footer:default",
+          "unresolved-placeholder:section-0:footer:even",
+          "unresolved-placeholder:section-0:footer:first",
+          "unresolved-placeholder:section-0:header:default",
+          "unresolved-placeholder:section-0:header:even",
+          "unresolved-placeholder:section-0:header:first",
+          "table-cell-placement-mismatch:document",
+          "table-cell-placement-mismatch:section-0:header:default",
+          "table-cell-placement-mismatch:section-0:header:first",
+          "table-cell-placement-mismatch:section-0:header:even",
+          "table-cell-placement-mismatch:section-0:footer:default",
+          "table-cell-placement-mismatch:section-0:footer:first",
+          "table-cell-placement-mismatch:section-0:footer:even"
+        ],
+        "details": {
+          "effectiveSections": 1,
+          "relocationIncluded": false
+        }
+      },
+      "expected": "task-failure",
+      "agrees": true
+    },
+    {
+      "case": "agent-2702",
+      "mutation": "cell-content",
+      "result": {
+        "status": "task-failure",
+        "issues": [
+          "template-text-or-placement-mismatch:document",
+          "table-cell-placement-mismatch:document"
+        ],
+        "details": {
+          "effectiveSections": 1,
+          "relocationIncluded": false
+        }
+      },
+      "expected": "task-failure",
+      "agrees": true
+    },
+    {
+      "case": "agent-2703",
+      "mutation": "authored-reference",
+      "result": {
+        "status": "pass",
+        "issues": [],
+        "details": {
+          "effectiveSections": 2,
+          "relocationIncluded": false
+        }
+      },
+      "expected": "pass",
+      "agrees": true
+    },
+    {
+      "case": "agent-2703",
+      "mutation": "unfilled-template",
+      "result": {
+        "status": "task-failure",
+        "issues": [
+          "template-text-or-placement-mismatch:document",
+          "template-text-or-placement-mismatch:section-0:footer:default",
+          "template-text-or-placement-mismatch:section-0:footer:even",
+          "template-text-or-placement-mismatch:section-0:footer:first",
+          "template-text-or-placement-mismatch:section-0:header:default",
+          "template-text-or-placement-mismatch:section-0:header:even",
+          "template-text-or-placement-mismatch:section-0:header:first",
+          "template-text-or-placement-mismatch:section-1:footer:default",
+          "template-text-or-placement-mismatch:section-1:footer:even",
+          "template-text-or-placement-mismatch:section-1:footer:first",
+          "template-text-or-placement-mismatch:section-1:header:default",
+          "template-text-or-placement-mismatch:section-1:header:even",
+          "template-text-or-placement-mismatch:section-1:header:first",
+          "unresolved-placeholder:document",
+          "unresolved-placeholder:section-0:footer:default",
+          "unresolved-placeholder:section-0:footer:even",
+          "unresolved-placeholder:section-0:footer:first",
+          "unresolved-placeholder:section-0:header:default",
+          "unresolved-placeholder:section-0:header:even",
+          "unresolved-placeholder:section-0:header:first",
+          "unresolved-placeholder:section-1:footer:default",
+          "unresolved-placeholder:section-1:footer:even",
+          "unresolved-placeholder:section-1:footer:first",
+          "unresolved-placeholder:section-1:header:default",
+          "unresolved-placeholder:section-1:header:even",
+          "unresolved-placeholder:section-1:header:first",
+          "table-cell-placement-mismatch:document",
+          "table-cell-placement-mismatch:section-0:header:default",
+          "table-cell-placement-mismatch:section-0:header:first",
+          "table-cell-placement-mismatch:section-0:header:even",
+          "table-cell-placement-mismatch:section-0:footer:default",
+          "table-cell-placement-mismatch:section-0:footer:first",
+          "table-cell-placement-mismatch:section-0:footer:even",
+          "table-cell-placement-mismatch:section-1:header:default",
+          "table-cell-placement-mismatch:section-1:header:first",
+          "table-cell-placement-mismatch:section-1:header:even",
+          "table-cell-placement-mismatch:section-1:footer:default",
+          "table-cell-placement-mismatch:section-1:footer:first",
+          "table-cell-placement-mismatch:section-1:footer:even"
+        ],
+        "details": {
+          "effectiveSections": 2,
+          "relocationIncluded": false
+        }
+      },
+      "expected": "task-failure",
+      "agrees": true
+    },
+    {
+      "case": "agent-2703",
+      "mutation": "cell-content",
+      "result": {
+        "status": "task-failure",
+        "issues": [
+          "template-text-or-placement-mismatch:document",
+          "table-cell-placement-mismatch:document"
+        ],
+        "details": {
+          "effectiveSections": 2,
+          "relocationIncluded": false
+        }
+      },
+      "expected": "task-failure",
+      "agrees": true
+    },
+    {
+      "case": "agent-2704",
+      "mutation": "authored-reference",
+      "result": {
+        "status": "pass",
+        "issues": [],
+        "details": {
+          "effectiveSections": 2,
+          "relocationIncluded": false
+        }
+      },
+      "expected": "pass",
+      "agrees": true
+    },
+    {
+      "case": "agent-2704",
+      "mutation": "unfilled-template",
+      "result": {
+        "status": "task-failure",
+        "issues": [
+          "template-text-or-placement-mismatch:document",
+          "template-text-or-placement-mismatch:section-0:footer:default",
+          "template-text-or-placement-mismatch:section-0:footer:even",
+          "template-text-or-placement-mismatch:section-0:footer:first",
+          "template-text-or-placement-mismatch:section-0:header:default",
+          "template-text-or-placement-mismatch:section-0:header:even",
+          "template-text-or-placement-mismatch:section-0:header:first",
+          "template-text-or-placement-mismatch:section-1:footer:default",
+          "template-text-or-placement-mismatch:section-1:footer:even",
+          "template-text-or-placement-mismatch:section-1:footer:first",
+          "template-text-or-placement-mismatch:section-1:header:default",
+          "template-text-or-placement-mismatch:section-1:header:even",
+          "template-text-or-placement-mismatch:section-1:header:first",
+          "unresolved-placeholder:document",
+          "unresolved-placeholder:section-0:footer:default",
+          "unresolved-placeholder:section-0:footer:even",
+          "unresolved-placeholder:section-0:footer:first",
+          "unresolved-placeholder:section-0:header:default",
+          "unresolved-placeholder:section-0:header:even",
+          "unresolved-placeholder:section-0:header:first",
+          "unresolved-placeholder:section-1:footer:default",
+          "unresolved-placeholder:section-1:footer:even",
+          "unresolved-placeholder:section-1:footer:first",
+          "unresolved-placeholder:section-1:header:default",
+          "unresolved-placeholder:section-1:header:even",
+          "unresolved-placeholder:section-1:header:first",
+          "table-cell-placement-mismatch:document",
+          "table-cell-placement-mismatch:section-0:header:default",
+          "table-cell-placement-mismatch:section-0:header:first",
+          "table-cell-placement-mismatch:section-0:header:even",
+          "table-cell-placement-mismatch:section-0:footer:default",
+          "table-cell-placement-mismatch:section-0:footer:first",
+          "table-cell-placement-mismatch:section-0:footer:even",
+          "table-cell-placement-mismatch:section-1:header:default",
+          "table-cell-placement-mismatch:section-1:header:first",
+          "table-cell-placement-mismatch:section-1:header:even",
+          "table-cell-placement-mismatch:section-1:footer:default",
+          "table-cell-placement-mismatch:section-1:footer:first",
+          "table-cell-placement-mismatch:section-1:footer:even"
+        ],
+        "details": {
+          "effectiveSections": 2,
+          "relocationIncluded": false
+        }
+      },
+      "expected": "task-failure",
+      "agrees": true
+    },
+    {
+      "case": "agent-2704",
+      "mutation": "cell-content",
+      "result": {
+        "status": "task-failure",
+        "issues": [
+          "template-text-or-placement-mismatch:document",
+          "table-cell-placement-mismatch:document"
+        ],
+        "details": {
+          "effectiveSections": 2,
+          "relocationIncluded": false
+        }
+      },
+      "expected": "task-failure",
+      "agrees": true
+    },
+    {
+      "case": "agent-2705",
+      "mutation": "authored-reference",
+      "result": {
+        "status": "pass",
+        "issues": [],
+        "details": {
+          "effectiveSections": 1,
+          "relocationIncluded": false
+        }
+      },
+      "expected": "pass",
+      "agrees": true
+    },
+    {
+      "case": "agent-2705",
+      "mutation": "unfilled-template",
+      "result": {
+        "status": "task-failure",
+        "issues": [
+          "template-text-or-placement-mismatch:document",
+          "template-text-or-placement-mismatch:section-0:footer:default",
+          "template-text-or-placement-mismatch:section-0:footer:even",
+          "template-text-or-placement-mismatch:section-0:footer:first",
+          "template-text-or-placement-mismatch:section-0:header:default",
+          "template-text-or-placement-mismatch:section-0:header:even",
+          "template-text-or-placement-mismatch:section-0:header:first",
+          "unresolved-placeholder:document",
+          "unresolved-placeholder:section-0:footer:default",
+          "unresolved-placeholder:section-0:footer:even",
+          "unresolved-placeholder:section-0:footer:first",
+          "unresolved-placeholder:section-0:header:default",
+          "unresolved-placeholder:section-0:header:even",
+          "unresolved-placeholder:section-0:header:first",
+          "table-cell-placement-mismatch:document",
+          "table-cell-placement-mismatch:section-0:header:default",
+          "table-cell-placement-mismatch:section-0:header:first",
+          "table-cell-placement-mismatch:section-0:header:even",
+          "table-cell-placement-mismatch:section-0:footer:default",
+          "table-cell-placement-mismatch:section-0:footer:first",
+          "table-cell-placement-mismatch:section-0:footer:even"
+        ],
+        "details": {
+          "effectiveSections": 1,
+          "relocationIncluded": false
+        }
+      },
+      "expected": "task-failure",
+      "agrees": true
+    },
+    {
+      "case": "agent-2705",
+      "mutation": "cell-content",
+      "result": {
+        "status": "task-failure",
+        "issues": [
+          "template-text-or-placement-mismatch:document",
+          "table-cell-placement-mismatch:document"
+        ],
+        "details": {
+          "effectiveSections": 1,
+          "relocationIncluded": false
+        }
+      },
+      "expected": "task-failure",
+      "agrees": true
+    },
+    {
+      "case": "agent-2706",
+      "mutation": "authored-reference",
+      "result": {
+        "status": "pass",
+        "issues": [],
+        "details": {
+          "effectiveSections": 2,
+          "relocationIncluded": true
+        }
+      },
+      "expected": "pass",
+      "agrees": true
+    },
+    {
+      "case": "agent-2706",
+      "mutation": "unfilled-template",
+      "result": {
+        "status": "task-failure",
+        "issues": [
+          "template-text-or-placement-mismatch:document",
+          "template-text-or-placement-mismatch:section-0:footer:default",
+          "template-text-or-placement-mismatch:section-0:footer:even",
+          "template-text-or-placement-mismatch:section-0:footer:first",
+          "template-text-or-placement-mismatch:section-0:header:default",
+          "template-text-or-placement-mismatch:section-0:header:even",
+          "template-text-or-placement-mismatch:section-0:header:first",
+          "template-text-or-placement-mismatch:section-1:footer:default",
+          "template-text-or-placement-mismatch:section-1:footer:even",
+          "template-text-or-placement-mismatch:section-1:footer:first",
+          "template-text-or-placement-mismatch:section-1:header:default",
+          "template-text-or-placement-mismatch:section-1:header:even",
+          "template-text-or-placement-mismatch:section-1:header:first",
+          "unresolved-placeholder:document",
+          "unresolved-placeholder:section-0:footer:default",
+          "unresolved-placeholder:section-0:footer:even",
+          "unresolved-placeholder:section-0:footer:first",
+          "unresolved-placeholder:section-0:header:default",
+          "unresolved-placeholder:section-0:header:even",
+          "unresolved-placeholder:section-0:header:first",
+          "unresolved-placeholder:section-1:footer:default",
+          "unresolved-placeholder:section-1:footer:even",
+          "unresolved-placeholder:section-1:footer:first",
+          "unresolved-placeholder:section-1:header:default",
+          "unresolved-placeholder:section-1:header:even",
+          "unresolved-placeholder:section-1:header:first",
+          "table-cell-placement-mismatch:document",
+          "table-cell-placement-mismatch:section-0:header:default",
+          "table-cell-placement-mismatch:section-0:header:first",
+          "table-cell-placement-mismatch:section-0:header:even",
+          "table-cell-placement-mismatch:section-0:footer:default",
+          "table-cell-placement-mismatch:section-0:footer:first",
+          "table-cell-placement-mismatch:section-0:footer:even",
+          "table-cell-placement-mismatch:section-1:header:default",
+          "table-cell-placement-mismatch:section-1:header:first",
+          "table-cell-placement-mismatch:section-1:header:even",
+          "table-cell-placement-mismatch:section-1:footer:default",
+          "table-cell-placement-mismatch:section-1:footer:first",
+          "table-cell-placement-mismatch:section-1:footer:even"
+        ],
+        "details": {
+          "effectiveSections": 2,
+          "relocationIncluded": true
+        }
+      },
+      "expected": "task-failure",
+      "agrees": true
+    },
+    {
+      "case": "agent-2706",
+      "mutation": "cell-content",
+      "result": {
+        "status": "task-failure",
+        "issues": [
+          "template-text-or-placement-mismatch:document",
+          "table-cell-placement-mismatch:document"
+        ],
+        "details": {
+          "effectiveSections": 2,
+          "relocationIncluded": true
+        }
+      },
+      "expected": "task-failure",
+      "agrees": true
+    },
+    {
+      "case": "agent-2707",
+      "mutation": "authored-reference",
+      "result": {
+        "status": "pass",
+        "issues": [],
+        "details": {
+          "effectiveSections": 1,
+          "relocationIncluded": false
+        }
+      },
+      "expected": "pass",
+      "agrees": true
+    },
+    {
+      "case": "agent-2707",
+      "mutation": "unfilled-template",
+      "result": {
+        "status": "task-failure",
+        "issues": [
+          "template-text-or-placement-mismatch:document",
+          "template-text-or-placement-mismatch:section-0:footer:default",
+          "template-text-or-placement-mismatch:section-0:footer:even",
+          "template-text-or-placement-mismatch:section-0:footer:first",
+          "template-text-or-placement-mismatch:section-0:header:default",
+          "template-text-or-placement-mismatch:section-0:header:even",
+          "template-text-or-placement-mismatch:section-0:header:first",
+          "unresolved-placeholder:document",
+          "unresolved-placeholder:section-0:footer:default",
+          "unresolved-placeholder:section-0:footer:even",
+          "unresolved-placeholder:section-0:footer:first",
+          "unresolved-placeholder:section-0:header:default",
+          "unresolved-placeholder:section-0:header:even",
+          "unresolved-placeholder:section-0:header:first",
+          "table-cell-placement-mismatch:document",
+          "table-cell-placement-mismatch:section-0:header:default",
+          "table-cell-placement-mismatch:section-0:header:first",
+          "table-cell-placement-mismatch:section-0:header:even",
+          "table-cell-placement-mismatch:section-0:footer:default",
+          "table-cell-placement-mismatch:section-0:footer:first",
+          "table-cell-placement-mismatch:section-0:footer:even"
+        ],
+        "details": {
+          "effectiveSections": 1,
+          "relocationIncluded": false
+        }
+      },
+      "expected": "task-failure",
+      "agrees": true
+    },
+    {
+      "case": "agent-2707",
+      "mutation": "cell-content",
+      "result": {
+        "status": "task-failure",
+        "issues": [
+          "template-text-or-placement-mismatch:document",
+          "table-cell-placement-mismatch:document"
+        ],
+        "details": {
+          "effectiveSections": 1,
+          "relocationIncluded": false
+        }
+      },
+      "expected": "task-failure",
+      "agrees": true
+    },
+    {
+      "case": "agent-2708",
+      "mutation": "authored-reference",
+      "result": {
+        "status": "pass",
+        "issues": [],
+        "details": {
+          "effectiveSections": 2,
+          "relocationIncluded": true
+        }
+      },
+      "expected": "pass",
+      "agrees": true
+    },
+    {
+      "case": "agent-2708",
+      "mutation": "unfilled-template",
+      "result": {
+        "status": "task-failure",
+        "issues": [
+          "template-text-or-placement-mismatch:document",
+          "template-text-or-placement-mismatch:section-0:footer:default",
+          "template-text-or-placement-mismatch:section-0:footer:even",
+          "template-text-or-placement-mismatch:section-0:footer:first",
+          "template-text-or-placement-mismatch:section-0:header:default",
+          "template-text-or-placement-mismatch:section-0:header:even",
+          "template-text-or-placement-mismatch:section-0:header:first",
+          "template-text-or-placement-mismatch:section-1:footer:default",
+          "template-text-or-placement-mismatch:section-1:footer:even",
+          "template-text-or-placement-mismatch:section-1:footer:first",
+          "template-text-or-placement-mismatch:section-1:header:default",
+          "template-text-or-placement-mismatch:section-1:header:even",
+          "template-text-or-placement-mismatch:section-1:header:first",
+          "unresolved-placeholder:document",
+          "unresolved-placeholder:section-0:footer:default",
+          "unresolved-placeholder:section-0:footer:even",
+          "unresolved-placeholder:section-0:footer:first",
+          "unresolved-placeholder:section-0:header:default",
+          "unresolved-placeholder:section-0:header:even",
+          "unresolved-placeholder:section-0:header:first",
+          "unresolved-placeholder:section-1:footer:default",
+          "unresolved-placeholder:section-1:footer:even",
+          "unresolved-placeholder:section-1:footer:first",
+          "unresolved-placeholder:section-1:header:default",
+          "unresolved-placeholder:section-1:header:even",
+          "unresolved-placeholder:section-1:header:first",
+          "table-cell-placement-mismatch:document",
+          "table-cell-placement-mismatch:section-0:header:default",
+          "table-cell-placement-mismatch:section-0:header:first",
+          "table-cell-placement-mismatch:section-0:header:even",
+          "table-cell-placement-mismatch:section-0:footer:default",
+          "table-cell-placement-mismatch:section-0:footer:first",
+          "table-cell-placement-mismatch:section-0:footer:even",
+          "table-cell-placement-mismatch:section-1:header:default",
+          "table-cell-placement-mismatch:section-1:header:first",
+          "table-cell-placement-mismatch:section-1:header:even",
+          "table-cell-placement-mismatch:section-1:footer:default",
+          "table-cell-placement-mismatch:section-1:footer:first",
+          "table-cell-placement-mismatch:section-1:footer:even"
+        ],
+        "details": {
+          "effectiveSections": 2,
+          "relocationIncluded": true
+        }
+      },
+      "expected": "task-failure",
+      "agrees": true
+    },
+    {
+      "case": "agent-2708",
+      "mutation": "cell-content",
+      "result": {
+        "status": "task-failure",
+        "issues": [
+          "template-text-or-placement-mismatch:document",
+          "table-cell-placement-mismatch:document"
+        ],
+        "details": {
+          "effectiveSections": 2,
+          "relocationIncluded": true
+        }
+      },
+      "expected": "task-failure",
+      "agrees": true
+    }
+  ]
+}

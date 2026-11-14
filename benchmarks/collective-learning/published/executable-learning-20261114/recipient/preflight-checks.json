@@ -1,0 +1,12 @@
+{
+  "typecheckExitCode": 0,
+  "controlWindowsCases": 12,
+  "checkerLinuxCases": 72,
+  "controlLinuxCases": 12,
+  "predecessor": "executable-transfer-20261114-v1",
+  "modelCalls": 0,
+  "packageEdited": false,
+  "checkedAt": "2026-11-14T18:10:23.4978375Z",
+  "predecessorModelCalls": 0,
+  "checkerWindowsCases": 72
+}

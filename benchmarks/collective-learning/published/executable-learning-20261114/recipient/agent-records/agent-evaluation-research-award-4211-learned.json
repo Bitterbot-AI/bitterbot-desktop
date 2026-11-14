@@ -1,0 +1,137 @@
+{
+  "id": "agent-evaluation-research-award-4211-learned",
+  "caseId": "evaluation-research-award-4211",
+  "arm": "learned",
+  "runId": "29337044-52ce-4d09-8107-d227b3a44e77",
+  "cost": {
+    "providerUsd": 0.11788275,
+    "toolCalls": 7,
+    "wallMs": 32233
+  },
+  "tokens": 53214,
+  "outcome": "pass",
+  "grade": {
+    "status": "pass",
+    "issues": [],
+    "details": {
+      "effectiveSections": 2,
+      "relocationIncluded": false
+    }
+  },
+  "reads": [
+    "SKILL.md"
+  ],
+  "helperInvocations": [
+    {
+      "name": "exec",
+      "id": "toolu_015wxyviVSExmsTYBSATMQJ5",
+      "arguments": {
+        "command": "mkdir -p output && python3 /workspace/skill/helpers/fill_docx.py --template inputs/offer_letter_template.docx --data inputs/employee_data.json --output output/offer_letter_filled.docx; echo \"EXIT=$?\""
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    }
+  ],
+  "toolActions": [
+    {
+      "name": "read",
+      "id": "toolu_01HGGWoTiyLkF5DSXtJXCBnb",
+      "arguments": {
+        "path": "/workspace/skill/SKILL.md"
+      },
+      "result": [
+        {
+          "isError": false
+        }
+      ]
+    },
+    {
+      "name": "read",
+      "id": "toolu_012QMAXvv5uEYPWRenbKEQeD",
+      "arguments": {
+        "path": "inputs/employee_data.json"
+      },
+      "result": [
+        {
+          "isError": false
+        }
+      ]
+    },
+    {
+      "name": "exec",
+      "id": "toolu_017z5oDXqDr8wpWq66pyumA9",
+      "arguments": {
+        "command": "ls -la /workspace/skill/helpers/ && ls -la inputs/ && python3 -c \"import docx, lxml; print('deps ok')\""
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    },
+    {
+      "name": "exec",
+      "id": "toolu_015wxyviVSExmsTYBSATMQJ5",
+      "arguments": {
+        "command": "mkdir -p output && python3 /workspace/skill/helpers/fill_docx.py --template inputs/offer_letter_template.docx --data inputs/employee_data.json --output output/offer_letter_filled.docx; echo \"EXIT=$?\""
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    },
+    {
+      "name": "exec",
+      "id": "toolu_019tDzNN35zqpQHxerEbB4Jv",
+      "arguments": {
+        "command": "cd output && python3 - <<'EOF'\nimport docx\nd = docx.Document(\"offer_letter_filled.docx\")\ndef texts(doc):\n    out=[]\n    for p in doc.paragraphs: out.append(p.text)\n    for t in doc.tables:\n        for r in t.rows:\n            for c in r.cells:\n                for p in c.paragraphs: out.append(p.text)\n    for s in doc.sections:\n        for hf in (s.header,s.footer,s.first_page_header,s.first_page_footer):\n            for p in hf.paragraphs: out.append(p.text)\n    return out\nall_text=\"\\n\".join(texts(d))\nprint(all_text)\nprint(\"---CHECKS---\")\nprint(\"has {{ :\", \"{{\" in all_text)\nprint(\"RELOCATION mention:\", \"elocat\" in all_text.lower())\nprint(\"Nóra present:\", \"Nóra Singh\" in all_text)\nEOF"
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    },
+    {
+      "name": "exec",
+      "id": "toolu_01TyY158q95GGszbdLQ2Dgmj",
+      "arguments": {
+        "command": "cd /workspace && md5sum inputs/offer_letter_template.docx inputs/employee_data.json && ls -la output/"
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    }
+  ],
+  "inputUnchanged": true,
+  "packageUnchanged": true,
+  "outputHash": "f8f0b258c1930b3b78a44b36257fcc2aed44b01a78646962e7e301850cefb785",
+  "latencyMs": 32237,
+  "checkerWallMs": 7069,
+  "diagnostic": null,
+  "usage": {
+    "input": 12,
+    "output": 1371,
+    "cacheRead": 41808,
+    "cacheWrite": 10023,
+    "total": 53214
+  },
+  "modelMessages": 6,
+  "sessionHash": "35bb31010838806b81daef27574b2ccac345bffd427da6a29f46995722de6aaa"
+}

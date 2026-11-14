@@ -1,0 +1,232 @@
+{
+  "schemaVersion": 2,
+  "createdAt": "2026-11-14T19:12:56.897Z",
+  "comparisonFreeze": "bfbc663d9cfa389dca81ebccbf89927b14965e79759f91fd820030616cc308e5",
+  "repairFreeze": "62d70b0c4d1a50b08d40bedc9bb0b5444fcb72a7d78e0bb6b260a5ab05f1c8cf",
+  "amendment": "continuation-amendment.json",
+  "packageHash": "8a9db2fb33657ba8bb6fa9cf571d98bb4776dcb1881b2f130cd40405ac775eef",
+  "arms": [
+    {
+      "arm": "frozen",
+      "runs": 12,
+      "checked": 11,
+      "passes": 10,
+      "verifiedTaskFailures": 1,
+      "interruptions": 1,
+      "providerUsd": 5.4105307499999995,
+      "costPerVerifiedCompletion": 0.541053075,
+      "wholeSkillReads": 0,
+      "observedHelperInvocations": 0,
+      "tokens": 3065025,
+      "toolActions": 181,
+      "checkerWallMs": 49195,
+      "latencyMs": 1268715
+    },
+    {
+      "arm": "learned",
+      "runs": 12,
+      "checked": 12,
+      "passes": 12,
+      "verifiedTaskFailures": 0,
+      "interruptions": 0,
+      "providerUsd": 2.2037925,
+      "costPerVerifiedCompletion": 0.183649375,
+      "wholeSkillReads": 12,
+      "observedHelperInvocations": 12,
+      "tokens": 1061557,
+      "toolActions": 89,
+      "checkerWallMs": 56422,
+      "latencyMs": 435417
+    }
+  ],
+  "attemptedPairs": 12,
+  "completePairs": 11,
+  "unstarted": [],
+  "matchedArms": [
+    {
+      "arm": "frozen",
+      "runs": 11,
+      "checked": 11,
+      "passes": 10,
+      "verifiedTaskFailures": 1,
+      "interruptions": 0,
+      "providerUsd": 5.018808,
+      "costPerVerifiedCompletion": 0.5018808,
+      "wholeSkillReads": 0,
+      "observedHelperInvocations": 0,
+      "tokens": 2832921,
+      "toolActions": 160,
+      "checkerWallMs": 49195,
+      "latencyMs": 1169462
+    },
+    {
+      "arm": "learned",
+      "runs": 11,
+      "checked": 11,
+      "passes": 11,
+      "verifiedTaskFailures": 0,
+      "interruptions": 0,
+      "providerUsd": 2.08593525,
+      "costPerVerifiedCompletion": 0.18963047727272728,
+      "wholeSkillReads": 11,
+      "observedHelperInvocations": 11,
+      "tokens": 1016858,
+      "toolActions": 84,
+      "checkerWallMs": 52310,
+      "latencyMs": 407522
+    }
+  ],
+  "pairedProviderCostDeltas": [
+    {
+      "caseId": "evaluation-service-order-4200",
+      "genre": "service-order",
+      "fullyChecked": true,
+      "frozenOutcome": "pass",
+      "learnedOutcome": "pass",
+      "frozenUsd": 0.43592,
+      "learnedUsd": 0.171593,
+      "savingsUsd": 0.264327
+    },
+    {
+      "caseId": "evaluation-service-order-4201",
+      "genre": "service-order",
+      "fullyChecked": true,
+      "frozenOutcome": "pass",
+      "learnedOutcome": "pass",
+      "frozenUsd": 0.64198075,
+      "learnedUsd": 0.169402,
+      "savingsUsd": 0.47257875
+    },
+    {
+      "caseId": "evaluation-service-order-4202",
+      "genre": "service-order",
+      "fullyChecked": true,
+      "frozenOutcome": "pass",
+      "learnedOutcome": "pass",
+      "frozenUsd": 0.38287125,
+      "learnedUsd": 0.336913,
+      "savingsUsd": 0.04595824999999998
+    },
+    {
+      "caseId": "evaluation-service-order-4203",
+      "genre": "service-order",
+      "fullyChecked": false,
+      "frozenOutcome": "interrupted",
+      "learnedOutcome": "pass",
+      "frozenUsd": 0.39172275,
+      "learnedUsd": 0.11785725,
+      "savingsUsd": 0.2738655
+    },
+    {
+      "caseId": "evaluation-research-award-4210",
+      "genre": "research-award",
+      "fullyChecked": true,
+      "frozenOutcome": "pass",
+      "learnedOutcome": "pass",
+      "frozenUsd": 0.366796,
+      "learnedUsd": 0.29424025,
+      "savingsUsd": 0.07255575000000003
+    },
+    {
+      "caseId": "evaluation-research-award-4211",
+      "genre": "research-award",
+      "fullyChecked": true,
+      "frozenOutcome": "pass",
+      "learnedOutcome": "pass",
+      "frozenUsd": 0.46879625,
+      "learnedUsd": 0.11788275,
+      "savingsUsd": 0.35091350000000004
+    },
+    {
+      "caseId": "evaluation-research-award-4212",
+      "genre": "research-award",
+      "fullyChecked": true,
+      "frozenOutcome": "pass",
+      "learnedOutcome": "pass",
+      "frozenUsd": 0.52178325,
+      "learnedUsd": 0.1815945,
+      "savingsUsd": 0.34018875000000004
+    },
+    {
+      "caseId": "evaluation-research-award-4213",
+      "genre": "research-award",
+      "fullyChecked": true,
+      "frozenOutcome": "task-failure",
+      "learnedOutcome": "pass",
+      "frozenUsd": 0.32340675,
+      "learnedUsd": 0.12554075,
+      "savingsUsd": 0.19786600000000001
+    },
+    {
+      "caseId": "evaluation-equipment-assignment-4220",
+      "genre": "equipment-assignment",
+      "fullyChecked": true,
+      "frozenOutcome": "pass",
+      "learnedOutcome": "pass",
+      "frozenUsd": 0.53817875,
+      "learnedUsd": 0.1052605,
+      "savingsUsd": 0.43291825000000006
+    },
+    {
+      "caseId": "evaluation-equipment-assignment-4221",
+      "genre": "equipment-assignment",
+      "fullyChecked": true,
+      "frozenOutcome": "pass",
+      "learnedOutcome": "pass",
+      "frozenUsd": 0.38307575,
+      "learnedUsd": 0.17561275,
+      "savingsUsd": 0.20746299999999998
+    },
+    {
+      "caseId": "evaluation-equipment-assignment-4222",
+      "genre": "equipment-assignment",
+      "fullyChecked": true,
+      "frozenOutcome": "pass",
+      "learnedOutcome": "pass",
+      "frozenUsd": 0.64601875,
+      "learnedUsd": 0.17848425,
+      "savingsUsd": 0.46753449999999996
+    },
+    {
+      "caseId": "evaluation-equipment-assignment-4223",
+      "genre": "equipment-assignment",
+      "fullyChecked": true,
+      "frozenOutcome": "pass",
+      "learnedOutcome": "pass",
+      "frozenUsd": 0.3099805,
+      "learnedUsd": 0.2294115,
+      "savingsUsd": 0.080569
+    }
+  ],
+  "newFailures": 0,
+  "finitePanelEfficiencyTargetMet": false,
+  "targetAssessment": "Original all-12-checked-pairs requirement was not met; descriptive results remain useful.",
+  "relativeCostReduction": 0.6221603271678708,
+  "allAttemptedCostReduction": 0.592684599380569,
+  "allAttemptedCostPerVerifiedCompletionReduction": 0.6605704994838075,
+  "allAttemptedAccounting": "Includes every task cost, including the reconciled interruption. The interruption is not counted as verified success or task failure.",
+  "matchedAccounting": "Both members of the interrupted pair are excluded from the fully checked paired estimate. No reruns or replacements.",
+  "learningUsd": 3.07113425,
+  "priorUnresolvedLearningReserveUsd": 14.4,
+  "newRepairUsd": 0,
+  "breakEvenCompletionsFromKnownCosts": 10,
+  "breakEvenCompletionsIncludingFullPriorHold": 56,
+  "budget": {
+    "knownUsd": 7.614323250000001,
+    "heldUsd": 0,
+    "unresolved": 0,
+    "stageRemainingUsd": 12.385676749999998,
+    "cumulativeKnownUsd": 127.74778624999999,
+    "priorReserveUsd": 28.8,
+    "remainingUsd": 93.45221375
+  },
+  "claimLimits": [
+    "Development transfer pilot: twelve authored pairs across three genres share one bounded DOCX mechanism, with one interrupted run. No powered efficacy or population noninferiority claim.",
+    "Operator-assisted signed offline transfer to separate recipient state and processes on the same physical host and pinned dependency image; lower CPU/memory and explicit timezone/locale.",
+    "The helper was generated and repaired in the source study; these recipient runs reuse unchanged bytes. No peer-evidence synthesis was tested.",
+    "The competent authored executable control also passes recipient qualification. This comparison tests reuse of the learned executable against repeated model implementation; it does not show that learning beats an equivalent engineered helper.",
+    "No automatic Circle/P2P distribution, production promotion, new real user, physical second machine, human visual-fidelity rating or 24-hour retention result yet.",
+    "All costs use reported usage and frozen model rates, not invoices. Historical unknown-cost holds remain reserved. Provider caching may cross fresh sessions; arm order alternates.",
+    "Wall times include provider, tool and verification latency on a shared host with the normal gateway running, not a dedicated idle benchmark machine."
+  ]
+}

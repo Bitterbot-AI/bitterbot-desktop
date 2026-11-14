@@ -1,0 +1,220 @@
+{
+  "id": "agent-evaluation-equipment-assignment-4223-learned",
+  "caseId": "evaluation-equipment-assignment-4223",
+  "arm": "learned",
+  "runId": "cf3246f9-63ce-4820-ba9b-1ccb26ce7fa6",
+  "cost": {
+    "providerUsd": 0.2294115,
+    "toolCalls": 13,
+    "wallMs": 55924
+  },
+  "tokens": 130461,
+  "outcome": "pass",
+  "grade": {
+    "status": "pass",
+    "issues": [],
+    "details": {
+      "effectiveSections": 2,
+      "relocationIncluded": false
+    }
+  },
+  "reads": [
+    "SKILL.md",
+    "helpers/fill_docx.py"
+  ],
+  "helperInvocations": [
+    {
+      "name": "exec",
+      "id": "toolu_01Ho7zxCPE71D4KdPpJp4JgR",
+      "arguments": {
+        "command": "mkdir -p output && python3 /workspace/skill/helpers/fill_docx.py --template inputs/offer_letter_template.docx --data inputs/employee_data.json --output output/offer_letter_filled.docx; echo \"EXIT=$?\""
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    }
+  ],
+  "toolActions": [
+    {
+      "name": "read",
+      "id": "toolu_01GdvKpVuPfDnZndkE1c8eJT",
+      "arguments": {
+        "path": "/workspace/skill/SKILL.md"
+      },
+      "result": [
+        {
+          "isError": false
+        }
+      ]
+    },
+    {
+      "name": "read",
+      "id": "toolu_012cLthSL3VziY689BfntWGo",
+      "arguments": {
+        "path": "inputs/employee_data.json"
+      },
+      "result": [
+        {
+          "isError": false
+        }
+      ]
+    },
+    {
+      "name": "read",
+      "id": "toolu_01YLZaAixgTUVZxf2Tjzm1CQ",
+      "arguments": {
+        "path": "/workspace/skill/helpers/fill_docx.py"
+      },
+      "result": [
+        {
+          "isError": false
+        }
+      ]
+    },
+    {
+      "name": "exec",
+      "id": "toolu_01H47RKDrF6ANJAGqLJHU6bK",
+      "arguments": {
+        "command": "ls -la inputs/ && python3 -c \"import docx, lxml; print('deps ok')\""
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    },
+    {
+      "name": "exec",
+      "id": "toolu_01Ho7zxCPE71D4KdPpJp4JgR",
+      "arguments": {
+        "command": "mkdir -p output && python3 /workspace/skill/helpers/fill_docx.py --template inputs/offer_letter_template.docx --data inputs/employee_data.json --output output/offer_letter_filled.docx; echo \"EXIT=$?\""
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    },
+    {
+      "name": "exec",
+      "id": "toolu_01BgrEMY1huEQiwmrEb8rys7",
+      "arguments": {
+        "command": "cd output && python3 - <<'EOF'\nimport docx, re\nd = docx.Document(\"offer_letter_filled.docx\")\ntexts=[]\ndef walk(paras):\n    for p in paras: texts.append(p.text)\nfor p in d.paragraphs: texts.append(p.text)\nfor t in d.tables:\n    for r in t.rows:\n        for c in r.cells:\n            for p in c.paragraphs: texts.append(p.text)\nfor s in d.sections:\n    for part in (s.header,s.first_page_header,s.even_page_header,s.footer,s.first_page_footer,s.even_page_footer):\n        if part:\n            for p in part.paragraphs: texts.append(p.text)\nfull=\"\\n\".join(texts)\nprint(\"MARKERS LEFT:\", re.findall(r\"\\{\\{[^}]*\\}\\}\", full))\nprint(\"Has 'relocation'(lower):\", \"relocation\" in full.lower())\nprint(\"Has RELOCATION_AMOUNT value 3,125:\", \"3,125\" in full)\nfor key in [\"Nóra Singh\",\"ALDER-4223\",\"Jules Okoye\",\"Côte Road\",\"Ω check\",\"Alder Field Group 4223\"]:\n    print(f\"{key!r} present:\", key in full)\nEOF"
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    },
+    {
+      "name": "exec",
+      "id": "toolu_013paGJPRXmKNBGCvZuhtUQW",
+      "arguments": {
+        "command": "cd inputs && md5sum employee_data.json offer_letter_template.docx"
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    },
+    {
+      "name": "exec",
+      "id": "toolu_01ChGv3m6LfqHg2VBCV8zakN",
+      "arguments": {
+        "command": "cd output && python3 - <<'EOF'\nimport docx\nd = docx.Document(\"offer_letter_filled.docx\")\nfor p in d.paragraphs:\n    if \"Road\" in p.text or \"Montr\" in p.text:\n        print(repr(p.text))\nfor t in d.tables:\n    for r in t.rows:\n        for c in r.cells:\n            if \"Road\" in c.text or \"Montr\" in c.text:\n                print(\"CELL:\",repr(c.text))\nEOF"
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    },
+    {
+      "name": "exec",
+      "id": "toolu_01N5knRh5mBdjbDaJqVgX5uJ",
+      "arguments": {
+        "command": "cd output && python3 - <<'EOF'\nimport docx\nd = docx.Document(\"offer_letter_filled.docx\")\nall_t=[]\nfor p in d.paragraphs: all_t.append(p.text)\nfor t in d.tables:\n    for r in t.rows:\n        for c in r.cells:\n            for p in c.paragraphs: all_t.append(p.text)\nimport unicodedata\nfor s in all_t:\n    if \"18\" in s and \"Road\" in s:\n        print(repr(s), [unicodedata.name(ch,'?') for ch in s if ord(ch)>127])\nEOF"
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    },
+    {
+      "name": "exec",
+      "id": "toolu_01MrsW9cuCGYt5YXTcM8XtDa",
+      "arguments": {
+        "command": "cd output && python3 - <<'EOF'\nimport docx\nd = docx.Document(\"offer_letter_filled.docx\")\nfor p in d.paragraphs:\n    if \"18\" in p.text:\n        print(repr(p.text))\nEOF"
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    },
+    {
+      "name": "exec",
+      "id": "toolu_014aysHFBRsnEjqDfyMGUS3o",
+      "arguments": {
+        "command": "cd output && python3 - <<'EOF'\nimport docx\nd = docx.Document(\"offer_letter_filled.docx\")\ndef allparts(doc):\n    for p in doc.paragraphs: yield (\"body\",p)\n    for t in doc.tables:\n        for r in t.rows:\n            for c in r.cells:\n                for p in c.paragraphs: yield (\"table\",p)\n                for nt in c.tables:\n                    for rr in nt.rows:\n                        for cc in rr.cells:\n                            for p in cc.paragraphs: yield(\"nested\",p)\n    for s in doc.sections:\n        for nm,part in [(\"hdr\",s.header),(\"fph\",s.first_page_header),(\"eph\",s.even_page_header),(\"ftr\",s.footer),(\"fpf\",s.first_page_footer),(\"epf\",s.even_page_footer)]:\n            if part:\n                for p in part.paragraphs: yield(nm,p)\n                for t in part.tables:\n                    for r in t.rows:\n                        for c in r.cells:\n                            for p in c.paragraphs: yield(nm+\"-tbl\",p)\nfor loc,p in allparts(d):\n    if \"Côte\" in p.text or \"Montr\" in p.text or \"18 \" in p.text:\n        print(loc, repr(p.text))\nEOF"
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    },
+    {
+      "name": "exec",
+      "id": "toolu_01SJ7uhWqeJk6qFwqyb9kw4y",
+      "arguments": {
+        "command": "ls -la output/"
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    }
+  ],
+  "inputUnchanged": true,
+  "packageUnchanged": true,
+  "outputHash": "617e0bb71e68f775124b6681b18d616eba1e338cd56c556a7fcb719abc2149e8",
+  "latencyMs": 55930,
+  "checkerWallMs": 6038,
+  "diagnostic": null,
+  "usage": {
+    "input": 20,
+    "output": 3065,
+    "cacheRead": 111898,
+    "cacheWrite": 15478,
+    "total": 130461
+  },
+  "modelMessages": 10,
+  "sessionHash": "14864aedb75361ae129fb2ba4bfd95923d4292b3a61a153b422d07deaaca9c39"
+}

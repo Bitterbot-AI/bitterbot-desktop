@@ -451,6 +451,32 @@ export class OrchestratorBridge {
     return this.sendCommand("subscribe_topic", { topic }, TOPIC_VERB_TIMEOUT_MS);
   }
 
+  /** Versioned package object RPC over the bounded, Noise-encrypted peer request bus. */
+  async requestPackageObject(
+    peerId: string,
+    request: import("../agents/skills/collective/transport.js").ObjectRequest,
+  ): Promise<import("../agents/skills/collective/transport.js").ObjectChunk> {
+    const encode = (method: string, params: unknown) =>
+      Buffer.from(JSON.stringify({ method, params })).toString("base64");
+    const capability = JSON.parse(
+      Buffer.from(
+        await this.circleRequest(peerId, encode("skill-package/1/capabilities", {})),
+        "base64",
+      ).toString("utf8"),
+    ) as { ok?: boolean; result?: { version?: number } };
+    if (!capability.ok || capability.result?.version !== 1)
+      throw new Error("Peer does not support complete skill packages");
+    const wire = await this.circleRequest(peerId, encode("skill-package/1/object", request));
+    if (wire.length > 65536) throw new Error("Package response too large");
+    const result = JSON.parse(Buffer.from(wire, "base64").toString("utf8")) as {
+      ok?: boolean;
+      error?: string;
+      result?: import("../agents/skills/collective/transport.js").ObjectChunk;
+    };
+    if (!result.ok || !result.result) throw new Error(result.error ?? "Package request refused");
+    return result.result;
+  }
+
   async unsubscribeCircleTopic(topic: string): Promise<unknown> {
     return this.sendCommand("unsubscribe_topic", { topic }, TOPIC_VERB_TIMEOUT_MS);
   }

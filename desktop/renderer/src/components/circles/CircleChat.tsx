@@ -16,6 +16,7 @@ import { DraftingBanner } from "./DraftingBanner";
 import { FrozenCircleBanner } from "./FrozenCircleBanner";
 import { InviteTrustPrompt, type InvitePreview } from "./InviteTrustPrompt";
 import { PendingOutboundCard } from "./PendingOutboundCard";
+import { SkillCatalog } from "./SkillCatalog";
 
 // PLAN-36 Phase A: the center chat pane — header, conversation stream, composer.
 // A3 adds reply-to (a compact quote banner + the parent's envelope id on send).
@@ -73,6 +74,7 @@ export function CircleChat({ circle, selfPubkey }: Props) {
   const [sending, setSending] = useState(false);
   const [replyTo, setReplyTo] = useState<CircleMessage | null>(null);
   const [showPins, setShowPins] = useState(false);
+  const [showSkills, setShowSkills] = useState(false);
   const [trayOpen, setTrayOpen] = useState(false);
   // Phase D: message delete confirms IN-APP (native confirm() is gone) and
   // pins jump to their message (the whole point of a pin).
@@ -249,7 +251,21 @@ export function CircleChat({ circle, selfPubkey }: Props) {
             </button>
           );
         })()}
+        <button
+          type="button"
+          className="text-xs rounded border px-2 py-1"
+          onClick={() => setShowSkills(true)}
+        >
+          Skills
+        </button>
       </header>
+      {showSkills && (
+        <SkillCatalog
+          circleId={circle.circleId}
+          selfPubkey={selfPubkey}
+          onClose={() => setShowSkills(false)}
+        />
+      )}
 
       {pinnedMessages.length > 0 && (
         <div className="mx-3 mt-2 rounded-lg border border-circle-you/20 bg-circle-you-soft/60 text-xs">

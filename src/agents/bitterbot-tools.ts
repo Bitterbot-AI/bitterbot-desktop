@@ -48,6 +48,7 @@ import { createSessionsSendTool } from "./tools/sessions-send-tool.js";
 import { createSessionsSpawnTool } from "./tools/sessions-spawn-tool.js";
 import { createShopTool } from "./tools/shop-tool.js";
 import { createSkillManageTool } from "./tools/skill-manage-tool.js";
+import { createSkillPackageTool } from "./tools/skill-package-tool.js";
 import { createSkillPipelineDigestTool } from "./tools/skill-pipeline-digest-tool.js";
 import { createSkillSeekersIngestTool } from "./tools/skill-seekers-tool.js";
 import { createSubagentsTool } from "./tools/subagents-tool.js";
@@ -315,6 +316,7 @@ export function createBitterbotTools(options?: {
     createSkillSeekersIngestTool(memoryOpts),
     createSkillPipelineDigestTool(memoryOpts),
     createSkillManageTool(memoryOpts),
+    createSkillPackageTool({ config: options?.config, agentSessionKey: options?.agentSessionKey }),
     createForageTool(memoryOpts),
     createCirclesTool(memoryOpts),
   ]) {

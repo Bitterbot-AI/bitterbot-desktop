@@ -1,0 +1,213 @@
+{
+  "schemaVersion": 1,
+  "repairFreeze": "62d70b0c4d1a50b08d40bedc9bb0b5444fcb72a7d78e0bb6b260a5ab05f1c8cf",
+  "createdAt": "2026-11-14T18:24:02.100Z",
+  "sources": {
+    "research/collective-learning/executable-transfer-v2/common.ts": "72329c6f738fa21d309df4b5d2725fd04b93cfcfcece66f72e1fb229ad11bd14",
+    "research/collective-learning/executable-transfer-v2/qualify.ts": "289c5c913e753a889c8647bbfc271086ae7eaf73133d714060eb5fe6a8c6e4e3",
+    "research/collective-learning/executable-transfer-v2/run.ts": "11d7d0ea02e5d25367704ec13745d77663ca639b1e4919644242139868f94ff6",
+    "research/collective-learning/executable-transfer-v2/runtime.ts": "1d385b247033c8987e5b49aab29d291e186918b68856cb4f4e9112c5bd2ff21c",
+    "research/collective-learning/executable-transfer-v2/setup.ts": "c5d8ff9462be84dd9b9da2fd076ca85fc4c8b2b052b475b45dd6847a0910ba38",
+    "research/collective-learning/executable-transfer-v2/study.ts": "2cb6371af8db0e778303b6f3eddf03c98cbf7b25cc307aecd9294ceb1b3a7f66",
+    "research/collective-learning/executable-transfer-v2/transfer.ts": "1f98ba338a20aae6b3c9e12fc201f3d7ecfb78bd599b94aefa02e5f6e0ae3637"
+  },
+  "packageHash": "8a9db2fb33657ba8bb6fa9cf571d98bb4776dcb1881b2f130cd40405ac775eef",
+  "model": "anthropic/claude-opus-4-8",
+  "modelDefinition": "59e0e98abbb892d3c8a86db8c953467f44f1cafb29cf08d69d923b126735125f",
+  "rates": {
+    "input": 5,
+    "output": 25,
+    "cacheRead": 0.5,
+    "cacheWrite": 6.25
+  },
+  "quote": {
+    "providerUsd": 7.2,
+    "toolCalls": 21,
+    "wallMs": 450000
+  },
+  "taskPrompt": "Fill the declared DOCX fields without editing inputs, preserving text placement and section/table structure. Replace uppercase field placeholders even when split across runs in a paragraph, including body, nested tables and active headers/footers. For IF_RELOCATION/END_IF_RELOCATION, the only governing field is RELOCATION_PACKAGE. That field is required whenever the conditional appears. Keep the content only for the exact string Yes; every other string removes it. An extra RELOCATION field is unused and must never act as an alias or fallback. If the governing field or another required value is absent, exit nonzero and report the missing requirement rather than inventing a default. No installs, network access, macros or cross-paragraph tokens. This is the public task specification, not a verifier or an expected answer. Complete inputs/offer_letter_template.docx using inputs/employee_data.json and save output/offer_letter_filled.docx. Do not modify the inputs. Use the available tools and finish with a concise completion message.",
+  "schedule": [
+    {
+      "id": "agent-evaluation-service-order-4200-frozen",
+      "caseId": "evaluation-service-order-4200",
+      "arm": "frozen"
+    },
+    {
+      "id": "agent-evaluation-service-order-4200-learned",
+      "caseId": "evaluation-service-order-4200",
+      "arm": "learned"
+    },
+    {
+      "id": "agent-evaluation-service-order-4201-learned",
+      "caseId": "evaluation-service-order-4201",
+      "arm": "learned"
+    },
+    {
+      "id": "agent-evaluation-service-order-4201-frozen",
+      "caseId": "evaluation-service-order-4201",
+      "arm": "frozen"
+    },
+    {
+      "id": "agent-evaluation-service-order-4202-frozen",
+      "caseId": "evaluation-service-order-4202",
+      "arm": "frozen"
+    },
+    {
+      "id": "agent-evaluation-service-order-4202-learned",
+      "caseId": "evaluation-service-order-4202",
+      "arm": "learned"
+    },
+    {
+      "id": "agent-evaluation-service-order-4203-learned",
+      "caseId": "evaluation-service-order-4203",
+      "arm": "learned"
+    },
+    {
+      "id": "agent-evaluation-service-order-4203-frozen",
+      "caseId": "evaluation-service-order-4203",
+      "arm": "frozen"
+    },
+    {
+      "id": "agent-evaluation-research-award-4210-frozen",
+      "caseId": "evaluation-research-award-4210",
+      "arm": "frozen"
+    },
+    {
+      "id": "agent-evaluation-research-award-4210-learned",
+      "caseId": "evaluation-research-award-4210",
+      "arm": "learned"
+    },
+    {
+      "id": "agent-evaluation-research-award-4211-learned",
+      "caseId": "evaluation-research-award-4211",
+      "arm": "learned"
+    },
+    {
+      "id": "agent-evaluation-research-award-4211-frozen",
+      "caseId": "evaluation-research-award-4211",
+      "arm": "frozen"
+    },
+    {
+      "id": "agent-evaluation-research-award-4212-frozen",
+      "caseId": "evaluation-research-award-4212",
+      "arm": "frozen"
+    },
+    {
+      "id": "agent-evaluation-research-award-4212-learned",
+      "caseId": "evaluation-research-award-4212",
+      "arm": "learned"
+    },
+    {
+      "id": "agent-evaluation-research-award-4213-learned",
+      "caseId": "evaluation-research-award-4213",
+      "arm": "learned"
+    },
+    {
+      "id": "agent-evaluation-research-award-4213-frozen",
+      "caseId": "evaluation-research-award-4213",
+      "arm": "frozen"
+    },
+    {
+      "id": "agent-evaluation-equipment-assignment-4220-frozen",
+      "caseId": "evaluation-equipment-assignment-4220",
+      "arm": "frozen"
+    },
+    {
+      "id": "agent-evaluation-equipment-assignment-4220-learned",
+      "caseId": "evaluation-equipment-assignment-4220",
+      "arm": "learned"
+    },
+    {
+      "id": "agent-evaluation-equipment-assignment-4221-learned",
+      "caseId": "evaluation-equipment-assignment-4221",
+      "arm": "learned"
+    },
+    {
+      "id": "agent-evaluation-equipment-assignment-4221-frozen",
+      "caseId": "evaluation-equipment-assignment-4221",
+      "arm": "frozen"
+    },
+    {
+      "id": "agent-evaluation-equipment-assignment-4222-frozen",
+      "caseId": "evaluation-equipment-assignment-4222",
+      "arm": "frozen"
+    },
+    {
+      "id": "agent-evaluation-equipment-assignment-4222-learned",
+      "caseId": "evaluation-equipment-assignment-4222",
+      "arm": "learned"
+    },
+    {
+      "id": "agent-evaluation-equipment-assignment-4223-learned",
+      "caseId": "evaluation-equipment-assignment-4223",
+      "arm": "learned"
+    },
+    {
+      "id": "agent-evaluation-equipment-assignment-4223-frozen",
+      "caseId": "evaluation-equipment-assignment-4223",
+      "arm": "frozen"
+    }
+  ],
+  "retentionSchedule": [
+    {
+      "id": "retention-retention-service-order-4300-learned",
+      "caseId": "retention-service-order-4300",
+      "arm": "learned"
+    },
+    {
+      "id": "retention-retention-service-order-4301-learned",
+      "caseId": "retention-service-order-4301",
+      "arm": "learned"
+    },
+    {
+      "id": "retention-retention-research-award-4310-learned",
+      "caseId": "retention-research-award-4310",
+      "arm": "learned"
+    },
+    {
+      "id": "retention-retention-research-award-4311-learned",
+      "caseId": "retention-research-award-4311",
+      "arm": "learned"
+    },
+    {
+      "id": "retention-retention-equipment-assignment-4320-learned",
+      "caseId": "retention-equipment-assignment-4320",
+      "arm": "learned"
+    },
+    {
+      "id": "retention-retention-equipment-assignment-4321-learned",
+      "caseId": "retention-equipment-assignment-4321",
+      "arm": "learned"
+    }
+  ],
+  "retentionNotBefore": 1794766264362,
+  "budgetBefore": {
+    "knownUsd": 0,
+    "heldUsd": 0,
+    "unresolved": 0,
+    "stageRemainingUsd": 20,
+    "cumulativeKnownUsd": 120.13346299999999,
+    "priorReserveUsd": 28.8,
+    "remainingUsd": 101.066537
+  },
+  "maxTaskRuns": 24,
+  "concurrency": 1,
+  "maximumStageProviderUsd": 20,
+  "admission": "All evaluation and later retention jobs share one $20 stage ledger. Reserve the full quote before each serial run and retain unresolved costs. Previous overall holds of $28.80 remain separate. Stop admissions before any ceiling is exceeded.",
+  "claim": "Recipient use of the unchanged signed package after operator-assisted offline import and fresh local checking. Separate recipient state/process; same physical host and pinned image with changed resources/timezone. No automatic Circle publication or production activation.",
+  "primary": "Provider cost per independently verified completion. Target at least 50% reduction, with no added failures on this finite panel.",
+  "secondary": [
+    "checked success",
+    "SKILL.md whole-file read",
+    "successful helper command observed",
+    "tool calls",
+    "model messages (not exact provider request count)",
+    "tokens including cache",
+    "agent latency excluding cold preflight",
+    "verification latency"
+  ],
+  "learningAccounting": "Inherited source learning cost $3.07113425 plus $14.40 unresolved learning holds; no new repair. Transfer/local-verification wall time is separate. Group ledger counts each provider charge once, including all failed tasks.",
+  "interpretation": "Twelve authored pairs across three document genres share one DOCX mechanism and are a development transfer pilot. No powered general efficacy claim. Model caching may carry across fresh sessions; order alternates.",
+  "instrumentation": "Read tracking requires successful whole SKILL.md read. Helper evidence uses successful exec results with a command containing the exact immutable helper path, input and output arguments; it is invocation evidence, not OS-level file-access tracing.",
+  "hash": "bfbc663d9cfa389dca81ebccbf89927b14965e79759f91fd820030616cc308e5"
+}

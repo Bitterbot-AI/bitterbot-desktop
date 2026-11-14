@@ -1,0 +1,80 @@
+{
+  "platform": "Linux",
+  "cases": 12,
+  "allPassed": true,
+  "modelCalls": 0,
+  "records": [
+    {
+      "caseId": "qualification-service-order-4100",
+      "passed": true,
+      "exitCode": 0,
+      "stderr": ""
+    },
+    {
+      "caseId": "qualification-service-order-4101",
+      "passed": true,
+      "exitCode": 0,
+      "stderr": ""
+    },
+    {
+      "caseId": "qualification-invalid-service-order-4400",
+      "passed": true,
+      "exitCode": 4,
+      "stderr": "Missing required field: RELOCATION_PACKAGE\n"
+    },
+    {
+      "caseId": "qualification-invalid-service-order-4401",
+      "passed": true,
+      "exitCode": 4,
+      "stderr": "Missing required field: CUSTOMER_NAME\n"
+    },
+    {
+      "caseId": "qualification-research-award-4110",
+      "passed": true,
+      "exitCode": 0,
+      "stderr": ""
+    },
+    {
+      "caseId": "qualification-research-award-4111",
+      "passed": true,
+      "exitCode": 0,
+      "stderr": ""
+    },
+    {
+      "caseId": "qualification-invalid-research-award-4410",
+      "passed": true,
+      "exitCode": 4,
+      "stderr": "Missing required field: RELOCATION_PACKAGE\n"
+    },
+    {
+      "caseId": "qualification-invalid-research-award-4411",
+      "passed": true,
+      "exitCode": 4,
+      "stderr": "Missing required field: INVESTIGATOR_NAME\n"
+    },
+    {
+      "caseId": "qualification-equipment-assignment-4120",
+      "passed": true,
+      "exitCode": 0,
+      "stderr": ""
+    },
+    {
+      "caseId": "qualification-equipment-assignment-4121",
+      "passed": true,
+      "exitCode": 0,
+      "stderr": ""
+    },
+    {
+      "caseId": "qualification-invalid-equipment-assignment-4420",
+      "passed": true,
+      "exitCode": 4,
+      "stderr": "Missing required field: RELOCATION_PACKAGE\n"
+    },
+    {
+      "caseId": "qualification-invalid-equipment-assignment-4421",
+      "passed": true,
+      "exitCode": 4,
+      "stderr": "Missing required field: CUSTODIAN_NAME\n"
+    }
+  ]
+}

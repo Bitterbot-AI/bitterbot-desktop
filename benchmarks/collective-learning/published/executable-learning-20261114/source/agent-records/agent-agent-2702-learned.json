@@ -1,0 +1,125 @@
+{
+  "id": "agent-agent-2702-learned",
+  "caseId": "agent-2702",
+  "arm": "learned",
+  "runId": "2c365722-1601-4655-9700-28e6612c9546",
+  "cost": {
+    "providerUsd": 0.11898625,
+    "toolCalls": 6,
+    "wallMs": 35339
+  },
+  "tokens": 52242,
+  "outcome": "pass",
+  "grade": {
+    "status": "pass",
+    "issues": [],
+    "details": {
+      "effectiveSections": 1,
+      "relocationIncluded": false
+    }
+  },
+  "reads": [
+    "SKILL.md"
+  ],
+  "helperInvocations": [
+    {
+      "name": "exec",
+      "id": "toolu_0114qe1YCgeVJY7AwxK9g2Gj",
+      "arguments": {
+        "command": "cd /workspace && mkdir -p output && python3 skill/helpers/fill_docx.py --template inputs/offer_letter_template.docx --data inputs/employee_data.json --output output/offer_letter_filled.docx; echo \"EXIT=$?\""
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    }
+  ],
+  "toolActions": [
+    {
+      "name": "read",
+      "id": "toolu_01KCUnXRP7FESwRGYKHiD9Q7",
+      "arguments": {
+        "path": "/workspace/skill/SKILL.md"
+      },
+      "result": [
+        {
+          "isError": false
+        }
+      ]
+    },
+    {
+      "name": "exec",
+      "id": "toolu_01SdxSdiTrAuYV68eW1Wqr9a",
+      "arguments": {
+        "command": "ls -la /workspace/skill/helpers/ && echo \"---INPUTS---\" && ls -la /workspace/inputs/ && echo \"---DATA---\" && cat /workspace/inputs/employee_data.json"
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    },
+    {
+      "name": "exec",
+      "id": "toolu_0114qe1YCgeVJY7AwxK9g2Gj",
+      "arguments": {
+        "command": "cd /workspace && mkdir -p output && python3 skill/helpers/fill_docx.py --template inputs/offer_letter_template.docx --data inputs/employee_data.json --output output/offer_letter_filled.docx; echo \"EXIT=$?\""
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    },
+    {
+      "name": "exec",
+      "id": "toolu_0194QAiwL3KEpccGj5Hnk8z7",
+      "arguments": {
+        "command": "cd /workspace && ls -la output/ && python3 - <<'EOF'\nimport zipfile, re\nwith zipfile.ZipFile('output/offer_letter_filled.docx') as z:\n    parts = [n for n in z.namelist() if n.endswith('.xml') and ('document' in n or 'header' in n or 'footer' in n)]\n    allxml = \"\"\n    for n in parts:\n        allxml += z.read(n).decode('utf-8', 'ignore')\n# Check for unresolved markers\nleftover = re.findall(r'\\{\\{[^}]*\\}\\}', allxml)\nprint(\"Unresolved markers:\", leftover)\nfor key in [\"IF_RELOCATION\",\"END_IF_RELOCATION\",\"RELOCATION_PACKAGE_BACKUP\",\"Never a template field\"]:\n    print(f\"contains {key!r}:\", key in allxml)\nEOF"
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    },
+    {
+      "name": "exec",
+      "id": "toolu_01GNWzRNdg9KvzByb6w3T5Xc",
+      "arguments": {
+        "command": "cd /workspace && python3 - <<'EOF'\nimport zipfile, re\nwith zipfile.ZipFile('output/offer_letter_filled.docx') as z:\n    allxml = \"\".join(z.read(n).decode('utf-8','ignore') for n in z.namelist() if n.endswith('.xml'))\nfor v in [\"Willow Evidence Services 2702\",\"Lúcia Ahmed\",\"Field Analyst 2702\",\"WILLOW-2702\",\"Alex Nour\"]:\n    print(f\"present {v!r}:\", v in allxml)\nEOF\necho \"--- input mtimes/sha ---\"\nsha256sum inputs/offer_letter_template.docx inputs/employee_data.json"
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    }
+  ],
+  "inputUnchanged": true,
+  "packageUnchanged": true,
+  "outputHash": "760b7d6164e2a17026a57b70597ab2bb915b57e9ce298be04fcc6edbe1c0c3d6",
+  "latencyMs": 35342,
+  "checkerWallMs": 6543,
+  "diagnostic": null,
+  "usage": {
+    "input": 12,
+    "output": 1457,
+    "cacheRead": 40840,
+    "cacheWrite": 9933,
+    "total": 52242
+  },
+  "modelMessages": 6,
+  "sessionHash": "fbd59b1b35b85297005b81632ccf3d83f85eb90cfd7e7b4fba57380fb0e98487"
+}

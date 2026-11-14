@@ -322,6 +322,109 @@ export class CirclesService {
     return pubkeyId(this.key);
   }
 
+  /** Every package delivery leg is encrypted for the receiving Circle member. */
+  createSkillPackageTransport(
+    circleId: string,
+    publisher: string,
+  ): import("../agents/skills/collective/transport.js").PackageTransport {
+    const ensureActive = () => {
+      if (
+        this.store.getCircle(circleId)?.status !== "active" ||
+        !this.store.memberHasScope(circleId, this.pubkey, "ledger.read")
+      )
+        throw new Error("Circle package access unavailable");
+    };
+    const broadcastPackage = async (method: string, value: unknown) => {
+      ensureActive();
+      for (const member of this.peerMembers(circleId)) {
+        ensureActive();
+        if (!member.boxPubkey) throw new Error("Member has no encryption key");
+        const envelope = makeCircleEnvelope(
+          "event",
+          circleId,
+          {
+            operation: method,
+            sealed: sealToBox(member.boxPubkey, JSON.stringify(value)),
+          } as unknown as Record<string, JsonValue>,
+          this.key,
+        );
+        if (!(await this.deliverToMember(member, method, envelope)))
+          throw new Error("Package delivery uncertain");
+      }
+    };
+    return {
+      withdraw: async (value) => broadcastPackage("circle/skill.withdraw", value),
+      evidence: async (value) => {
+        if (
+          value.scope.kind !== "circle" ||
+          value.scope.circleId !== circleId ||
+          value.origin !== this.pubkey
+        )
+          throw new Error("Evidence disclosure scope mismatch");
+        await broadcastPackage("circle/skill.evidence", value);
+      },
+      announce: async (release) => {
+        ensureActive();
+        if (
+          release.publisher !== this.pubkey ||
+          release.scope.kind !== "circle" ||
+          release.scope.circleId !== circleId
+        )
+          throw new Error("Wrong package destination");
+        for (const member of this.peerMembers(circleId)) {
+          ensureActive();
+          if (!member.boxPubkey) throw new Error("Member has no encryption key");
+          const envelope = makeCircleEnvelope(
+            "event",
+            circleId,
+            {
+              operation: "circle/skill.announce",
+              box_pubkey: this.boxKeys.publicKeyB64,
+              sealed: sealToBox(member.boxPubkey, JSON.stringify(release)),
+            } as unknown as Record<string, JsonValue>,
+            this.key,
+          );
+          if (!(await this.deliverToMember(member, "circle/skill.announce", envelope)))
+            throw new Error("Package announcement delivery uncertain");
+        }
+      },
+      fetch: async (request, signal) => {
+        ensureActive();
+        signal.throwIfAborted();
+        const member = this.store.getMember(circleId, publisher);
+        if (member?.status !== "active" || !member.boxPubkey)
+          throw new Error("Package publisher unavailable");
+        const envelope = makeCircleEnvelope(
+          "event",
+          circleId,
+          {
+            operation: "circle/skill.object",
+            sealed: sealToBox(member.boxPubkey, JSON.stringify(request)),
+          } as unknown as Record<string, JsonValue>,
+          this.key,
+        );
+        let outcome: Awaited<ReturnType<typeof circleRpc>> | undefined;
+        if (member.peerId && this.p2pDialEnabled())
+          outcome = await dialCircleRpc(member.peerId, "circle/skill.object", { envelope });
+        if (!outcome?.ok && !outcome?.refused && member.a2aUrl)
+          outcome = await circleRpc(
+            this.fetchImpl,
+            member.a2aUrl,
+            "circle/skill.object",
+            { envelope },
+            this.dialOpts,
+          );
+        if (!outcome?.ok)
+          throw new Error(outcome?.error ?? "Package publisher offline; retry when reachable");
+        const opened = openBox(this.boxKeys, outcome.result?.sealed as SealedBlob);
+        if (!opened) throw new Error("Invalid encrypted object response");
+        ensureActive();
+        signal.throwIfAborted();
+        return JSON.parse(opened) as import("../agents/skills/collective/transport.js").ObjectChunk;
+      },
+    };
+  }
+
   get boxPubkeyB64(): string {
     return this.boxKeys.publicKeyB64;
   }

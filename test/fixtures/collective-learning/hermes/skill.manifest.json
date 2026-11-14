@@ -1,0 +1,1 @@
+{"schema_version":1,"name":"portable-brief","requirements":{"hermes":{"minimum_version":"0.21.5"},"platforms":[],"architectures":[],"tools":[],"runtime":{"shell":false,"browser":false,"code":false,"sandbox":true}}}

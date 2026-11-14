@@ -1,0 +1,741 @@
+{
+  "allUsageAgrees": true,
+  "records": [
+    {
+      "id": "agent-evaluation-service-order-4200-frozen",
+      "caseId": "evaluation-service-order-4200",
+      "arm": "frozen",
+      "outcome": "pass",
+      "observedAssistantResponses": 17,
+      "usage": {
+        "input": 34,
+        "output": 8274,
+        "cacheRead": 201800,
+        "cacheWrite": 20480
+      },
+      "runnerUsage": {
+        "input": 34,
+        "output": 8274,
+        "cacheRead": 201800,
+        "cacheWrite": 20480
+      },
+      "matches": true,
+      "observedProviderUsd": 0.43592,
+      "ledgerProviderUsd": 0.43592,
+      "reconciliation": null,
+      "costMatches": true,
+      "latencyMs": 122206,
+      "checkerWallMs": 4234,
+      "agentLatencyMs": 117972,
+      "wholeSkillRead": false,
+      "observedHelperCommand": false
+    },
+    {
+      "id": "agent-evaluation-service-order-4200-learned",
+      "caseId": "evaluation-service-order-4200",
+      "arm": "learned",
+      "outcome": "pass",
+      "observedAssistantResponses": 7,
+      "usage": {
+        "input": 14,
+        "output": 1840,
+        "cacheRead": 67221,
+        "cacheWrite": 14706
+      },
+      "runnerUsage": {
+        "input": 14,
+        "output": 1840,
+        "cacheRead": 67221,
+        "cacheWrite": 14706
+      },
+      "matches": true,
+      "observedProviderUsd": 0.171593,
+      "ledgerProviderUsd": 0.171593,
+      "reconciliation": null,
+      "costMatches": true,
+      "latencyMs": 37407,
+      "checkerWallMs": 4618,
+      "agentLatencyMs": 32789,
+      "wholeSkillRead": true,
+      "observedHelperCommand": true
+    },
+    {
+      "id": "agent-evaluation-service-order-4201-learned",
+      "caseId": "evaluation-service-order-4201",
+      "arm": "learned",
+      "outcome": "pass",
+      "observedAssistantResponses": 8,
+      "usage": {
+        "input": 16,
+        "output": 1746,
+        "cacheRead": 74769,
+        "cacheWrite": 14126
+      },
+      "runnerUsage": {
+        "input": 16,
+        "output": 1746,
+        "cacheRead": 74769,
+        "cacheWrite": 14126
+      },
+      "matches": true,
+      "observedProviderUsd": 0.169402,
+      "ledgerProviderUsd": 0.169402,
+      "reconciliation": null,
+      "costMatches": true,
+      "latencyMs": 34123,
+      "checkerWallMs": 4031,
+      "agentLatencyMs": 30092,
+      "wholeSkillRead": true,
+      "observedHelperCommand": true
+    },
+    {
+      "id": "agent-evaluation-service-order-4201-frozen",
+      "caseId": "evaluation-service-order-4201",
+      "arm": "frozen",
+      "outcome": "pass",
+      "observedAssistantResponses": 17,
+      "usage": {
+        "input": 34,
+        "output": 7756,
+        "cacheRead": 368784,
+        "cacheWrite": 42163
+      },
+      "runnerUsage": {
+        "input": 34,
+        "output": 7756,
+        "cacheRead": 368784,
+        "cacheWrite": 42163
+      },
+      "matches": true,
+      "observedProviderUsd": 0.64198075,
+      "ledgerProviderUsd": 0.64198075,
+      "reconciliation": null,
+      "costMatches": true,
+      "latencyMs": 108687,
+      "checkerWallMs": 4086,
+      "agentLatencyMs": 104601,
+      "wholeSkillRead": false,
+      "observedHelperCommand": false
+    },
+    {
+      "id": "agent-evaluation-service-order-4202-frozen",
+      "caseId": "evaluation-service-order-4202",
+      "arm": "frozen",
+      "outcome": "pass",
+      "observedAssistantResponses": 16,
+      "usage": {
+        "input": 32,
+        "output": 6926,
+        "cacheRead": 177485,
+        "cacheWrite": 19331
+      },
+      "runnerUsage": {
+        "input": 32,
+        "output": 6926,
+        "cacheRead": 177485,
+        "cacheWrite": 19331
+      },
+      "matches": true,
+      "observedProviderUsd": 0.38287125,
+      "ledgerProviderUsd": 0.38287125,
+      "reconciliation": null,
+      "costMatches": true,
+      "latencyMs": 120957,
+      "checkerWallMs": 6206,
+      "agentLatencyMs": 114751,
+      "wholeSkillRead": false,
+      "observedHelperCommand": false
+    },
+    {
+      "id": "agent-evaluation-service-order-4202-learned",
+      "caseId": "evaluation-service-order-4202",
+      "arm": "learned",
+      "outcome": "pass",
+      "observedAssistantResponses": 10,
+      "usage": {
+        "input": 20,
+        "output": 2341,
+        "cacheRead": 125651,
+        "cacheWrite": 34474
+      },
+      "runnerUsage": {
+        "input": 20,
+        "output": 2341,
+        "cacheRead": 125651,
+        "cacheWrite": 34474
+      },
+      "matches": true,
+      "observedProviderUsd": 0.336913,
+      "ledgerProviderUsd": 0.336913,
+      "reconciliation": null,
+      "costMatches": true,
+      "latencyMs": 44452,
+      "checkerWallMs": 4336,
+      "agentLatencyMs": 40116,
+      "wholeSkillRead": true,
+      "observedHelperCommand": true
+    },
+    {
+      "id": "agent-evaluation-service-order-4203-learned",
+      "caseId": "evaluation-service-order-4203",
+      "arm": "learned",
+      "outcome": "pass",
+      "observedAssistantResponses": 5,
+      "usage": {
+        "input": 10,
+        "output": 1423,
+        "cacheRead": 32727,
+        "cacheWrite": 10539
+      },
+      "runnerUsage": {
+        "input": 10,
+        "output": 1423,
+        "cacheRead": 32727,
+        "cacheWrite": 10539
+      },
+      "matches": true,
+      "observedProviderUsd": 0.11785725,
+      "ledgerProviderUsd": 0.11785725,
+      "reconciliation": null,
+      "costMatches": true,
+      "latencyMs": 27895,
+      "checkerWallMs": 4112,
+      "agentLatencyMs": 23783,
+      "wholeSkillRead": true,
+      "observedHelperCommand": true
+    },
+    {
+      "id": "agent-evaluation-service-order-4203-frozen",
+      "caseId": "evaluation-service-order-4203",
+      "arm": "frozen",
+      "outcome": "interrupted",
+      "observedAssistantResponses": 21,
+      "usage": {
+        "input": 40,
+        "output": 7239,
+        "cacheRead": 207758,
+        "cacheWrite": 17067
+      },
+      "runnerUsage": {
+        "input": 40,
+        "output": 7239,
+        "cacheRead": 207758,
+        "cacheWrite": 17067
+      },
+      "matches": true,
+      "observedProviderUsd": 0.39172275,
+      "ledgerProviderUsd": 0.39172275,
+      "reconciliation": {
+        "receiptHash": "890eea9c2f05b10d4f179df00375d0fa2195fcba993ca4205aa088272f18a90b",
+        "originalOutcomeUnchanged": true
+      },
+      "costMatches": true,
+      "latencyMs": 99253,
+      "checkerWallMs": 0,
+      "agentLatencyMs": 99253,
+      "wholeSkillRead": false,
+      "observedHelperCommand": false
+    },
+    {
+      "id": "agent-evaluation-research-award-4210-frozen",
+      "caseId": "evaluation-research-award-4210",
+      "arm": "frozen",
+      "outcome": "pass",
+      "observedAssistantResponses": 16,
+      "usage": {
+        "input": 32,
+        "output": 7618,
+        "cacheRead": 155047,
+        "cacheWrite": 15786
+      },
+      "runnerUsage": {
+        "input": 32,
+        "output": 7618,
+        "cacheRead": 155047,
+        "cacheWrite": 15786
+      },
+      "matches": true,
+      "observedProviderUsd": 0.366796,
+      "ledgerProviderUsd": 0.366796,
+      "reconciliation": null,
+      "costMatches": true,
+      "latencyMs": 111566,
+      "checkerWallMs": 5068,
+      "agentLatencyMs": 106498,
+      "wholeSkillRead": false,
+      "observedHelperCommand": false
+    },
+    {
+      "id": "agent-evaluation-research-award-4210-learned",
+      "caseId": "evaluation-research-award-4210",
+      "arm": "learned",
+      "outcome": "pass",
+      "observedAssistantResponses": 9,
+      "usage": {
+        "input": 18,
+        "output": 1947,
+        "cacheRead": 112538,
+        "cacheWrite": 30273
+      },
+      "runnerUsage": {
+        "input": 18,
+        "output": 1947,
+        "cacheRead": 112538,
+        "cacheWrite": 30273
+      },
+      "matches": true,
+      "observedProviderUsd": 0.29424025,
+      "ledgerProviderUsd": 0.29424025,
+      "reconciliation": null,
+      "costMatches": true,
+      "latencyMs": 38806,
+      "checkerWallMs": 4937,
+      "agentLatencyMs": 33869,
+      "wholeSkillRead": true,
+      "observedHelperCommand": true
+    },
+    {
+      "id": "agent-evaluation-research-award-4211-learned",
+      "caseId": "evaluation-research-award-4211",
+      "arm": "learned",
+      "outcome": "pass",
+      "observedAssistantResponses": 6,
+      "usage": {
+        "input": 12,
+        "output": 1371,
+        "cacheRead": 41808,
+        "cacheWrite": 10023
+      },
+      "runnerUsage": {
+        "input": 12,
+        "output": 1371,
+        "cacheRead": 41808,
+        "cacheWrite": 10023
+      },
+      "matches": true,
+      "observedProviderUsd": 0.11788275,
+      "ledgerProviderUsd": 0.11788275,
+      "reconciliation": null,
+      "costMatches": true,
+      "latencyMs": 32237,
+      "checkerWallMs": 7069,
+      "agentLatencyMs": 25168,
+      "wholeSkillRead": true,
+      "observedHelperCommand": true
+    },
+    {
+      "id": "agent-evaluation-research-award-4211-frozen",
+      "caseId": "evaluation-research-award-4211",
+      "arm": "frozen",
+      "outcome": "pass",
+      "observedAssistantResponses": 13,
+      "usage": {
+        "input": 26,
+        "output": 7326,
+        "cacheRead": 207545,
+        "cacheWrite": 29079
+      },
+      "runnerUsage": {
+        "input": 26,
+        "output": 7326,
+        "cacheRead": 207545,
+        "cacheWrite": 29079
+      },
+      "matches": true,
+      "observedProviderUsd": 0.46879625,
+      "ledgerProviderUsd": 0.46879625,
+      "reconciliation": null,
+      "costMatches": true,
+      "latencyMs": 106705,
+      "checkerWallMs": 4046,
+      "agentLatencyMs": 102659,
+      "wholeSkillRead": false,
+      "observedHelperCommand": false
+    },
+    {
+      "id": "agent-evaluation-research-award-4212-frozen",
+      "caseId": "evaluation-research-award-4212",
+      "arm": "frozen",
+      "outcome": "pass",
+      "observedAssistantResponses": 18,
+      "usage": {
+        "input": 36,
+        "output": 8868,
+        "cacheRead": 261444,
+        "cacheWrite": 27069
+      },
+      "runnerUsage": {
+        "input": 36,
+        "output": 8868,
+        "cacheRead": 261444,
+        "cacheWrite": 27069
+      },
+      "matches": true,
+      "observedProviderUsd": 0.52178325,
+      "ledgerProviderUsd": 0.52178325,
+      "reconciliation": null,
+      "costMatches": true,
+      "latencyMs": 119116,
+      "checkerWallMs": 4517,
+      "agentLatencyMs": 114599,
+      "wholeSkillRead": false,
+      "observedHelperCommand": false
+    },
+    {
+      "id": "agent-evaluation-research-award-4212-learned",
+      "caseId": "evaluation-research-award-4212",
+      "arm": "learned",
+      "outcome": "pass",
+      "observedAssistantResponses": 7,
+      "usage": {
+        "input": 14,
+        "output": 2173,
+        "cacheRead": 68999,
+        "cacheWrite": 14832
+      },
+      "runnerUsage": {
+        "input": 14,
+        "output": 2173,
+        "cacheRead": 68999,
+        "cacheWrite": 14832
+      },
+      "matches": true,
+      "observedProviderUsd": 0.1815945,
+      "ledgerProviderUsd": 0.1815945,
+      "reconciliation": null,
+      "costMatches": true,
+      "latencyMs": 37565,
+      "checkerWallMs": 4408,
+      "agentLatencyMs": 33157,
+      "wholeSkillRead": true,
+      "observedHelperCommand": true
+    },
+    {
+      "id": "agent-evaluation-research-award-4213-learned",
+      "caseId": "evaluation-research-award-4213",
+      "arm": "learned",
+      "outcome": "pass",
+      "observedAssistantResponses": 7,
+      "usage": {
+        "input": 14,
+        "output": 1430,
+        "cacheRead": 51579,
+        "cacheWrite": 10229
+      },
+      "runnerUsage": {
+        "input": 14,
+        "output": 1430,
+        "cacheRead": 51579,
+        "cacheWrite": 10229
+      },
+      "matches": true,
+      "observedProviderUsd": 0.12554075,
+      "ledgerProviderUsd": 0.12554075,
+      "reconciliation": null,
+      "costMatches": true,
+      "latencyMs": 29121,
+      "checkerWallMs": 4210,
+      "agentLatencyMs": 24911,
+      "wholeSkillRead": true,
+      "observedHelperCommand": true
+    },
+    {
+      "id": "agent-evaluation-research-award-4213-frozen",
+      "caseId": "evaluation-research-award-4213",
+      "arm": "frozen",
+      "outcome": "task-failure",
+      "observedAssistantResponses": 14,
+      "usage": {
+        "input": 28,
+        "output": 6529,
+        "cacheRead": 130421,
+        "cacheWrite": 15173
+      },
+      "runnerUsage": {
+        "input": 28,
+        "output": 6529,
+        "cacheRead": 130421,
+        "cacheWrite": 15173
+      },
+      "matches": true,
+      "observedProviderUsd": 0.32340675,
+      "ledgerProviderUsd": 0.32340675,
+      "reconciliation": null,
+      "costMatches": true,
+      "latencyMs": 88033,
+      "checkerWallMs": 3933,
+      "agentLatencyMs": 84100,
+      "wholeSkillRead": false,
+      "observedHelperCommand": false
+    },
+    {
+      "id": "agent-evaluation-equipment-assignment-4220-frozen",
+      "caseId": "evaluation-equipment-assignment-4220",
+      "arm": "frozen",
+      "outcome": "pass",
+      "observedAssistantResponses": 13,
+      "usage": {
+        "input": 26,
+        "output": 6259,
+        "cacheRead": 276685,
+        "cacheWrite": 38917
+      },
+      "runnerUsage": {
+        "input": 26,
+        "output": 6259,
+        "cacheRead": 276685,
+        "cacheWrite": 38917
+      },
+      "matches": true,
+      "observedProviderUsd": 0.53817875,
+      "ledgerProviderUsd": 0.53817875,
+      "reconciliation": null,
+      "costMatches": true,
+      "latencyMs": 85172,
+      "checkerWallMs": 4519,
+      "agentLatencyMs": 80653,
+      "wholeSkillRead": false,
+      "observedHelperCommand": false
+    },
+    {
+      "id": "agent-evaluation-equipment-assignment-4220-learned",
+      "caseId": "evaluation-equipment-assignment-4220",
+      "arm": "learned",
+      "outcome": "pass",
+      "observedAssistantResponses": 5,
+      "usage": {
+        "input": 10,
+        "output": 1179,
+        "cacheRead": 32296,
+        "cacheWrite": 9534
+      },
+      "runnerUsage": {
+        "input": 10,
+        "output": 1179,
+        "cacheRead": 32296,
+        "cacheWrite": 9534
+      },
+      "matches": true,
+      "observedProviderUsd": 0.1052605,
+      "ledgerProviderUsd": 0.1052605,
+      "reconciliation": null,
+      "costMatches": true,
+      "latencyMs": 24948,
+      "checkerWallMs": 4116,
+      "agentLatencyMs": 20832,
+      "wholeSkillRead": true,
+      "observedHelperCommand": true
+    },
+    {
+      "id": "agent-evaluation-equipment-assignment-4221-learned",
+      "caseId": "evaluation-equipment-assignment-4221",
+      "arm": "learned",
+      "outcome": "pass",
+      "observedAssistantResponses": 7,
+      "usage": {
+        "input": 14,
+        "output": 2063,
+        "cacheRead": 62698,
+        "cacheWrite": 14819
+      },
+      "runnerUsage": {
+        "input": 14,
+        "output": 2063,
+        "cacheRead": 62698,
+        "cacheWrite": 14819
+      },
+      "matches": true,
+      "observedProviderUsd": 0.17561275,
+      "ledgerProviderUsd": 0.17561275,
+      "reconciliation": null,
+      "costMatches": true,
+      "latencyMs": 35719,
+      "checkerWallMs": 4250,
+      "agentLatencyMs": 31469,
+      "wholeSkillRead": true,
+      "observedHelperCommand": true
+    },
+    {
+      "id": "agent-evaluation-equipment-assignment-4221-frozen",
+      "caseId": "evaluation-equipment-assignment-4221",
+      "arm": "frozen",
+      "outcome": "pass",
+      "observedAssistantResponses": 16,
+      "usage": {
+        "input": 32,
+        "output": 7830,
+        "cacheRead": 162369,
+        "cacheWrite": 16957
+      },
+      "runnerUsage": {
+        "input": 32,
+        "output": 7830,
+        "cacheRead": 162369,
+        "cacheWrite": 16957
+      },
+      "matches": true,
+      "observedProviderUsd": 0.38307575,
+      "ledgerProviderUsd": 0.38307575,
+      "reconciliation": null,
+      "costMatches": true,
+      "latencyMs": 104415,
+      "checkerWallMs": 3851,
+      "agentLatencyMs": 100564,
+      "wholeSkillRead": false,
+      "observedHelperCommand": false
+    },
+    {
+      "id": "agent-evaluation-equipment-assignment-4222-frozen",
+      "caseId": "evaluation-equipment-assignment-4222",
+      "arm": "frozen",
+      "outcome": "pass",
+      "observedAssistantResponses": 18,
+      "usage": {
+        "input": 36,
+        "output": 8394,
+        "cacheRead": 406340,
+        "cacheWrite": 37251
+      },
+      "runnerUsage": {
+        "input": 36,
+        "output": 8394,
+        "cacheRead": 406340,
+        "cacheWrite": 37251
+      },
+      "matches": true,
+      "observedProviderUsd": 0.64601875,
+      "ledgerProviderUsd": 0.64601875,
+      "reconciliation": null,
+      "costMatches": true,
+      "latencyMs": 124723,
+      "checkerWallMs": 4328,
+      "agentLatencyMs": 120395,
+      "wholeSkillRead": false,
+      "observedHelperCommand": false
+    },
+    {
+      "id": "agent-evaluation-equipment-assignment-4222-learned",
+      "caseId": "evaluation-equipment-assignment-4222",
+      "arm": "learned",
+      "outcome": "pass",
+      "observedAssistantResponses": 7,
+      "usage": {
+        "input": 14,
+        "output": 2235,
+        "cacheRead": 62766,
+        "cacheWrite": 14585
+      },
+      "runnerUsage": {
+        "input": 14,
+        "output": 2235,
+        "cacheRead": 62766,
+        "cacheWrite": 14585
+      },
+      "matches": true,
+      "observedProviderUsd": 0.17848425,
+      "ledgerProviderUsd": 0.17848425,
+      "reconciliation": null,
+      "costMatches": true,
+      "latencyMs": 37214,
+      "checkerWallMs": 4297,
+      "agentLatencyMs": 32917,
+      "wholeSkillRead": true,
+      "observedHelperCommand": true
+    },
+    {
+      "id": "agent-evaluation-equipment-assignment-4223-learned",
+      "caseId": "evaluation-equipment-assignment-4223",
+      "arm": "learned",
+      "outcome": "pass",
+      "observedAssistantResponses": 10,
+      "usage": {
+        "input": 20,
+        "output": 3065,
+        "cacheRead": 111898,
+        "cacheWrite": 15478
+      },
+      "runnerUsage": {
+        "input": 20,
+        "output": 3065,
+        "cacheRead": 111898,
+        "cacheWrite": 15478
+      },
+      "matches": true,
+      "observedProviderUsd": 0.2294115,
+      "ledgerProviderUsd": 0.2294115,
+      "reconciliation": null,
+      "costMatches": true,
+      "latencyMs": 55930,
+      "checkerWallMs": 6038,
+      "agentLatencyMs": 49892,
+      "wholeSkillRead": true,
+      "observedHelperCommand": true
+    },
+    {
+      "id": "agent-evaluation-equipment-assignment-4223-frozen",
+      "caseId": "evaluation-equipment-assignment-4223",
+      "arm": "frozen",
+      "outcome": "pass",
+      "observedAssistantResponses": 12,
+      "usage": {
+        "input": 24,
+        "output": 5445,
+        "cacheRead": 123296,
+        "cacheWrite": 17934
+      },
+      "runnerUsage": {
+        "input": 24,
+        "output": 5445,
+        "cacheRead": 123296,
+        "cacheWrite": 17934
+      },
+      "matches": true,
+      "observedProviderUsd": 0.3099805,
+      "ledgerProviderUsd": 0.3099805,
+      "reconciliation": null,
+      "costMatches": true,
+      "latencyMs": 77882,
+      "checkerWallMs": 4407,
+      "agentLatencyMs": 73475,
+      "wholeSkillRead": false,
+      "observedHelperCommand": false
+    }
+  ],
+  "latency": [
+    {
+      "arm": "frozen",
+      "runs": 11,
+      "medianMs": 108687,
+      "meanMs": 106314.72727272728,
+      "agentExcludingChecker": {
+        "medianMs": 104601,
+        "meanMs": 101842.45454545454
+      },
+      "excludingFirstPair": {
+        "runs": 10,
+        "medianMs": 107696,
+        "meanMs": 104725.6,
+        "agentMedianMs": 103630,
+        "agentMeanMs": 100229.5
+      }
+    },
+    {
+      "arm": "learned",
+      "runs": 11,
+      "medianMs": 37214,
+      "meanMs": 37047.454545454544,
+      "agentExcludingChecker": {
+        "medianMs": 32789,
+        "meanMs": 32292
+      },
+      "excludingFirstPair": {
+        "runs": 10,
+        "medianMs": 36466.5,
+        "meanMs": 37011.5,
+        "agentMedianMs": 32193,
+        "agentMeanMs": 32242.3
+      }
+    }
+  ],
+  "limits": "Observed assistant responses with usage are not an exact count of every attempted provider HTTP request. The single audited between-calls host abort has a preserved reconciliation; other unknown costs cannot be inferred free. Latency uses fully checked matched pairs, excluding the interrupted pair from both arms; sensitivity additionally excludes the first pair from both arms."
+}

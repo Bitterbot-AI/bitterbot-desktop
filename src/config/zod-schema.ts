@@ -765,6 +765,23 @@ export const BitterbotSchema = z
       .optional(),
     skills: z
       .object({
+        collective: z
+          .object({
+            enabled: z.boolean().optional(),
+            publicMesh: z.boolean().optional(),
+            synthesis: z.enum(["off", "shadow", "active"]).optional(),
+            budget: z
+              .object({
+                providerUsd: z.number().finite().nonnegative(),
+                toolCalls: z.number().int().nonnegative(),
+                wallMs: z.number().finite().nonnegative(),
+              })
+              .strict()
+              .optional(),
+            validationModel: z.string().min(3).optional(),
+          })
+          .strict()
+          .optional(),
         allowBundled: z.array(z.string()).optional(),
         load: z
           .object({

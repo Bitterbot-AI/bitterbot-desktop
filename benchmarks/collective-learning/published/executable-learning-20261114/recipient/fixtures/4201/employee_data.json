@@ -1,0 +1,14 @@
+{
+  "CUSTOMER_NAME": "Tomás Wu",
+  "SERVICE_DESCRIPTION": "Service order reference 4201",
+  "RECORD_CODE": "ALDER-4201",
+  "ORGANIZATION_NAME": "Alder Field Group 4201",
+  "ISSUE_DATE": "November 2, 2030",
+  "OWNER_NAME": "Jules Okoye",
+  "ADDRESS_LINE": "18 Côte Road, Montréal",
+  "DETAIL_NOTE": "Part A & Part B: Ω check",
+  "RELOCATION_PACKAGE": "No",
+  "RELOCATION_AMOUNT": "2,125",
+  "RELOCATION": "Yes",
+  "RELOCATION_PACKAGE_BACKUP": "Yes"
+}

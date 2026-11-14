@@ -1,0 +1,186 @@
+{
+  "records": [
+    {
+      "id": "agent-evaluation-equipment-assignment-4220-learned",
+      "wholeSkillRead": true,
+      "successObserved": true,
+      "invocations": [
+        {
+          "id": "toolu_019uN3RZdHEU3Ku82RUi91wv",
+          "pythonInvoked": true,
+          "echoOfExitStatus": true,
+          "explicitZero": true,
+          "observedSuccessful": true,
+          "outputTextHash": "5bfc8d270e08e65e9393eafa6ee628847b58bee7709f030e5899cee04ff8e967"
+        }
+      ]
+    },
+    {
+      "id": "agent-evaluation-equipment-assignment-4221-learned",
+      "wholeSkillRead": true,
+      "successObserved": true,
+      "invocations": [
+        {
+          "id": "toolu_01FpLop1fe9KUijEEuaqMcgu",
+          "pythonInvoked": true,
+          "echoOfExitStatus": true,
+          "explicitZero": true,
+          "observedSuccessful": true,
+          "outputTextHash": "d8337b71e8355122b0592d6f4265bf585f695df86215933a6c7abf54f5502387"
+        }
+      ]
+    },
+    {
+      "id": "agent-evaluation-equipment-assignment-4222-learned",
+      "wholeSkillRead": true,
+      "successObserved": true,
+      "invocations": [
+        {
+          "id": "toolu_018xvvj9RBujZ5CTnkZcufp3",
+          "pythonInvoked": true,
+          "echoOfExitStatus": true,
+          "explicitZero": true,
+          "observedSuccessful": true,
+          "outputTextHash": "5bfc8d270e08e65e9393eafa6ee628847b58bee7709f030e5899cee04ff8e967"
+        }
+      ]
+    },
+    {
+      "id": "agent-evaluation-equipment-assignment-4223-learned",
+      "wholeSkillRead": true,
+      "successObserved": true,
+      "invocations": [
+        {
+          "id": "toolu_01Ho7zxCPE71D4KdPpJp4JgR",
+          "pythonInvoked": true,
+          "echoOfExitStatus": true,
+          "explicitZero": true,
+          "observedSuccessful": true,
+          "outputTextHash": "5bfc8d270e08e65e9393eafa6ee628847b58bee7709f030e5899cee04ff8e967"
+        }
+      ]
+    },
+    {
+      "id": "agent-evaluation-research-award-4210-learned",
+      "wholeSkillRead": true,
+      "successObserved": true,
+      "invocations": [
+        {
+          "id": "toolu_01BoXjNesoE2Y2n5E6a3qQCs",
+          "pythonInvoked": true,
+          "echoOfExitStatus": true,
+          "explicitZero": true,
+          "observedSuccessful": true,
+          "outputTextHash": "e8c2d9c465fbb3f1150ebc378b902763386f12a6ad2cc5b053e3d709897597ab"
+        }
+      ]
+    },
+    {
+      "id": "agent-evaluation-research-award-4211-learned",
+      "wholeSkillRead": true,
+      "successObserved": true,
+      "invocations": [
+        {
+          "id": "toolu_015wxyviVSExmsTYBSATMQJ5",
+          "pythonInvoked": true,
+          "echoOfExitStatus": true,
+          "explicitZero": true,
+          "observedSuccessful": true,
+          "outputTextHash": "5bfc8d270e08e65e9393eafa6ee628847b58bee7709f030e5899cee04ff8e967"
+        }
+      ]
+    },
+    {
+      "id": "agent-evaluation-research-award-4212-learned",
+      "wholeSkillRead": true,
+      "successObserved": true,
+      "invocations": [
+        {
+          "id": "toolu_01Qu13nZvKBrdQh2Ze1geubZ",
+          "pythonInvoked": true,
+          "echoOfExitStatus": true,
+          "explicitZero": true,
+          "observedSuccessful": true,
+          "outputTextHash": "5bfc8d270e08e65e9393eafa6ee628847b58bee7709f030e5899cee04ff8e967"
+        }
+      ]
+    },
+    {
+      "id": "agent-evaluation-research-award-4213-learned",
+      "wholeSkillRead": true,
+      "successObserved": true,
+      "invocations": [
+        {
+          "id": "toolu_01GbgCsF3yP3Ugz9Yx5QtctE",
+          "pythonInvoked": true,
+          "echoOfExitStatus": true,
+          "explicitZero": true,
+          "observedSuccessful": true,
+          "outputTextHash": "5bfc8d270e08e65e9393eafa6ee628847b58bee7709f030e5899cee04ff8e967"
+        }
+      ]
+    },
+    {
+      "id": "agent-evaluation-service-order-4200-learned",
+      "wholeSkillRead": true,
+      "successObserved": true,
+      "invocations": [
+        {
+          "id": "toolu_01KGxrSWmoHndcp6jb545kY4",
+          "pythonInvoked": true,
+          "echoOfExitStatus": true,
+          "explicitZero": true,
+          "observedSuccessful": true,
+          "outputTextHash": "5bfc8d270e08e65e9393eafa6ee628847b58bee7709f030e5899cee04ff8e967"
+        }
+      ]
+    },
+    {
+      "id": "agent-evaluation-service-order-4201-learned",
+      "wholeSkillRead": true,
+      "successObserved": true,
+      "invocations": [
+        {
+          "id": "toolu_01Civ14BpASkqF9mvHDmF9nW",
+          "pythonInvoked": true,
+          "echoOfExitStatus": true,
+          "explicitZero": true,
+          "observedSuccessful": true,
+          "outputTextHash": "5bfc8d270e08e65e9393eafa6ee628847b58bee7709f030e5899cee04ff8e967"
+        }
+      ]
+    },
+    {
+      "id": "agent-evaluation-service-order-4202-learned",
+      "wholeSkillRead": true,
+      "successObserved": true,
+      "invocations": [
+        {
+          "id": "toolu_01VrPdYZibMPQsJWNf2im7xV",
+          "pythonInvoked": true,
+          "echoOfExitStatus": true,
+          "explicitZero": true,
+          "observedSuccessful": true,
+          "outputTextHash": "5bfc8d270e08e65e9393eafa6ee628847b58bee7709f030e5899cee04ff8e967"
+        }
+      ]
+    },
+    {
+      "id": "agent-evaluation-service-order-4203-learned",
+      "wholeSkillRead": true,
+      "successObserved": true,
+      "invocations": [
+        {
+          "id": "toolu_01HmREgsFFs3RJggQe7uy81T",
+          "pythonInvoked": true,
+          "echoOfExitStatus": true,
+          "explicitZero": true,
+          "observedSuccessful": true,
+          "outputTextHash": "5bfc8d270e08e65e9393eafa6ee628847b58bee7709f030e5899cee04ff8e967"
+        }
+      ]
+    }
+  ],
+  "allObserved": true,
+  "limits": "Checks actual recorded Python invocation and helper exit-status output when echoed; shell exit 0 alone cannot certify a helper followed by echo. This is session/tool evidence, not OS-level access tracing."
+}

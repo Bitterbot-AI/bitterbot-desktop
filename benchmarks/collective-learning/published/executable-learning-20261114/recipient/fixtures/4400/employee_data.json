@@ -1,0 +1,13 @@
+{
+  "CUSTOMER_NAME": "Nóra Singh",
+  "SERVICE_DESCRIPTION": "Service order reference 4400",
+  "RECORD_CODE": "ALDER-4400",
+  "ORGANIZATION_NAME": "Alder Field Group 4400",
+  "ISSUE_DATE": "November 12, 2030",
+  "OWNER_NAME": "Jules Okoye",
+  "ADDRESS_LINE": "18 Côte Road, Montréal",
+  "DETAIL_NOTE": "Part A & Part B: Ω check",
+  "RELOCATION_AMOUNT": "5,125",
+  "RELOCATION": "Yes",
+  "RELOCATION_PACKAGE_BACKUP": "Yes"
+}

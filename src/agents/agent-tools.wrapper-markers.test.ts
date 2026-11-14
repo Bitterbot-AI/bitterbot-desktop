@@ -61,16 +61,15 @@ describe("before-tool-call marker survives later wrappers", () => {
       set: () => undefined,
       // oxlint-disable-next-line typescript/no-explicit-any
     } as any;
-    const stacked = wrapToolWithCache(
-      wrapToolWithAbortSignal(
-        wrapToolWithCapabilityEnforcer(
-          wrapToolWithBeforeToolCallHook(baseTool(), { sessionKey: "agent:main:main" }),
-          // oxlint-disable-next-line typescript/no-explicit-any
-          { activeP2PProfiles: () => [] } as any,
-        ),
-        new AbortController().signal,
+    const stacked = wrapToolWithAbortSignal(
+      wrapToolWithCapabilityEnforcer(
+        wrapToolWithBeforeToolCallHook(wrapToolWithCache(baseTool(), cache), {
+          sessionKey: "agent:main:main",
+        }),
+        // oxlint-disable-next-line typescript/no-explicit-any
+        { activeP2PProfiles: () => [] } as any,
       ),
-      cache,
+      new AbortController().signal,
     );
     expect(isToolWrappedWithBeforeToolCallHook(stacked)).toBe(true);
   });

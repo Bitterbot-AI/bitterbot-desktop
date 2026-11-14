@@ -1,0 +1,174 @@
+{
+  "id": "agent-evaluation-research-award-4210-learned",
+  "caseId": "evaluation-research-award-4210",
+  "arm": "learned",
+  "runId": "26d6225a-bb72-42b6-afd8-8a0a06c8b31b",
+  "cost": {
+    "providerUsd": 0.29424025,
+    "toolCalls": 9,
+    "wallMs": 38802
+  },
+  "tokens": 144776,
+  "outcome": "pass",
+  "grade": {
+    "status": "pass",
+    "issues": [],
+    "details": {
+      "effectiveSections": 2,
+      "relocationIncluded": true
+    }
+  },
+  "reads": [
+    "SKILL.md"
+  ],
+  "helperInvocations": [
+    {
+      "name": "exec",
+      "id": "toolu_01BoXjNesoE2Y2n5E6a3qQCs",
+      "arguments": {
+        "command": "python3 skill/helpers/fill_docx.py --template inputs/offer_letter_template.docx --data inputs/employee_data.json --output output/offer_letter_filled.docx; echo \"EXIT: $?\""
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    }
+  ],
+  "toolActions": [
+    {
+      "name": "read",
+      "id": "toolu_01R9u31ZMPBAAXUw5ptHQXQn",
+      "arguments": {
+        "path": "/workspace/skill/SKILL.md"
+      },
+      "result": [
+        {
+          "isError": false
+        }
+      ]
+    },
+    {
+      "name": "read",
+      "id": "toolu_01X6mSKx4cxba6ZoWgXajXGS",
+      "arguments": {
+        "path": "inputs/employee_data.json"
+      },
+      "result": [
+        {
+          "isError": false
+        }
+      ]
+    },
+    {
+      "name": "exec",
+      "id": "toolu_013wiYUi8E43oco3fU4WHX6i",
+      "arguments": {
+        "command": "ls -la inputs/ output/ skill/helpers/ 2>&1; echo \"---\"; python3 -c \"import docx, lxml; print('deps ok')\" 2>&1"
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    },
+    {
+      "name": "exec",
+      "id": "toolu_01BoXjNesoE2Y2n5E6a3qQCs",
+      "arguments": {
+        "command": "python3 skill/helpers/fill_docx.py --template inputs/offer_letter_template.docx --data inputs/employee_data.json --output output/offer_letter_filled.docx; echo \"EXIT: $?\""
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    },
+    {
+      "name": "exec",
+      "id": "toolu_01Kq9MNtJuA4pSbhSYakWVH5",
+      "arguments": {
+        "command": "ls -la output/; echo \"---checksums (inputs unchanged)---\"; md5sum inputs/*; echo \"---scan for unresolved markers & conditional result---\"; cd /tmp && rm -rf chk && mkdir chk && cd chk && unzip -q /workspace/output/offer_letter_filled.docx && python3 - <<'EOF'\nimport glob,re\ntxt=\"\"\nfor f in glob.glob(\"word/**/*.xml\",recursive=True):\n    txt+=open(f,encoding=\"utf-8\").read()\nimport re\nplain=re.sub(r\"<[^>]+>\",\"\",txt)\nprint(\"unresolved {{ }}:\", bool(re.search(r\"\\{\\{|\\}\\}\", plain)))\nprint(\"IF/END markers present:\", \"IF_RELOCATION\" in plain or \"END_IF\" in plain)\nprint(\"RELOCATION_AMOUNT value 4,125 present:\", \"4,125\" in plain)\nprint(\"Investigator present:\", \"Tomás Wu\" in plain)\nEOF"
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "error"
+        }
+      ]
+    },
+    {
+      "name": "exec",
+      "id": "toolu_01E2mquoXy3CbXhATKg1Ytan",
+      "arguments": {
+        "command": "python3 - <<'EOF'\nimport zipfile,re,glob\nz=zipfile.ZipFile(\"output/offer_letter_filled.docx\")\ntxt=\"\"\nfor n in z.namelist():\n    if n.endswith(\".xml\"):\n        txt+=z.read(n).decode(\"utf-8\",\"ignore\")\nplain=re.sub(r\"<[^>]+>\",\"\",txt)\nprint(\"unresolved {{ or }}:\", bool(re.search(r\"\\{\\{|\\}\\}\", plain)))\nprint(\"IF_RELOCATION / END_IF markers remain:\", (\"IF_RELOCATION\" in plain) or (\"END_IF\" in plain))\nprint(\"RELOCATION_AMOUNT 4,125 present (conditional kept):\", \"4,125\" in plain)\nprint(\"Tomás Wu present:\", \"Tomás Wu\" in plain)\nprint(\"ALDER-4210 present:\", \"ALDER-4210\" in plain)\nprint(\"Ω detail present:\", \"Ω check\" in plain)\nEOF"
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    },
+    {
+      "name": "read",
+      "id": "toolu_019C9DJ2h9sMaSuSyHjCSNP2",
+      "arguments": {
+        "path": "output/offer_letter_filled.docx"
+      },
+      "result": [
+        {
+          "isError": false
+        }
+      ]
+    },
+    {
+      "name": "exec",
+      "id": "toolu_01V5kanmJraL2cRzkdPtPjdo",
+      "arguments": {
+        "command": "python3 - <<'EOF'\nimport zipfile\nz=zipfile.ZipFile(\"output/offer_letter_filled.docx\")\nprint(\"Valid zip, bad file:\", z.testzip())\nprint(\"Entries:\", len(z.namelist()))\nEOF\necho \"--- inputs unchanged (md5 same as before) ---\"\nmd5sum inputs/*"
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    },
+    {
+      "name": "complete",
+      "id": "toolu_017MZk7KmXUfcUxwHVZnyfLp",
+      "arguments": {
+        "summary": "Filled the DOCX template using the skill helper and verified the result."
+      },
+      "result": [
+        {
+          "isError": true
+        }
+      ]
+    }
+  ],
+  "inputUnchanged": true,
+  "packageUnchanged": true,
+  "outputHash": "a9f107c1c835b093e8b3f6adbed287168273fdebc00a040adff972fdd26dbdcf",
+  "latencyMs": 38806,
+  "checkerWallMs": 4937,
+  "diagnostic": null,
+  "usage": {
+    "input": 18,
+    "output": 1947,
+    "cacheRead": 112538,
+    "cacheWrite": 30273,
+    "total": 144776
+  },
+  "modelMessages": 9,
+  "sessionHash": "dff3a2e51083054e2b2351b8cb864f072a7bc23636eb1455ab80e61b8d51a256"
+}

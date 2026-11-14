@@ -35,6 +35,12 @@ import { projectsHandlers } from "./server-methods/projects.js";
 import { reviewHandlers } from "./server-methods/review.js";
 import { sendHandlers } from "./server-methods/send.js";
 import { sessionsHandlers } from "./server-methods/sessions.js";
+import {
+  skillPackageHandlers,
+  PACKAGE_READ_METHODS,
+  PACKAGE_WRITE_METHODS,
+  PACKAGE_APPROVAL_METHODS,
+} from "./server-methods/skill-packages.js";
 import { skillsHandlers } from "./server-methods/skills.js";
 import { spendGrantHandlers } from "./server-methods/spend-grants.js";
 import { systemHandlers } from "./server-methods/system.js";
@@ -59,6 +65,8 @@ const APPROVALS_SCOPE = "operator.approvals";
 const PAIRING_SCOPE = "operator.pairing";
 
 const APPROVAL_METHODS = new Set([
+  ...PACKAGE_APPROVAL_METHODS,
+  "circles.outbound.approve",
   "exec.approval.request",
   "exec.approval.waitDecision",
   "exec.approval.resolve",
@@ -84,6 +92,7 @@ const PAIRING_METHODS = new Set([
 ]);
 const ADMIN_METHOD_PREFIXES = ["exec.approvals.", "soapbox.setup."];
 const READ_METHODS = new Set([
+  ...PACKAGE_READ_METHODS,
   "soapbox.wallet",
   "soapbox.status",
   "soapbox.jobs",
@@ -199,6 +208,7 @@ const READ_METHODS = new Set([
   "guards.status",
 ]);
 const WRITE_METHODS = new Set([
+  ...PACKAGE_WRITE_METHODS,
   "soapbox.submit",
   "soapbox.requote",
   "soapbox.cancel",
@@ -273,7 +283,6 @@ const WRITE_METHODS = new Set([
   "circles.canvas.remove",
   "circles.canvas.clear",
   "circles.canvas.slice",
-  "circles.outbound.approve",
   "circles.outbound.reject",
   "circles.drafts.request",
   "circles.drafts.publish",
@@ -397,6 +406,7 @@ export const coreGatewayHandlers: GatewayRequestHandlers = {
   ...talkHandlers,
   ...ttsHandlers,
   ...skillsHandlers,
+  ...skillPackageHandlers,
   ...sessionsHandlers,
   ...systemHandlers,
   ...updateHandlers,

@@ -1,0 +1,38 @@
+{
+  "packageHash": "8a9db2fb33657ba8bb6fa9cf571d98bb4776dcb1881b2f130cd40405ac775eef",
+  "manifest": {
+    "schemaVersion": 1,
+    "name": "docx-placeholder-workflow",
+    "description": "Fill bounded DOCX templates while preserving content placement",
+    "entrypoint": "SKILL.md",
+    "requirements": {
+      "platforms": [
+        "linux"
+      ],
+      "tools": {
+        "python3": "3",
+        "read": "1",
+        "write": "1",
+        "exec": "1"
+      },
+      "capabilities": [],
+      "runtime": {
+        "image": "sha256:8c7a2ed155e6e27b42f6787539eb8dc9d914b2eddb2d0d6ae7c47b5bbc142c6a"
+      }
+    },
+    "files": [
+      {
+        "path": "SKILL.md",
+        "hash": "be791a9a18d92794cad24fc4f9a60bdbfe0ae56040d3c99f7d28d0842a7392e2",
+        "size": 4152,
+        "executable": false
+      },
+      {
+        "path": "helpers/fill_docx.py",
+        "hash": "2294d8513d9ed1f205cf89bc365fb864d581bbec3aad23c5acb633534325b6fa",
+        "size": 10660,
+        "executable": false
+      }
+    ]
+  }
+}

@@ -1,0 +1,123 @@
+{
+  "id": "agent-agent-2708-learned",
+  "caseId": "agent-2708",
+  "arm": "learned",
+  "runId": "9fbe5112-4b59-4938-bb51-42a5e888a6f3",
+  "cost": {
+    "providerUsd": 0.09414025,
+    "toolCalls": 6,
+    "wallMs": 21318
+  },
+  "tokens": 42203,
+  "outcome": "pass",
+  "grade": {
+    "status": "pass",
+    "issues": [],
+    "details": {
+      "effectiveSections": 2,
+      "relocationIncluded": true
+    }
+  },
+  "reads": [
+    "SKILL.md"
+  ],
+  "helperInvocations": [
+    {
+      "name": "exec",
+      "id": "toolu_01AV7UTVhGTp3rLYp7a8nJTv",
+      "arguments": {
+        "command": "cd /workspace && python3 skill/helpers/fill_docx.py --template inputs/offer_letter_template.docx --data inputs/employee_data.json --output output/offer_letter_filled.docx; echo \"EXIT=$?\""
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    }
+  ],
+  "toolActions": [
+    {
+      "name": "read",
+      "id": "toolu_01YcJv9utbZ4B7YhBmJHVEzE",
+      "arguments": {
+        "path": "/workspace/skill/SKILL.md"
+      },
+      "result": [
+        {
+          "isError": false
+        }
+      ]
+    },
+    {
+      "name": "read",
+      "id": "toolu_014GFxtqZFbUPDk8RM3gLpdA",
+      "arguments": {
+        "path": "inputs/employee_data.json"
+      },
+      "result": [
+        {
+          "isError": false
+        }
+      ]
+    },
+    {
+      "name": "exec",
+      "id": "toolu_01DktGZNP4vmFeZ7Whb2V5e9",
+      "arguments": {
+        "command": "ls -la /workspace/skill/helpers/ && ls -la inputs/ && mkdir -p output"
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    },
+    {
+      "name": "exec",
+      "id": "toolu_01AV7UTVhGTp3rLYp7a8nJTv",
+      "arguments": {
+        "command": "cd /workspace && python3 skill/helpers/fill_docx.py --template inputs/offer_letter_template.docx --data inputs/employee_data.json --output output/offer_letter_filled.docx; echo \"EXIT=$?\""
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    },
+    {
+      "name": "exec",
+      "id": "toolu_01ViHPzYT8hKfQBmzXNJZASL",
+      "arguments": {
+        "command": "cd /workspace && ls -la output/ && python3 -c \"\nimport docx\nd=docx.Document('output/offer_letter_filled.docx')\nimport re\ntxt='\\n'.join(p.text for p in d.paragraphs)\nfor t in d.tables:\n    for r in t.rows:\n        for c in r.cells:\n            txt+='\\n'+c.text\nleft=re.findall(r'{{[^}]*}}',txt)\nprint('UNRESOLVED:',left)\nprint('RELOCATION kept:', 'reloc' in txt.lower() or '10,750' in txt)\n\""
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    }
+  ],
+  "inputUnchanged": true,
+  "packageUnchanged": true,
+  "outputHash": "5974357caf2cbe3d797532fcd1ba05cc46f3628fe9a29a05c5799bdbb0cd0224",
+  "latencyMs": 21321,
+  "checkerWallMs": 4594,
+  "diagnostic": null,
+  "usage": {
+    "input": 10,
+    "output": 811,
+    "cacheRead": 32143,
+    "cacheWrite": 9239,
+    "total": 42203
+  },
+  "modelMessages": 5,
+  "sessionHash": "27afa39bc8ec3285b4f74d4134b2e876c61d14ef8a92981619e5167f4da7a937"
+}
