@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { normalizeDescription } from "../../research/collective-learning/executable-metadata.js";
 import {
   packageHash,
   sha256,
   type PackageSnapshot,
 } from "../../src/agents/skills/collective/contracts.js";
+import { normalizeDescription } from "./executable-metadata.js";
 function fixture(skill: string): PackageSnapshot {
   const files = new Map([
     ["SKILL.md", Buffer.from(skill)],

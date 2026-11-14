@@ -73,6 +73,9 @@ jobs:
       - name: Replay published executable-learning artifacts
         run: python -B -X utf8 benchmarks/collective-learning/published/executable-learning-20261114/replay.py
 
+      - name: Benchmark checker and fixture tests
+        run: python -B -X utf8 -m unittest discover -s benchmarks/collective-learning/benchmark-audit -p 'test_*.py'
+
       - name: Verify published signed package handoff
         run: node benchmarks/collective-learning/published/executable-learning-20261114/verify-transfer.mjs
 

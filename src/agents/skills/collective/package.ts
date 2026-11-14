@@ -125,7 +125,7 @@ export function screenPackage(snapshot: PackageSnapshot): void {
   }
 }
 
-/** A bounded, race-checked regular-file snapshot. No links are followed. */
+/** A bounded, race-checked snapshot. No links within the selected package are followed. */
 export async function snapshotPackage(
   root: string,
   metadata: Omit<SkillPackageManifest, "schemaVersion" | "entrypoint" | "files">,
@@ -133,8 +133,14 @@ export async function snapshotPackage(
 ): Promise<PackageSnapshot> {
   root = path.resolve(root);
   const rootStat = await fs.lstat(root);
-  if (!rootStat.isDirectory() || rootStat.isSymbolicLink() || (await fs.realpath(root)) !== root)
+  if (!rootStat.isDirectory() || rootStat.isSymbolicLink())
     throw new Error("Package root must be a real directory");
+  // Host-selected ancestors may use OS aliases (macOS /var -> /private/var).
+  // Pin their canonical location once; retain strict checks inside the package.
+  root = await fs.realpath(root);
+  const canonicalRootStat = await fs.lstat(root);
+  if (canonicalRootStat.dev !== rootStat.dev || canonicalRootStat.ino !== rootStat.ino)
+    throw new Error("Package root changed during snapshot");
   const files = new Map<string, Buffer>();
   const entries: SkillPackageManifest["files"] = [];
   const omitted: string[] = [];

@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { lstatSync, mkdirSync, realpathSync } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { DatabaseSync } from "node:sqlite";
@@ -37,6 +38,12 @@ export class CollectiveSkillStore {
     readonly root: string,
     readonly now = Date.now,
   ) {
+    mkdirSync(root, { recursive: true });
+    const rootStat = lstatSync(root);
+    if (!rootStat.isDirectory() || rootStat.isSymbolicLink())
+      throw new Error("Package store root must be a real directory");
+    // Resolve host-selected ancestors before comparing immutable child paths.
+    this.root = realpathSync(root);
     db.exec(`
       CREATE TABLE IF NOT EXISTS collective_packages(hash TEXT PRIMARY KEY, manifest TEXT NOT NULL, state TEXT NOT NULL, reason TEXT, environment TEXT, created_at INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS collective_releases(id TEXT PRIMARY KEY, lineage TEXT NOT NULL, version INTEGER NOT NULL, scope TEXT NOT NULL, hash TEXT NOT NULL, body TEXT NOT NULL, withdrawn INTEGER NOT NULL DEFAULT 0, UNIQUE(lineage,version,scope));

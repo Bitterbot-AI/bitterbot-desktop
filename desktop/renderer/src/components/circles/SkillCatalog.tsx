@@ -96,7 +96,7 @@ export function SkillCatalog({
     setBusy(true);
     setNotice("");
     try {
-      const result = await request<unknown>(`skills.packages.${method}`, {
+      const result = await request(`skills.packages.${method}`, {
         agentId: agent,
         ...params,
       });
@@ -119,7 +119,7 @@ export function SkillCatalog({
       const active = catalog?.active?.find(
         (a) => a.lineage === `${entry.release.publisher}/${entry.release.skillId}`,
       );
-      const diff = await request<unknown>("skills.packages.diff", {
+      const diff = await request("skills.packages.diff", {
         before: active?.hash,
         after: pkg.hash,
       });

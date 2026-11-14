@@ -73,7 +73,11 @@ describe("circles RPC scope gating", () => {
     for (const method of ALL_CIRCLES_METHODS) {
       if (READ_ONLY.has(method)) continue;
       const err = authorizeGatewayMethod(method, client);
-      expect(err?.message, method).toContain(method === "circles.outbound.approve" ? "missing scope: operator.approvals" : "missing scope: operator.write");
+      expect(err?.message, method).toContain(
+        method === "circles.outbound.approve"
+          ? "missing scope: operator.approvals"
+          : "missing scope: operator.write",
+      );
     }
   });
 

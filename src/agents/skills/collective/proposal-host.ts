@@ -82,7 +82,9 @@ export async function createPackageProposalHost(
         new Set(evidence.map((e) => e.evidence.origin)).size > 8
       )
         throw new Error("Proposal evidence exceeds bounds");
-      const workspace = await fs.mkdtemp(path.join(os.tmpdir(), "bitterbot-package-proposal-"));
+      const workspace = await fs.realpath(
+        await fs.mkdtemp(path.join(os.tmpdir(), "bitterbot-package-proposal-")),
+      );
       const runId = randomUUID(),
         started = Date.now();
       const toolBudget = new AbortController();
@@ -102,6 +104,19 @@ export async function createPackageProposalHost(
       let outcome: PackageProposalExecution["outcome"] = "infrastructure";
       let candidate: PackageSnapshot | null = null;
       let reported = false;
+      const cleanup = async () => {
+        try {
+          await fs.rm(workspace, { recursive: true, force: true });
+        } catch (error) {
+          // A cleanup failure prevents publication without losing settled usage.
+          if (completedCost)
+            throw new CompletedProposalError(
+              { ...completedCost, wallMs: Date.now() - started },
+              "cleanup-failed",
+            );
+          throw error;
+        }
+      };
       const captureCandidate = () =>
         snapshotPackage(path.join(workspace, "candidate"), {
           name: parent.manifest.name,
@@ -236,16 +251,7 @@ export async function createPackageProposalHost(
           throw new CompletedProposalError({ ...completedCost, wallMs: Date.now() - started });
         throw error;
       } finally {
-        try {
-          await fs.rm(workspace, { recursive: true, force: true });
-        } catch (error) {
-          if (completedCost)
-            throw new CompletedProposalError(
-              { ...completedCost, wallMs: Date.now() - started },
-              "cleanup-failed",
-            );
-          throw error;
-        }
+        await cleanup();
       }
     },
   };

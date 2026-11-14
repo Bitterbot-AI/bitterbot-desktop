@@ -299,7 +299,9 @@ export async function createResearchBriefHost(
       wallMs: agentTimeoutMs + (protocol?.artifacts?.timeoutMs ?? 0),
     }),
     async execute(task, snapshot: PackageSnapshot | null, signal) {
-      const workspace = await fs.mkdtemp(path.join(os.tmpdir(), "bitterbot-package-trial-"));
+      const workspace = await fs.realpath(
+        await fs.mkdtemp(path.join(os.tmpdir(), "bitterbot-package-trial-")),
+      );
       const runId = randomUUID(),
         started = Date.now();
       const trial: PackageTrialContext = {

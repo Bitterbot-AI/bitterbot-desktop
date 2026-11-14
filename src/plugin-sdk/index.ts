@@ -415,6 +415,8 @@ export { getProceduralLearning } from "../memory/procedural-learning-host.js";
 export { createToolProcedureAdapter } from "../memory/procedural-learning-adapter.js";
 export { learningHash } from "../memory/procedural-learning-contract.js";
 export { ExperienceMemory } from "../memory/experience-memory.js";
+export { VerifiedWorkflowReuse } from "../memory/verified-workflow-reuse.js";
+export type { WorkflowContract, WorkflowReuseResult } from "../memory/verified-workflow-reuse.js";
 export type {
   LearningStrategy,
   StrategyPanel,

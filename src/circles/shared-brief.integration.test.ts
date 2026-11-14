@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { promisify } from "node:util";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { learningHash, lineageId, sha256 } from "../agents/skills/collective/contracts.js";
 import { PeerEvidenceStore } from "../agents/skills/collective/evidence.js";
 import { snapshotPackage } from "../agents/skills/collective/package.js";
@@ -48,8 +48,6 @@ type Node = {
   service: CirclesService;
   collective?: CollectiveRuntime;
 };
-const SOURCE =
-  "Source R1 (2026-11-01): 8 of 10 pilot teams finished setup. Source R2 (2026-11-07): 3 of those 8 returned next week.";
 const REVIEWED =
   "Keep the rollout in beta. R1 reports 8/10 setup completions; R2 reports only 3/8 returning teams. Setup is promising, retention is uncertain. Next: interview the five teams that did not return; Jordan owns follow-up by Friday.";
 

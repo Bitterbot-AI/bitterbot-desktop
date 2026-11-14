@@ -35,6 +35,22 @@ async function fixture() {
   return { root, source, metadata, store: new CollectiveSkillStore(db, path.join(root, "store")) };
 }
 describe("complete skill packages", () => {
+  it("canonicalizes host parent aliases while rejecting package and store root links", async () => {
+    const f = await fixture();
+    const alias = path.join(f.root, "alias");
+    await fs.symlink(f.root, alias, "junction");
+    const snapshot = await snapshotPackage(path.join(alias, "source"), f.metadata);
+    const store = new CollectiveSkillStore(f.store.db, path.join(alias, "store"));
+    expect(store.root).toBe(await fs.realpath(path.join(f.root, "store")));
+    await store.install(snapshot);
+    expect((await store.read(snapshot.packageHash)).files.get("SKILL.md")).toEqual(
+      snapshot.files.get("SKILL.md"),
+    );
+    await expect(snapshotPackage(alias, f.metadata)).rejects.toThrow("real directory");
+    expect(() => new CollectiveSkillStore(f.store.db, alias)).toThrow("real directory");
+    await fs.symlink(path.join(f.source, "scripts"), path.join(f.source, "linked"), "junction");
+    await expect(snapshotPackage(path.join(alias, "source"), f.metadata)).rejects.toThrow("Links");
+  });
   it("keeps interrupted installation invisible and retries the identical snapshot", async () => {
     const f = await fixture(),
       snapshot = await snapshotPackage(f.source, f.metadata);

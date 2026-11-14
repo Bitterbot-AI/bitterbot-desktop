@@ -39,6 +39,8 @@ Only an operator with `operator.approvals` can create or change automation grant
 
 Circle membership, visibility, package hash, policy and budget are checked at execution and object retrieval. Revoking a grant stops subsequent authorized work; already sent requests or copies cannot be erased. Public publication requires a separate public grant and `publicMesh`; Circle permission never authorizes it. Generated research briefs retain their draft/review flow.
 
+Public package discovery and object transfer also require a sidecar built from the new package-protocol source. The published orchestrator v0.2.4 predates that protocol. Until a signed companion sidecar release is published and pinned, leave `publicMesh` disabled; use the private authenticated RPC transport or offline import/export. An older peer cannot receive a partial package through a legacy fallback.
+
 Structured peer evidence is stored separately from conversational memory. It may guide bounded proposals but cannot qualify a package locally. Start synthesis in `shadow` when explicitly permitted; `off` stops new proposals. Every proposed update returns through the same execution gate. Hermes imports likewise enter quarantine and local validation; external traces remain observations unless independently verified by a trusted host.
 
 ## Evidence and limits
@@ -46,3 +48,7 @@ Structured peer evidence is stored separately from conversational memory. It may
 An exploratory DOCX pilot found cheaper, faster execution with a repaired helper and reuse in an isolated recipient. It used a small authored corpus on one physical host, and its original endpoint remained incomplete because of an interrupted baseline run. It does not establish broad collective-learning efficacy or activate the example package in production.
 
 The repository includes [data, methodology and offline artifact replay](https://github.com/Bitterbot-AI/bitterbot-desktop/tree/main/benchmarks/collective-learning/published/executable-learning-20261114), including negative observations and further experiments. The current production gate requires success improvement; an efficiency-only qualification path is future design work.
+
+## Next release preparation
+
+The application feature remains opt-in with zero-dollar defaults. Before advertising public-mesh package support in a binary release, publish the updated Rust sidecar through the existing signed `orchestrator-release.yml` workflow, advance both Cargo version records and the application's sidecar pin, and verify packaged binaries against two isolated nodes. The protected release environment retains its existing maintainer approval. Merging the application source does not replace already published sidecar binaries.
