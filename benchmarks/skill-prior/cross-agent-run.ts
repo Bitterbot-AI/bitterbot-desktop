@@ -73,6 +73,17 @@ import {
   viewFor,
   XA_ARMS,
   type XaArm,
+  type Arm2Inputs,
+  donorTrust,
+  GATE2,
+  liarRecords,
+  poolRecords,
+  QUORUM,
+  TRUST_MAX_RATE,
+  TRUST_MIN_CONTRADICTIONS,
+  viewFor2,
+  XA2_ARMS,
+  type Xa2Arm,
 } from "./cross-agent.js";
 import {
   estimateUsd,
@@ -98,6 +109,7 @@ const { values: args } = parseArgs({
     out: { type: "string" },
     "ceiling-usd": { type: "string", default: "50" },
     "max-runs": { type: "string" },
+    concurrency: { type: "string", default: "1" },
     families: { type: "string" },
     envs: { type: "string" },
     arms: { type: "string" },
@@ -110,8 +122,14 @@ const { values: args } = parseArgs({
 });
 
 const phase = args.phase;
-if (phase !== "experience" && phase !== "eval" && phase !== "all") {
-  throw new Error("--phase must be experience | eval | all");
+if (
+  phase !== "experience" &&
+  phase !== "eval" &&
+  phase !== "all" &&
+  phase !== "live" &&
+  phase !== "eval2"
+) {
+  throw new Error("--phase must be experience | eval | all | live | eval2");
 }
 const SIM = args.simulate;
 const families = args.families
@@ -131,6 +149,18 @@ const recipientModel = SIM ? "sim/reference-reader" : args.model!;
 const donorModel = SIM ? "sim/reference-reader" : (args["donor-model"] ?? args.model!);
 const ceilingUsd = Number(args["ceiling-usd"]);
 const maxRuns = args["max-runs"] ? Number(args["max-runs"]) : Number.POSITIVE_INFINITY;
+const CONCURRENCY = Math.max(1, Math.floor(Number(args.concurrency)));
+/**
+ * Run `fn` over `items`, at most CONCURRENCY at a time. Only trials that do
+ * not read each other's records are ever batched (agents within one episode
+ * of a cell; arms on one evaluation instance), so the result does not depend
+ * on the setting.
+ */
+async function batched<T>(items: readonly T[], fn: (item: T) => Promise<unknown>): Promise<void> {
+  for (let i = 0; i < items.length; i += CONCURRENCY) {
+    await Promise.all(items.slice(i, i + CONCURRENCY).map(fn));
+  }
+}
 const out = path.resolve(
   args.out ??
     path.join(os.homedir(), "bitterbot-skill-prior", SIM ? "cross-agent-sim" : "cross-agent"),
@@ -144,6 +174,13 @@ const DONORS = AGENTS.slice(1);
 const modelOf = (agent: string) => (agent === "r0" ? recipientModel : donorModel);
 const EXP_PHASE = SIM ? "xa-sim-exp" : "xa-exp";
 const EVAL_PHASE = SIM ? "xa-sim-eval" : "xa-eval";
+/** Follow-up: a cohort that shares its records as it goes, and the arms that read it. */
+const LIVE = DONORS.map((_, i) => `l${i + 1}`);
+const LIVE_PHASE = SIM ? "xa-sim-live" : "xa-live";
+const EVAL2_PHASE = SIM ? "xa-sim-eval2" : "xa-eval2";
+/** Live agent `l<k>` works the same instances as donor `d<k>`. */
+const seedIndexOf = (agent: string) =>
+  LIVE.includes(agent) ? LIVE.indexOf(agent) + 1 : AGENTS.indexOf(agent);
 
 const hashOf = (body: string) => createHash("sha256").update(body).digest("hex");
 const SKILL_HASHES: Record<string, string> = Object.fromEntries(
@@ -244,11 +281,12 @@ async function loadOrCreateKey(file: string): Promise<KeyPair> {
 function tracesOf(
   records: ReadonlyMap<string, TrialRecord>,
   agent: string,
+  phaseName: string = EXP_PHASE,
 ): Map<string, EpisodeTrace[]> {
-  const seeds = expSeeds(AGENTS.indexOf(agent));
+  const seeds = expSeeds(seedIndexOf(agent));
   const m = new Map<string, EpisodeTrace[]>();
   for (const r of records.values()) {
-    if (r.phase !== EXP_PHASE || r.arm !== agent || !r.cell) {
+    if (r.phase !== phaseName || r.arm !== agent || !r.cell) {
       continue;
     }
     const episode = seeds.indexOf(r.seed);
@@ -388,7 +426,7 @@ async function main(): Promise<void> {
     for (let e = 0; e < BUDGET; e++) {
       for (const env of envs) {
         for (const family of families) {
-          for (const agent of AGENTS) {
+          await batched(AGENTS, async (agent) => {
             const seed = expSeeds(AGENTS.indexOf(agent))[e]!;
             const inst = conventionInstance(env, family, seed);
             const cell = cellOf(inst);
@@ -412,7 +450,7 @@ async function main(): Promise<void> {
               modelOf(agent),
               view,
             );
-          }
+          });
         }
       }
     }
@@ -575,7 +613,7 @@ async function main(): Promise<void> {
       const variants = variantsOf(inst);
       const order = shuffled(CONVENTION_POOL_NAMES, `${inst.task.id}:0`);
       const inputs = inputsFor(inst);
-      for (const arm of arms) {
+      await batched(arms, async (arm) => {
         const view = viewFor(arm, inputs);
         ceiling.set(arm, [
           ...(ceiling.get(arm) ?? []),
@@ -598,7 +636,7 @@ async function main(): Promise<void> {
           recipientModel,
           view,
         );
-      }
+      });
     }
 
     const rs = [...records.values()].filter((r) => r.phase === EVAL_PHASE);
@@ -771,6 +809,346 @@ async function main(): Promise<void> {
       exploratory,
       solvedCells: solved.size,
     });
+  }
+
+  // ------------------------------------------------- follow-up: live cohort
+  const cellList = envs.flatMap((env) => families.map((family) => [env, family] as const));
+  const exportBundle = async (agent: string, phaseName: string) => {
+    const key = await loadOrCreateKey(path.join(out, "agents", `${agent}.key.pem`));
+    const bundle = exportCardBundle({
+      key,
+      model: donorModel,
+      budget: BUDGET,
+      skills: SKILL_HASHES,
+      cells: recordsOf(tracesOf(records, agent, phaseName)),
+    });
+    await fs.writeFile(
+      path.join(out, "bundles", `${agent}.json`),
+      `${JSON.stringify(bundle, null, 2)}\n`,
+      "utf-8",
+    );
+  };
+  /** Verify and import the bundles of a set of agents, trusting exactly their keys. */
+  const importAll = async (agents: readonly string[]) => {
+    const bundles: CardBundle[] = [];
+    const trusted = new Set<string>();
+    for (const agent of agents) {
+      const key = await loadOrCreateKey(path.join(out, "agents", `${agent}.key.pem`));
+      trusted.add(originOf(key));
+      bundles.push(
+        JSON.parse(
+          await fs.readFile(path.join(out, "bundles", `${agent}.json`), "utf-8"),
+        ) as CardBundle,
+      );
+    }
+    const cells = bundles.map((b, i) => {
+      const res = importCardBundle(b, {
+        localSkills: SKILL_HASHES,
+        trustedOrigins: trusted,
+        maxBudget: BUDGET,
+      });
+      if (!res.ok) {
+        throw new Error(`bundle from ${agents[i]} refused: ${res.reason}`);
+      }
+      return res.cells;
+    });
+    return { bundles, cells };
+  };
+  const foundIn = (pools: readonly CellRecords[], cell: string) =>
+    pools.some((c) => Object.values(c[cell] ?? {}).some((x) => x.passed > 0));
+  const triedIn = (pools: readonly CellRecords[], cell: string) =>
+    new Set(pools.flatMap((c) => Object.keys(c[cell] ?? {}))).size;
+
+  if (phase === "live") {
+    confirm(LIVE.length * BUDGET * cellList.length, "live experience");
+    // A cell's episodes run strictly in arrival order; different cells do not interact.
+    await batched(cellList, async ([env, family]) => {
+      for (let e = 0; e < BUDGET; e++) {
+        for (const agent of LIVE) {
+          const k = seedIndexOf(agent);
+          const inst = conventionInstance(env, family, expSeeds(k)[e]!);
+          const cell = cellOf(inst);
+          const variants = variantsOf(inst);
+          const soFar = (a: string) =>
+            recordsFrom(tracesOf(records, a, LIVE_PHASE).get(cell) ?? [], variants);
+          const view: CardView = {
+            own: soFar(agent),
+            peer: poolRecords(LIVE.filter((a) => a !== agent).map(soFar)),
+          };
+          await runSpec(
+            {
+              phase: LIVE_PHASE,
+              arm: agent,
+              instance: inst,
+              trialIndex: 0,
+              skills: CONVENTION_POOL_NAMES,
+              pool: CONVENTION_POOL,
+              correctSkill: inst.correctSkill,
+              decoySkills: inst.decoySkills,
+              cell,
+              // The index order donor d<k> saw on this instance.
+              order: shuffled(CONVENTION_POOL_NAMES, `${inst.task.id}:d${k}`),
+              evidenceLines: cardLines(view, variants),
+            },
+            donorModel,
+            view,
+          );
+        }
+      }
+    });
+    for (const agent of LIVE) {
+      await exportBundle(agent, LIVE_PHASE);
+    }
+    const passAt = (phaseName: string, agents: readonly string[]) => {
+      const cols: string[] = [];
+      for (let e = 0; e < BUDGET; e++) {
+        for (const agent of agents) {
+          const seed = expSeeds(seedIndexOf(agent))[e]!;
+          const xs = [...records.values()].filter(
+            (r) => r.phase === phaseName && r.arm === agent && r.seed === seed,
+          );
+          cols.push(xs.length ? pct(xs.reduce((a, r) => a + r.pass, 0) / xs.length) : "n/a");
+        }
+      }
+      return cols;
+    };
+    const livePools = LIVE.map((a) => recordsOf(tracesOf(records, a, LIVE_PHASE)));
+    const batchPools = DONORS.map((a) => recordsOf(tracesOf(records, a)));
+    const cellsKeys = cellList.map(([env, family]) => `${env}:${family}`);
+    const count = (pools: readonly CellRecords[]) =>
+      `${cellsKeys.filter((c) => foundIn(pools, c)).length} of ${cellsKeys.length}`;
+    const tried = (pools: readonly CellRecords[]) =>
+      (cellsKeys.reduce((s, c) => s + triedIn(pools, c), 0) / cellsKeys.length).toFixed(2);
+    const arrivals = Array.from({ length: BUDGET * LIVE.length }, (_, i) => `${i + 1}`);
+    report.push(
+      "## Live cohort against the one-off donors (same instances, same index order)",
+      "",
+      "Arrival order in a cell is episode 1 of each agent in turn, then episode 2. A live agent sees its own record and everything the others have recorded in the cell so far; a one-off donor sees only its own.",
+      "",
+      `| Pool | ${arrivals.map((a) => `Arrival ${a}`).join(" | ")} | Cells with an accepted variant | Distinct variants tried per cell |`,
+      `| --- | ${arrivals.map(() => "---:").join(" | ")} | ---: | ---: |`,
+      `| one-off (${DONORS.join(", ")}) | ${passAt(EXP_PHASE, DONORS).join(" | ")} | ${count(batchPools)} | ${tried(batchPools)} |`,
+      `| live (${LIVE.join(", ")}) | ${passAt(LIVE_PHASE, LIVE).join(" | ")} | ${count(livePools)} | ${tried(livePools)} |`,
+      "",
+    );
+    Object.assign(summary, {
+      livePassByArrival: passAt(LIVE_PHASE, LIVE),
+      batchPassByArrival: passAt(EXP_PHASE, DONORS),
+      liveCellsFound: count(livePools),
+      batchCellsFound: count(batchPools),
+    });
+  }
+
+  // ---------------------------------------------------- follow-up: eval2
+  if (phase === "eval2") {
+    const ownFull = recordsOf(tracesOf(records, "r0"));
+    const batch = await importAll(DONORS);
+    const live = await importAll(LIVE);
+    const liarIndex =
+      createHash("sha256").update(`${SALT}:liar2`).digest().readUInt32BE(0) % DONORS.length;
+    const staleCellOf = (inst: ConventionInstance) => {
+      const i = envs.indexOf(inst.env);
+      for (let k = 1; k < envs.length; k++) {
+        const e = envs[(i + k) % envs.length]!;
+        if (conventionOf(e, inst.family) !== inst.variant) {
+          return `${e}:${inst.family}`;
+        }
+      }
+      return null;
+    };
+    // What each donor would look like to the recipient across ALL cells, per scenario.
+    const lieCells: CellRecords = {};
+    const staleCells: CellRecords[] = batch.cells.map(() => ({}));
+    for (const [env, family] of cellList) {
+      const inst = conventionInstance(env, family, evalSeeds[0]!);
+      const cell = cellOf(inst);
+      lieCells[cell] = liarRecords(inst.correctSkill, inst.decoySkills, BUDGET, cell);
+      const sc = staleCellOf(inst);
+      batch.cells.forEach((c, i) => {
+        staleCells[i]![cell] = sc ? (c[sc] ?? {}) : {};
+      });
+    }
+    const trustLiar = batch.cells.map((c, i) =>
+      donorTrust(ownFull, i === liarIndex ? lieCells : c),
+    );
+    const trustStale = staleCells.map((c) => donorTrust(ownFull, c));
+
+    const arms = (
+      args.arms ? XA2_ARMS.filter((a) => args.arms!.split(",").includes(a)) : XA2_ARMS
+    ) as readonly Xa2Arm[];
+    const baseFile = path.join(out, `protocol-${EVAL_PHASE}.json`);
+    const base = JSON.parse(await fs.readFile(baseFile, "utf-8")) as { hash: string };
+    const protocol = {
+      salt: SALT,
+      followUpOf: base.hash,
+      registered:
+        "after an interim read of the first study (about one third of its evaluation), before any of these arms ran",
+      simulated: SIM,
+      recipientModel,
+      donorModel,
+      budget: BUDGET,
+      families,
+      envs,
+      evalSeeds,
+      arms: XA2_ARMS,
+      gate: GATE2,
+      quorum: QUORUM,
+      trust: { minContradictions: TRUST_MIN_CONTRADICTIONS, maxRate: TRUST_MAX_RATE },
+      liarIndex,
+      signAlphaOneSided: SIGN_ALPHA,
+      liveBundles: bundleDigest(live.bundles),
+      batchBundles: bundleDigest(batch.bundles),
+      ownRecords: hashOf(JSON.stringify(ownFull)),
+    };
+    const protoFile = path.join(out, `protocol-${EVAL2_PHASE}.json`);
+    const protoHash = hashOf(JSON.stringify(protocol));
+    try {
+      const prev = JSON.parse(await fs.readFile(protoFile, "utf-8")) as { hash: string };
+      if (prev.hash !== protoHash) {
+        throw new Error(`protocol changed since the first eval2 run (${protoFile})`);
+      }
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
+        throw err;
+      }
+      await fs.writeFile(
+        protoFile,
+        JSON.stringify({ hash: protoHash, protocol }, null, 2),
+        "utf-8",
+      );
+    }
+
+    const insts: ConventionInstance[] = [];
+    for (const seed of evalSeeds) {
+      for (const [env, family] of cellList) {
+        insts.push(conventionInstance(env, family, seed));
+      }
+    }
+    confirm(insts.length * arms.length, "eval2");
+    const ceiling = new Map<string, number[]>();
+    for (const inst of insts) {
+      const cell = cellOf(inst);
+      const variants = variantsOf(inst);
+      const order = shuffled(CONVENTION_POOL_NAMES, `${inst.task.id}:0`);
+      const sc = staleCellOf(inst);
+      const inputs: Arm2Inputs = {
+        own: ownFull[cell] ?? {},
+        donors: batch.cells.map((c) => c[cell] ?? {}),
+        live: live.cells.map((c) => c[cell] ?? {}),
+        staleDonors: sc ? batch.cells.map((c) => c[sc] ?? {}) : [],
+        liarIndex,
+        lie: liarRecords(inst.correctSkill, inst.decoySkills, BUDGET, cell),
+        trustWithLiar: trustLiar.map((t) => t.trusted),
+        trustStale: trustStale.map((t) => t.trusted),
+      };
+      await batched(arms, async (arm) => {
+        const view = viewFor2(arm, inputs);
+        ceiling.set(arm, [
+          ...(ceiling.get(arm) ?? []),
+          referencePick(view, variants)[inst.correctSkill]!,
+        ]);
+        await runSpec(
+          {
+            phase: EVAL2_PHASE,
+            arm,
+            instance: inst,
+            trialIndex: 0,
+            skills: CONVENTION_POOL_NAMES,
+            pool: CONVENTION_POOL,
+            correctSkill: inst.correctSkill,
+            decoySkills: inst.decoySkills,
+            cell,
+            order,
+            evidenceLines: cardLines(view, variants),
+          },
+          recipientModel,
+          view,
+        );
+      });
+    }
+
+    const rs = [...records.values()].filter(
+      (r) => r.phase === EVAL_PHASE || r.phase === EVAL2_PHASE,
+    );
+    const of = (arm: string) => rs.filter((r) => r.arm === arm);
+    const rows: EvalRow[] = rs.map((r) => ({
+      arm: r.arm,
+      cell: r.cell!,
+      family: r.family,
+      taskId: r.taskId,
+      pass: r.error === null ? r.pass : 0,
+    }));
+    const mean = (xs: readonly number[]) =>
+      xs.length ? xs.reduce((s, x) => s + x, 0) / xs.length : null;
+    const gate = runGate(rows, GATE2);
+    const d = (label: string, a: string, b: string) =>
+      cellContrast(rows, label, [
+        [a, 1],
+        [b, -1],
+      ]);
+    const exploratory = [
+      d("live minus none", "live", "none"),
+      d("live minus own (three peers sharing live against one's own experience)", "live", "own"),
+      d("own+live minus own+peer", "own+live", "own+peer"),
+      d("own+live minus own", "own+live", "own"),
+      d("oracle minus own+live (room left)", "oracle", "own+live"),
+      d("live-liar minus none (live pool, one liar, counts summed)", "live-liar", "none"),
+      d(
+        "live-liar-quorum minus live-liar (what the quorum recovers)",
+        "live-liar-quorum",
+        "live-liar",
+      ),
+      d("live-liar-quorum minus live (what the liar still costs)", "live-liar-quorum", "live"),
+      d("own+liar minus own (harm of one lying donor on top of own experience)", "own+liar", "own"),
+      d(
+        "own+liar-guarded minus own (is the guarded pool still a net gain?)",
+        "own+liar-guarded",
+        "own",
+      ),
+      d(
+        "own+liar-guarded minus own+peer (cost against an honest pool)",
+        "own+liar-guarded",
+        "own+peer",
+      ),
+      d("own+stale-guarded minus own+stale", "own+stale-guarded", "own+stale"),
+      d("own+stale-guarded minus own", "own+stale-guarded", "own"),
+    ];
+    const shown = [...new Set([...XA_ARMS, ...arms])].filter((a) => of(a).length > 0);
+    const trustRow = (
+      name: string,
+      t: { checks: number; contradictions: number; trusted: boolean },
+    ) => `| ${name} | ${t.checks} | ${t.contradictions} | ${t.trusted ? "kept" : "DROPPED"} |`;
+    report.push(
+      `Follow-up protocol hash ${protoHash.slice(0, 16)} (${protoFile}), written before the first follow-up run; first-study protocol ${base.hash.slice(0, 16)}. Same ${insts.length} instances and index order as the first study, so every contrast below is paired by cell. These arms were designed after an interim read of the first study.`,
+      "",
+      "## Donor checks against the recipient's own verified outcomes",
+      "",
+      `A donor is dropped at ${TRUST_MIN_CONTRADICTIONS} or more contradictions when they are at least ${TRUST_MAX_RATE * 100}% of the checks. The lying donor is ${DONORS[liarIndex]} (the same one in every cell).`,
+      "",
+      "| Donor as seen by the recipient | Checks | Contradictions | Decision |",
+      "| --- | ---: | ---: | --- |",
+      ...trustLiar.map((t, i) => trustRow(`${DONORS[i]}${i === liarIndex ? " (lying)" : ""}`, t)),
+      ...trustStale.map((t, i) => trustRow(`${DONORS[i]} (misapplied pool)`, t)),
+      "",
+      "## Arms (first study and follow-up)",
+      "",
+      "| Arm | Runs | Reference reader opens the right variant | Model opens it first | Model pass |",
+      "| --- | ---: | ---: | ---: | ---: |",
+      ...shown.map(
+        (a) =>
+          `| ${a} | ${of(a).length} | ${ceiling.has(a) ? pct(mean(ceiling.get(a)!)) : "see first report"} | ${pct(mean(of(a).map(readCorrect)))} | ${pct(mean(of(a).map((r) => (r.error === null ? r.pass : 0))))} |`,
+      ),
+      "",
+      "## Follow-up family (fixed order; the first failure makes the rest exploratory)",
+      "",
+      renderGate(gate),
+      "",
+      "## Exploratory contrasts",
+      "",
+      renderContrastRows(exploratory),
+      "",
+    );
+    Object.assign(summary, { protoHash, gate, exploratory, trustLiar, trustStale, liarIndex });
   }
 
   const usd = spent();

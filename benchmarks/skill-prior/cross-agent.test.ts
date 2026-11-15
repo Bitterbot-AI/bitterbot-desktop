@@ -3,6 +3,12 @@ import {
   type ArmInputs,
   cardLines,
   cellContrast,
+  donorTrust,
+  GATE2,
+  guardedPool,
+  quorumRecords,
+  viewFor2,
+  XA2_ARMS,
   type EvalRow,
   exportCardBundle,
   flips,
@@ -293,5 +299,84 @@ describe("cell-level analysis", () => {
     // Later steps may meet their criterion, but they are no longer confirmatory.
     expect(g[1]).toMatchObject({ passed: true, confirmatory: false });
     expect(g.slice(1).every((s) => !s.confirmatory)).toBe(true);
+  });
+});
+
+describe("live pool, quorum and guard", () => {
+  const A = { passed: 1, runs: 1 };
+  const R = { passed: 0, runs: 1 };
+
+  it("a quorum needs two agreeing donors that outnumber the dissent", () => {
+    const q = quorumRecords([
+      { "xp-f-a": { passed: 2, runs: 2 }, "xp-f-b": R },
+      { "xp-f-a": A, "xp-f-b": R, "xp-f-c": A },
+      { "xp-f-a": R, "xp-f-d": A },
+    ]);
+    expect(q.agents).toBe(3);
+    // One vote per donor: two runs by one donor count once.
+    expect(q.records).toEqual({
+      "xp-f-a": { passed: 2, runs: 2 },
+      "xp-f-b": { passed: 0, runs: 2 },
+    });
+    // A tie shows nothing.
+    expect(quorumRecords([{ "xp-f-a": A }, { "xp-f-a": R }]).records).toEqual({});
+  });
+
+  it("scores a donor against own verified outcomes only", () => {
+    const own = {
+      "alder:f": { "xp-f-a": A, "xp-f-b": R },
+      "birch:f": { "xp-f-c": R },
+      "cedar:f": { "xp-f-d": A, "xp-f-a": { passed: 1, runs: 2 } },
+    };
+    const honest = donorTrust(own, {
+      "alder:f": { "xp-f-a": A, "xp-f-c": A },
+      "birch:f": { "xp-f-c": R },
+      "cedar:f": { "xp-f-a": R },
+    });
+    expect(honest).toEqual({ checks: 2, contradictions: 0, trusted: true });
+    const liar = donorTrust(own, {
+      "alder:f": { "xp-f-a": R, "xp-f-b": A },
+      "birch:f": { "xp-f-c": A },
+      "cedar:f": { "xp-f-d": A },
+    });
+    expect(liar).toEqual({ checks: 4, contradictions: 3, trusted: false });
+    // Too few contradictions to judge: kept.
+    expect(donorTrust(own, { "alder:f": { "xp-f-a": R } }).trusted).toBe(true);
+    expect(donorTrust(own, {}).trusted).toBe(true);
+  });
+
+  it("the guarded pool drops distrusted donors and variants the recipient tried", () => {
+    const g = guardedPool(
+      { "xp-f-a": R },
+      [{ "xp-f-a": A, "xp-f-b": A }, { "xp-f-c": A }, { "xp-f-b": R }],
+      [true, false, true],
+    );
+    expect(g).toEqual({ records: { "xp-f-b": { passed: 1, runs: 2 } }, agents: 2 });
+  });
+
+  it("every follow-up arm yields a view and the liar is one fixed donor", () => {
+    const x = {
+      own: { "xp-f-b": R },
+      donors: [{ "xp-f-a": A }, { "xp-f-a": A }, { "xp-f-c": R }],
+      live: [{ "xp-f-a": A }, { "xp-f-a": A }, { "xp-f-a": A }],
+      staleDonors: [{ "xp-f-c": A }, {}, {}],
+      liarIndex: 2,
+      lie: { "xp-f-d": A, "xp-f-a": R },
+      trustWithLiar: [true, true, false],
+      trustStale: [false, false, false],
+    };
+    for (const arm of XA2_ARMS) {
+      expect(viewFor2(arm, x)).toBeTypeOf("object");
+    }
+    expect(viewFor2("live", x).peer!.records).toEqual({ "xp-f-a": { passed: 3, runs: 3 } });
+    expect(viewFor2("live-liar", x).peer!.records["xp-f-d"]).toEqual(A);
+    expect(viewFor2("live-liar-quorum", x).peer!.records).toEqual({
+      "xp-f-a": { passed: 2, runs: 2 },
+    });
+    expect(viewFor2("own+liar-guarded", x).peer!.records).toEqual({
+      "xp-f-a": { passed: 2, runs: 2 },
+    });
+    expect(viewFor2("own+stale-guarded", x).peer).toEqual({ records: {}, agents: 0 });
+    expect(GATE2.map((g) => g.id)).toEqual(["live", "quorum", "guard"]);
   });
 });

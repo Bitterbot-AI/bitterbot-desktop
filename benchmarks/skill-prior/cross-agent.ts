@@ -602,3 +602,192 @@ export function bundleDigest(bundles: readonly CardBundle[]): string {
     .update(JSON.stringify(bundles.map((b) => b.signature) as JsonValue))
     .digest("hex");
 }
+
+// ------------------------------------------- follow-up: live pool and guards
+//
+// Registered after the first study's interim read (2026-11-15), before any of
+// these arms ran. Three changes to how a pool is built and read:
+//
+//   live     donors work one after another and each sees what the others have
+//            already recorded in the cell, so they stop repeating each other
+//   quorum   one vote per donor per variant; a verdict is shown only when at
+//            least QUORUM distinct donors agree and outnumber the dissent
+//   guard    a donor whose records contradict the recipient's own verified
+//            outcomes is dropped, and own outcomes speak for any variant the
+//            recipient has tried
+
+export const QUORUM = 2;
+/** A donor is dropped at this many contradictions, when they are this share of the checks. */
+export const TRUST_MIN_CONTRADICTIONS = 3;
+export const TRUST_MAX_RATE = 0.25;
+
+const verdictOf = (e: SkillEvidence | undefined): "accepted" | "rejected" | null =>
+  !e || e.runs === 0 ? null : e.passed === e.runs ? "accepted" : e.passed === 0 ? "rejected" : null;
+
+export interface DonorTrust {
+  /** (cell, skill) pairs where both sides hold a unanimous record. */
+  checks: number;
+  contradictions: number;
+  trusted: boolean;
+}
+
+/** Score a donor only against outcomes the recipient verified itself. */
+export function donorTrust(own: CellRecords, donor: CellRecords): DonorTrust {
+  let checks = 0;
+  let contradictions = 0;
+  for (const [cell, recs] of Object.entries(donor)) {
+    for (const [skill, e] of Object.entries(recs)) {
+      const mine = verdictOf(own[cell]?.[skill]);
+      const theirs = verdictOf(e);
+      if (mine && theirs) {
+        checks++;
+        contradictions += mine === theirs ? 0 : 1;
+      }
+    }
+  }
+  const trusted = !(
+    contradictions >= TRUST_MIN_CONTRADICTIONS && contradictions / checks >= TRUST_MAX_RATE
+  );
+  return { checks, contradictions, trusted };
+}
+
+/**
+ * Pool by votes instead of counts. Each donor casts at most one vote per
+ * variant; the verdict shown is the side with at least `quorum` votes and
+ * strictly more than the other side. Anything else is left out, so the
+ * variant reads "not tried yet" and no single signer can move a line.
+ */
+export function quorumRecords(
+  sources: readonly Records[],
+  quorum = QUORUM,
+): { records: Records; agents: number } {
+  const votes = new Map<string, { accept: number; reject: number }>();
+  let agents = 0;
+  for (const src of sources) {
+    let any = false;
+    for (const [skill, e] of Object.entries(src)) {
+      if (e.runs === 0) {
+        continue;
+      }
+      any = true;
+      const v = votes.get(skill) ?? { accept: 0, reject: 0 };
+      if (e.passed > 0) {
+        v.accept++;
+      } else {
+        v.reject++;
+      }
+      votes.set(skill, v);
+    }
+    agents += any ? 1 : 0;
+  }
+  const records: Records = {};
+  for (const [skill, v] of votes) {
+    if (v.accept >= quorum && v.accept > v.reject) {
+      records[skill] = { passed: v.accept, runs: v.accept };
+    } else if (v.reject >= quorum && v.reject > v.accept) {
+      records[skill] = { passed: 0, runs: v.reject };
+    }
+  }
+  return { records, agents };
+}
+
+/** Pool the trusted donors, leaving out any variant the recipient has tried itself. */
+export function guardedPool(
+  own: Records,
+  donors: readonly Records[],
+  trusted: readonly boolean[],
+): { records: Records; agents: number } {
+  const kept = donors
+    .filter((_, i) => trusted[i] !== false)
+    .map((d) => Object.fromEntries(Object.entries(d).filter(([s]) => !(own[s]?.runs ?? 0))));
+  return poolRecords(kept);
+}
+
+/**
+ * Follow-up arms, run on the first study's instances and index order.
+ *
+ *   live                 the live cohort's pool, counts summed
+ *   own+live             own full budget plus the live pool
+ *   live-liar            live pool with one donor replaced by the liar, counts summed
+ *   live-liar-quorum     the same pool read by quorum
+ *   own+liar             own plus the first study's pool with one donor lying everywhere
+ *   own+liar-guarded     the same, with the guard
+ *   own+stale-guarded    own plus the misapplied pool, with the guard
+ */
+export const XA2_ARMS = [
+  "live",
+  "own+live",
+  "live-liar",
+  "live-liar-quorum",
+  "own+liar",
+  "own+liar-guarded",
+  "own+stale-guarded",
+] as const;
+export type Xa2Arm = (typeof XA2_ARMS)[number];
+
+export interface Arm2Inputs {
+  own: Records;
+  /** First-study donors and the live cohort, this cell, in donor order. */
+  donors: readonly Records[];
+  live: readonly Records[];
+  staleDonors: readonly Records[];
+  /** Which donor lies (the same one in every cell), and what it says here. */
+  liarIndex: number;
+  lie: Records;
+  /** Per-donor trust under each scenario, computed across all cells. */
+  trustWithLiar: readonly boolean[];
+  trustStale: readonly boolean[];
+}
+
+export function viewFor2(arm: Xa2Arm, x: Arm2Inputs): CardView {
+  const withLiar = (ds: readonly Records[]) => ds.map((d, i) => (i === x.liarIndex ? x.lie : d));
+  switch (arm) {
+    case "live":
+      return { peer: poolRecords(x.live) };
+    case "own+live":
+      return { own: x.own, peer: poolRecords(x.live) };
+    case "live-liar":
+      return { peer: poolRecords(withLiar(x.live)) };
+    case "live-liar-quorum":
+      return { peer: quorumRecords(withLiar(x.live)) };
+    case "own+liar":
+      return { own: x.own, peer: poolRecords(withLiar(x.donors)) };
+    case "own+liar-guarded":
+      return { own: x.own, peer: guardedPool(x.own, withLiar(x.donors), x.trustWithLiar) };
+    case "own+stale-guarded":
+      return { own: x.own, peer: guardedPool(x.own, x.staleDonors, x.trustStale) };
+  }
+}
+
+export const GATE2: readonly GateStep[] = [
+  {
+    id: "live",
+    claim: "A live pool beats a one-off exchange built from the same number of episodes",
+    terms: [
+      ["live", 1],
+      ["peer", -1],
+    ],
+    lowerBoundAbove: 0,
+    needsSignTest: true,
+  },
+  {
+    id: "quorum",
+    claim: "A live pool with one lying donor, read by quorum, still beats no card",
+    terms: [
+      ["live-liar-quorum", 1],
+      ["none", -1],
+    ],
+    lowerBoundAbove: 0,
+    needsSignTest: true,
+  },
+  {
+    id: "guard",
+    claim: "Checking donors against own outcomes removes the harm of a lying donor",
+    terms: [
+      ["own+liar-guarded", 1],
+      ["own+liar", -1],
+    ],
+    lowerBoundAbove: 0,
+    needsSignTest: true,
+  },
+];

@@ -486,6 +486,40 @@ transport is not exercised. A pooled count is only as good as its sources:
 the reference reader collapses in the `stale` and `peer-liar` arms, and what
 the model does there is one of the things the study measures.
 
+### Follow-up: live pool, quorum and guard (registered 2026-11-15, not yet run)
+
+Registered after an interim read of the first study (about one third of its
+evaluation) and before any of these arms ran. The interim read showed two
+things: donors repeat each other's exploration, and a pool read as summed
+counts is undone by one lying donor or by a pool from the wrong workspace.
+
+- **Live cohort** (`--phase live`): agents `l1..l3` work the same instances
+  and index order as donors `d1..d3`, one after another within a cell, and
+  each sees its own record plus everything the others have recorded there.
+- **Quorum**: one vote per donor per variant; a verdict is shown only when at
+  least two distinct donors agree and outnumber the dissent.
+- **Guard**: a donor is dropped when its records contradict the recipient's
+  own verified outcomes (3 or more contradictions that are at least 25% of
+  the checks, across all cells), and the recipient's own record speaks for
+  any variant it has tried. The thresholds were set from the experience
+  phase, where honest donors contradict the recipient on 7 to 12% of checks.
+
+Seven arms (`--phase eval2`) on the first study's instances, so contrasts are
+paired by cell: `live`, `own+live`, `live-liar`, `live-liar-quorum`,
+`own+liar`, `own+liar-guarded`, `own+stale-guarded`. In these arms the liar
+is one fixed donor that lies in every cell.
+
+Fixed-order family: (1) live minus peer, (2) live-liar-quorum minus none,
+(3) own+liar-guarded minus own+liar. Same unit, interval and sign test as the
+first study. Limits: the arms were designed after seeing interim data from
+the same instances; the liar's records are substituted after the live cohort
+ran, so it did not steer their exploration.
+
+```bash
+node --import tsx benchmarks/skill-prior/cross-agent-run.ts --phase live --yes --ceiling-usd 85
+node --import tsx benchmarks/skill-prior/cross-agent-run.ts --phase eval2 --yes --ceiling-usd 85
+```
+
 ## Runtime integration
 
 The live adapter can show evidence beside each skill when
