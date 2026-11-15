@@ -416,6 +416,76 @@ an accept is 92-99% in every memory arm.
 
 Spend $34.70 (Haiku) and $18.79 (gpt-5.4-mini).
 
+## Cross-agent evidence cards (registered 2026-11-14, not yet run)
+
+Every study above has one agent. This one asks the network question
+directly: at the same per-agent budget, is experience that other agents
+earned worth more to a recipient than the experience it earned itself?
+
+One recipient and three donors each work two episodes in every cell of the
+latent-convention pool, with accept/reject feedback only and their own
+earlier outcomes shown as `<evidence>` lines. Each donor then signs its
+per-cell counts into a card bundle. The recipient verifies each bundle
+(signature against the stated origin, a fixed set of trusted donor keys, no
+cell claiming more runs than the budget, and a content hash per skill so a
+card about an edited SKILL.md is dropped), and is evaluated on held-out
+instances under twelve arms that differ only in the evidence lines:
+
+| Arm                         | Evidence shown                                            |
+| --------------------------- | --------------------------------------------------------- |
+| `none`                      | nothing                                                   |
+| `own-half`                  | the recipient's first half of its budget                  |
+| `own`                       | the recipient's full budget                               |
+| `peer1`                     | one donor's full budget                                   |
+| `peer`                      | three donors' budgets, pooled                             |
+| `own-half+peer`, `own+peer` | both sources                                              |
+| `peer-liar`                 | the pool with one donor replaced by a signed false report |
+| `stale`, `own+stale`        | a pool earned in a workspace with a different convention  |
+| `placebo`                   | the pool's usage counts with no outcome                   |
+| `oracle`                    | exact records                                             |
+
+A line names its source, for example `Your own runs here: REJECTED every
+time it was used (1 use). Runs here by 3 other agents: ACCEPTED every time
+it was used (2 uses).` Every variant of the family gets a line once the arm
+has any record in the cell, so "not tried yet" stays visible.
+
+The unit of analysis is the cell, because a cell's instances share one
+card. Intervals resample families and then cells within a family; tests are
+exact one-sided sign tests over cells at 0.025. The confirmatory family is
+tested in a fixed order, and everything after the first failure is
+exploratory:
+
+1. `peer` minus `own` (primary).
+2. `peer` minus `placebo`.
+3. (`peer` minus `none`) minus (`own+peer` minus `own`): the pool adds more
+   where the recipient has no experience. Interval only.
+4. `peer-liar` minus `none`.
+
+The report also gives `peer1` minus `own` with its interval (no claim: 72
+cells cannot support a useful non-inferiority margin), the pool's gain at
+three levels of local experience, flips per task in both directions, and a
+reference reader that uses each card perfectly, which is the ceiling the
+shown records can support.
+
+```sh
+# Free dry run with a simulated reader; no model calls.
+node --import tsx benchmarks/skill-prior/cross-agent-run.ts --phase all --simulate
+
+# The study: 2,304 episodes, about $30 on Claude Haiku 4.5 at the online
+# study's price per episode. Resumable; stops at --ceiling-usd (default 50).
+node --import tsx benchmarks/skill-prior/cross-agent-run.ts --phase experience --yes
+node --import tsx benchmarks/skill-prior/cross-agent-run.ts --phase eval --yes
+
+# Donors on another model (use a new output directory).
+node --import tsx benchmarks/skill-prior/cross-agent-run.ts --phase all --yes --donor-model openai/gpt-5.4-mini --out ~/bitterbot-skill-prior/cross-agent-gpt-donors
+```
+
+Limits: the pool is synthetic and its conventions are exact, so effects are
+upper bounds. Agents share one host and exchange a signed file; the mesh
+transport is not exercised. A pooled count is only as good as its sources:
+the reference reader collapses in the `stale` and `peer-liar` arms, and what
+the model does there is one of the things the study measures.
+
 ## Runtime integration
 
 The live adapter can show evidence beside each skill when

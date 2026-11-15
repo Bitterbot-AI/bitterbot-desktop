@@ -539,6 +539,30 @@ export function formatSkillEvidence(e: SkillEvidence, style: SkillEvidenceStyle)
 }
 
 /**
+ * Add an `<evidence>` line with the given text to the `<skill>` blocks named
+ * in `lines`, just before `</skill>`. Order and every other byte stay as they
+ * were; skills with no entry (or an empty line) are untouched. Angle brackets
+ * in the text are dropped so a line can never close or open a block.
+ */
+export function annotateSkillsPromptLines(
+  prompt: string,
+  lines: Readonly<Record<string, string>>,
+): string {
+  return prompt.replace(SKILL_BLOCK_RE, (block, name: string) => {
+    const text = Object.hasOwn(lines, name) ? lines[name]!.replace(/[<>\r\n]/g, " ").trim() : "";
+    if (!text) {
+      return block;
+    }
+    const m = /^([ \t]*)<\/skill>\n?$/m.exec(block);
+    if (!m || m.index === undefined) {
+      return block;
+    }
+    const line = `${m[1]}  <evidence>${text}</evidence>\n`;
+    return block.slice(0, m.index) + line + block.slice(m.index);
+  });
+}
+
+/**
  * Add an `<evidence>` line to the `<skill>` blocks named in `evidence`, just
  * before `</skill>`. Order and every other byte stay as they were; skills with
  * no entry (or zero runs) are untouched. Indexed, measured outcomes shown next
@@ -549,19 +573,13 @@ export function annotateSkillsPrompt(
   evidence: Readonly<Record<string, SkillEvidence>>,
   style: SkillEvidenceStyle = "counts",
 ): string {
-  return prompt.replace(SKILL_BLOCK_RE, (block, name: string) => {
-    const e = evidence[name];
-    if (!isSkillEvidence(e) || e.runs === 0) {
-      return block;
+  const lines: Record<string, string> = {};
+  for (const [name, e] of Object.entries(evidence)) {
+    if (isSkillEvidence(e) && e.runs > 0) {
+      lines[name] = formatSkillEvidence(e, style);
     }
-    const m = /^([ \t]*)<\/skill>\n?$/m.exec(block);
-    if (!m || m.index === undefined) {
-      return block;
-    }
-    const indent = `${m[1]}  `;
-    const line = `${indent}<evidence>${formatSkillEvidence(e, style)}</evidence>\n`;
-    return block.slice(0, m.index) + line + block.slice(m.index);
-  });
+  }
+  return annotateSkillsPromptLines(prompt, lines);
 }
 
 // ---------------------------------------------------------------------------
