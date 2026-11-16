@@ -791,3 +791,53 @@ export const GATE2: readonly GateStep[] = [
     needsSignTest: true,
   },
 ];
+
+/**
+ * Replication (registered 2026-11-16 before any run): the two defences as the
+ * confirmatory family, on fresh instances, with a fresh recipient and donors
+ * that may run on another model. Arms come from both earlier sets.
+ */
+export const REP_ARMS = [
+  "none",
+  "own",
+  "own+peer",
+  "own+liar",
+  "own+liar-guarded",
+  "live",
+  "live-liar",
+  "live-liar-quorum",
+] as const;
+export type RepArm = (typeof REP_ARMS)[number];
+
+export const GATE_REP: readonly GateStep[] = [
+  {
+    id: "guard",
+    claim: "Checking donors against own outcomes removes the harm of a lying donor",
+    terms: [
+      ["own+liar-guarded", 1],
+      ["own+liar", -1],
+    ],
+    lowerBoundAbove: 0,
+    needsSignTest: true,
+  },
+  {
+    id: "quorum",
+    claim: "A live pool with one lying donor, read by quorum, still beats no card",
+    terms: [
+      ["live-liar-quorum", 1],
+      ["none", -1],
+    ],
+    lowerBoundAbove: 0,
+    needsSignTest: true,
+  },
+  {
+    id: "net-gain",
+    claim: "A guarded pool containing a liar still adds to the recipient's own experience",
+    terms: [
+      ["own+liar-guarded", 1],
+      ["own", -1],
+    ],
+    lowerBoundAbove: 0,
+    needsSignTest: true,
+  },
+];

@@ -84,6 +84,8 @@ import {
   viewFor2,
   XA2_ARMS,
   type Xa2Arm,
+  GATE_REP,
+  REP_ARMS,
 } from "./cross-agent.js";
 import {
   estimateUsd,
@@ -110,6 +112,7 @@ const { values: args } = parseArgs({
     "ceiling-usd": { type: "string", default: "50" },
     "max-runs": { type: "string" },
     concurrency: { type: "string", default: "1" },
+    "seed-offset": { type: "string", default: "0" },
     families: { type: "string" },
     envs: { type: "string" },
     arms: { type: "string" },
@@ -127,9 +130,10 @@ if (
   phase !== "eval" &&
   phase !== "all" &&
   phase !== "live" &&
-  phase !== "eval2"
+  phase !== "eval2" &&
+  phase !== "rep"
 ) {
-  throw new Error("--phase must be experience | eval | all | live | eval2");
+  throw new Error("--phase must be experience | eval | all | live | eval2 | rep");
 }
 const SIM = args.simulate;
 const families = args.families
@@ -177,7 +181,8 @@ const EVAL_PHASE = SIM ? "xa-sim-eval" : "xa-eval";
 /** Follow-up: a cohort that shares its records as it goes, and the arms that read it. */
 const LIVE = DONORS.map((_, i) => `l${i + 1}`);
 const LIVE_PHASE = SIM ? "xa-sim-live" : "xa-live";
-const EVAL2_PHASE = SIM ? "xa-sim-eval2" : "xa-eval2";
+const REP = phase === "rep";
+const EVAL2_PHASE = REP ? (SIM ? "xa-sim-rep" : "xa-rep") : SIM ? "xa-sim-eval2" : "xa-eval2";
 /** Live agent `l<k>` works the same instances as donor `d<k>`. */
 const seedIndexOf = (agent: string) =>
   LIVE.includes(agent) ? LIVE.indexOf(agent) + 1 : AGENTS.indexOf(agent);
@@ -193,9 +198,13 @@ const pct = (x: number | null | undefined) =>
   x === null || x === undefined ? "n/a" : `${(x * 100).toFixed(1)}%`;
 
 /** Development seeds for one agent's episodes: disjoint blocks, far from earlier studies. */
+const SEED_OFFSET = Number(args["seed-offset"]);
+if (!Number.isSafeInteger(SEED_OFFSET) || SEED_OFFSET < 0) {
+  throw new Error("--seed-offset must be a non-negative integer");
+}
 const expSeeds = (agentIndex: number) =>
-  seedsIn("development", 40_000 + 1000 * agentIndex, BUDGET, SALT);
-const evalSeeds = seedsIn("final", 60_000, EVAL_SEEDS, SALT);
+  seedsIn("development", 40_000 + SEED_OFFSET + 1000 * agentIndex, BUDGET, SALT);
+const evalSeeds = seedsIn("final", 60_000 + SEED_OFFSET, EVAL_SEEDS, SALT);
 
 type Execute = (spec: TrialSpec, model: string, view: CardView) => Promise<TrialRecord>;
 
@@ -946,7 +955,7 @@ async function main(): Promise<void> {
   }
 
   // ---------------------------------------------------- follow-up: eval2
-  if (phase === "eval2") {
+  if (phase === "eval2" || REP) {
     const ownFull = recordsOf(tracesOf(records, "r0"));
     const batch = await importAll(DONORS);
     const live = await importAll(LIVE);
@@ -979,16 +988,20 @@ async function main(): Promise<void> {
     );
     const trustStale = staleCells.map((c) => donorTrust(ownFull, c));
 
-    const arms = (
-      args.arms ? XA2_ARMS.filter((a) => args.arms!.split(",").includes(a)) : XA2_ARMS
-    ) as readonly Xa2Arm[];
-    const baseFile = path.join(out, `protocol-${EVAL_PHASE}.json`);
-    const base = JSON.parse(await fs.readFile(baseFile, "utf-8")) as { hash: string };
+    const armSet: readonly string[] = REP ? REP_ARMS : XA2_ARMS;
+    const arms = args.arms ? armSet.filter((a) => args.arms!.split(",").includes(a)) : armSet;
+    const base = REP
+      ? { hash: "none (stand-alone replication)" }
+      : (JSON.parse(await fs.readFile(path.join(out, `protocol-${EVAL_PHASE}.json`), "utf-8")) as {
+          hash: string;
+        });
     const protocol = {
       salt: SALT,
       followUpOf: base.hash,
-      registered:
-        "after an interim read of the first study (about one third of its evaluation), before any of these arms ran",
+      registered: REP
+        ? "2026-11-16, before any run of the replication; arms, thresholds and gate fixed from the follow-up"
+        : "after an interim read of the first study (about one third of its evaluation), before any of these arms ran",
+      ...(REP ? { seedOffset: SEED_OFFSET, donors: N_DONORS } : {}),
       simulated: SIM,
       recipientModel,
       donorModel,
@@ -996,8 +1009,8 @@ async function main(): Promise<void> {
       families,
       envs,
       evalSeeds,
-      arms: XA2_ARMS,
-      gate: GATE2,
+      arms: armSet,
+      gate: REP ? GATE_REP : GATE2,
       quorum: QUORUM,
       trust: { minContradictions: TRUST_MIN_CONTRADICTIONS, maxRate: TRUST_MAX_RATE },
       liarIndex,
@@ -1048,7 +1061,18 @@ async function main(): Promise<void> {
         trustStale: trustStale.map((t) => t.trusted),
       };
       await batched(arms, async (arm) => {
-        const view = viewFor2(arm, inputs);
+        const view = (XA_ARMS as readonly string[]).includes(arm)
+          ? viewFor(arm as XaArm, {
+              ownHalf: inputs.own,
+              own: inputs.own,
+              donors: inputs.donors,
+              staleDonors: inputs.staleDonors,
+              correct: inst.correctSkill,
+              decoys: inst.decoySkills,
+              budget: BUDGET,
+              seed: cell,
+            })
+          : viewFor2(arm as Xa2Arm, inputs);
         ceiling.set(arm, [
           ...(ceiling.get(arm) ?? []),
           referencePick(view, variants)[inst.correctSkill]!,
@@ -1074,7 +1098,7 @@ async function main(): Promise<void> {
     }
 
     const rs = [...records.values()].filter(
-      (r) => r.phase === EVAL_PHASE || r.phase === EVAL2_PHASE,
+      (r) => (!REP && r.phase === EVAL_PHASE) || r.phase === EVAL2_PHASE,
     );
     const of = (arm: string) => rs.filter((r) => r.arm === arm);
     const rows: EvalRow[] = rs.map((r) => ({
@@ -1086,13 +1110,14 @@ async function main(): Promise<void> {
     }));
     const mean = (xs: readonly number[]) =>
       xs.length ? xs.reduce((s, x) => s + x, 0) / xs.length : null;
-    const gate = runGate(rows, GATE2);
+    const gate = runGate(rows, REP ? GATE_REP : GATE2);
     const d = (label: string, a: string, b: string) =>
       cellContrast(rows, label, [
         [a, 1],
         [b, -1],
       ]);
     const exploratory = [
+      d("own+peer minus own (honest pool added to own experience)", "own+peer", "own"),
       d("live minus none", "live", "none"),
       d("live minus own (three peers sharing live against one's own experience)", "live", "own"),
       d("own+live minus own+peer", "own+live", "own+peer"),
@@ -1125,7 +1150,7 @@ async function main(): Promise<void> {
       t: { checks: number; contradictions: number; trusted: boolean },
     ) => `| ${name} | ${t.checks} | ${t.contradictions} | ${t.trusted ? "kept" : "DROPPED"} |`;
     report.push(
-      `Follow-up protocol hash ${protoHash.slice(0, 16)} (${protoFile}), written before the first follow-up run; first-study protocol ${base.hash.slice(0, 16)}. Same ${insts.length} instances and index order as the first study, so every contrast below is paired by cell. These arms were designed after an interim read of the first study.`,
+      `${REP ? "Replication" : "Follow-up"} protocol hash ${protoHash.slice(0, 16)} (${protoFile}), written before the first run of this phase; first-study protocol ${base.hash.slice(0, 16)}. ${REP ? `Fresh instances (seed offset ${SEED_OFFSET}), fresh recipient and donors; ${insts.length} instances, contrasts paired by cell.` : `Same ${insts.length} instances and index order as the first study, so every contrast below is paired by cell. These arms were designed after an interim read of the first study.`}`,
       "",
       "## Donor checks against the recipient's own verified outcomes",
       "",
@@ -1145,13 +1170,13 @@ async function main(): Promise<void> {
           `| ${a} | ${of(a).length} | ${ceiling.has(a) ? pct(mean(ceiling.get(a)!)) : "see first report"} | ${pct(mean(of(a).map(readCorrect)))} | ${pct(mean(of(a).map((r) => (r.error === null ? r.pass : 0))))} |`,
       ),
       "",
-      "## Follow-up family (fixed order; the first failure makes the rest exploratory)",
+      `## ${REP ? "Confirmatory" : "Follow-up"} family (fixed order; the first failure makes the rest exploratory)`,
       "",
       renderGate(gate),
       "",
       "## Exploratory contrasts",
       "",
-      renderContrastRows(exploratory),
+      renderContrastRows(exploratory.filter((c) => c.n > 0)),
       "",
     );
     Object.assign(summary, { protoHash, gate, exploratory, trustLiar, trustStale, liarIndex });

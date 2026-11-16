@@ -605,6 +605,31 @@ recovers most of the honest pool's value without any own experience. 432
 live and 1,008 evaluation episodes, no errored runs; $77.09 in total for
 both studies.
 
+### Replication of the defences (registered 2026-11-16, not yet run)
+
+The guard and the quorum met their criteria in the follow-up, but as steps
+after a failed first step and in arms designed after an interim look. This
+replication makes them the confirmatory family on data none of that touched:
+fresh instances (`--seed-offset 5000` shifts every experience and evaluation
+seed), a fresh recipient, and fresh one-off and live donor cohorts on a
+second model (`openai/gpt-5.4-mini`). Arms, quorum size, guard thresholds
+and the liar's construction are unchanged.
+
+Arms (`--phase rep`): `none`, `own`, `own+peer`, `own+liar`,
+`own+liar-guarded`, `live`, `live-liar`, `live-liar-quorum`.
+
+Fixed-order family: (1) own+liar-guarded minus own+liar, (2)
+live-liar-quorum minus none, (3) own+liar-guarded minus own. Same unit,
+interval and sign test as before.
+
+```bash
+OUT=~/bitterbot-skill-prior/cross-agent-rep
+ARGS="--seed-offset 5000 --donor-model openai/gpt-5.4-mini --out $OUT --ceiling-usd 55 --yes"
+node --import tsx benchmarks/skill-prior/cross-agent-run.ts --phase experience $ARGS
+node --import tsx benchmarks/skill-prior/cross-agent-run.ts --phase live $ARGS
+node --import tsx benchmarks/skill-prior/cross-agent-run.ts --phase rep $ARGS
+```
+
 ## Runtime integration
 
 The live adapter can show evidence beside each skill when
