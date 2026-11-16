@@ -857,7 +857,13 @@ async function main(): Promise<void> {
   const foundIn = (pools: readonly CellRecords[], cell: string) =>
     pools.some((c) => Object.values(c[cell] ?? {}).some((x) => x.passed > 0));
   const triedIn = (pools: readonly CellRecords[], cell: string) =>
-    new Set(pools.flatMap((c) => Object.keys(c[cell] ?? {}))).size;
+    new Set(
+      pools.flatMap((c) =>
+        Object.entries(c[cell] ?? {})
+          .filter(([, e]) => e.runs > 0)
+          .map(([skill]) => skill),
+      ),
+    ).size;
 
   if (phase === "live") {
     confirm(LIVE.length * BUDGET * cellList.length, "live experience");

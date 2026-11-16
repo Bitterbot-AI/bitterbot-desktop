@@ -416,7 +416,7 @@ an accept is 92-99% in every memory arm.
 
 Spend $34.70 (Haiku) and $18.79 (gpt-5.4-mini).
 
-## Cross-agent evidence cards (registered 2026-11-14, not yet run)
+## Cross-agent evidence cards (registered 2026-11-14, run 2026-11-15)
 
 Every study above has one agent. This one asks the network question
 directly: at the same per-agent budget, is experience that other agents
@@ -486,7 +486,46 @@ transport is not exercised. A pooled count is only as good as its sources:
 the reference reader collapses in the `stale` and `peer-liar` arms, and what
 the model does there is one of the things the study measures.
 
-### Follow-up: live pool, quorum and guard (registered 2026-11-15, not yet run)
+### Result (2026-11-15, Claude Haiku 4.5, 72 cells, 144 instances per arm)
+
+The registered primary was **not confirmed**: pooled peer cards did not beat
+the recipient's own experience (+5.6 pp, 95% CI [-9.0, 20.1], sign p 0.155).
+Every later step is therefore exploratory.
+
+| Arm      |  Pass | Arm           |  Pass |
+| -------- | ----: | ------------- | ----: |
+| none     | 19.4% | own+peer      | 68.8% |
+| placebo  | 23.6% | own-half+peer | 66.0% |
+| own-half | 31.9% | oracle        | 81.3% |
+| peer1    | 47.2% | own+stale     | 41.0% |
+| own      | 51.4% | peer-liar     | 10.4% |
+| peer     | 56.9% | stale         |  4.9% |
+
+| Contrast (per cell)                                              | Mean (pp) |    95% CI (pp) | Wins / losses / ties |
+| ---------------------------------------------------------------- | --------: | -------------: | -------------------: |
+| peer minus own (primary)                                         |       5.6 |   [-9.0, 20.1] |         21 / 14 / 37 |
+| peer minus placebo                                               |      33.3 |   [19.4, 48.6] |          34 / 3 / 35 |
+| coverage difference in differences                               |      20.1 |    [2.1, 38.2] |          30 / 9 / 33 |
+| peer-liar minus none                                             |      -9.0 |   [-19.4, 2.1] |          8 / 21 / 43 |
+| peer minus none                                                  |      37.5 |   [20.1, 55.6] |          38 / 3 / 31 |
+| own+peer minus own                                               |      17.4 |    [5.6, 31.3] |          25 / 6 / 41 |
+| own+peer minus own, recipient had no accepted variant (44 cells) |      25.0 |   [10.2, 43.3] |          20 / 2 / 22 |
+| own+peer minus own, recipient had one (28 cells)                 |       5.4 |  [-10.4, 22.4] |           5 / 4 / 19 |
+| peer1 minus own                                                  |      -4.2 |   [-18.1, 9.0] |         18 / 19 / 35 |
+| peer-liar minus peer                                             |     -46.5 | [-63.2, -28.5] |          1 / 43 / 28 |
+| stale minus none                                                 |     -14.6 |  [-24.3, -5.6] |          4 / 21 / 47 |
+| oracle minus peer                                                |      24.3 |   [10.4, 38.9] |          27 / 4 / 41 |
+
+What this supports: a peer's records are worth about as much as the same
+amount of one's own experience, and a pool adds to own experience, mostly
+where the recipient has not yet found an accepted variant. What it does not
+support: that peers beat own experience. A pool read as summed counts is
+worse than no card when one donor lies or when it comes from the wrong
+workspace. 576 experience and 1,728 evaluation episodes, no errored runs,
+$47.36 at list prices. Episodes that reached the 120 s timeout count as
+failures in every arm; they concentrate in the multi-file-rename family.
+
+### Follow-up: live pool, quorum and guard (registered 2026-11-15, run 2026-11-15)
 
 Registered after an interim read of the first study (about one third of its
 evaluation) and before any of these arms ran. The interim read showed two
@@ -519,6 +558,52 @@ ran, so it did not steer their exploration.
 node --import tsx benchmarks/skill-prior/cross-agent-run.ts --phase live --yes --ceiling-usd 85
 node --import tsx benchmarks/skill-prior/cross-agent-run.ts --phase eval2 --yes --ceiling-usd 85
 ```
+
+#### Follow-up result (2026-11-15, same model and instances)
+
+The registered first step was **not confirmed**: for the recipient, the live
+pool did not beat the one-off pool (+5.6 pp, 95% CI [-7.6, 18.8], sign p
+0.209). The two later steps meet their criteria and are exploratory.
+
+During experience, on the same instances and index order:
+
+| Pool             | Arrival 1 |     2 |     3 |     4 |     5 |     6 | Cells with an accepted variant | Distinct variants tried per cell |
+| ---------------- | --------: | ----: | ----: | ----: | ----: | ----: | -----------------------------: | -------------------------------: |
+| one-off (d1..d3) |     20.8% | 20.8% | 19.4% | 41.7% | 33.3% | 31.9% |                       49 of 72 |                             3.04 |
+| live (l1..l3)    |     27.8% | 44.4% | 55.6% | 63.9% | 59.7% | 65.3% |                       54 of 72 |                             2.65 |
+
+Arrival 1 has no evidence in either row, so its 7 pp gap is run-to-run noise.
+Live agents reuse a variant once one is accepted (fewer distinct variants
+tried), which raises their own pass rate but adds little coverage.
+
+| Arm               |  Pass | Arm              |  Pass |
+| ----------------- | ----: | ---------------- | ----: |
+| live              | 62.5% | live-liar        | 17.4% |
+| own+live          | 71.5% | live-liar-quorum | 54.9% |
+| own+liar          | 43.1% | own+liar-guarded | 67.4% |
+| own+stale-guarded | 50.0% |                  |       |
+
+| Contrast (per cell)                      | Mean (pp) |   95% CI (pp) | Wins / losses / ties |
+| ---------------------------------------- | --------: | ------------: | -------------------: |
+| live minus peer (step 1)                 |       5.6 |  [-7.6, 18.8] |         22 / 16 / 34 |
+| live-liar-quorum minus none (step 2)     |      35.4 |  [17.4, 54.2] |          37 / 7 / 28 |
+| own+liar-guarded minus own+liar (step 3) |      24.3 |   [9.7, 39.6] |          30 / 4 / 38 |
+| live-liar-quorum minus live-liar         |      37.5 |  [18.1, 56.3] |          36 / 4 / 32 |
+| live-liar-quorum minus live              |      -7.6 |  [-18.1, 3.5] |         10 / 17 / 45 |
+| own+liar-guarded minus own               |      16.0 |   [4.9, 29.2] |          24 / 7 / 41 |
+| own+liar-guarded minus own+peer          |      -1.4 |   [-8.3, 6.9] |          9 / 12 / 51 |
+| own+stale-guarded minus own+stale        |       9.0 |  [-5.6, 22.2] |         22 / 11 / 39 |
+| own+stale-guarded minus own              |      -1.4 | [-12.5, 10.4] |          9 / 12 / 51 |
+| own+live minus own                       |      20.1 |   [6.9, 34.7] |          28 / 8 / 36 |
+| oracle minus own+live                    |       9.7 |   [2.1, 17.4] |          18 / 4 / 50 |
+
+The guard dropped the lying donor (51 contradictions in 60 checks; honest
+donors 4 of 58 and 5 of 60) and all three donors of the misapplied pool (19
+to 21 contradictions in 47 to 64 checks). With the guard, a pool containing
+a liar performs like an honest pool. Read by quorum, a live pool with a liar
+recovers most of the honest pool's value without any own experience. 432
+live and 1,008 evaluation episodes, no errored runs; $77.09 in total for
+both studies.
 
 ## Runtime integration
 
