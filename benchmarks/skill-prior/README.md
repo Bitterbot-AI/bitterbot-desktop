@@ -605,7 +605,7 @@ recovers most of the honest pool's value without any own experience. 432
 live and 1,008 evaluation episodes, no errored runs; $77.09 in total for
 both studies.
 
-### Replication of the defences (registered 2026-11-16, not yet run)
+### Replication of the defences (registered and run 2026-11-16)
 
 The guard and the quorum met their criteria in the follow-up, but as steps
 after a failed first step and in arms designed after an interim look. This
@@ -629,6 +629,53 @@ node --import tsx benchmarks/skill-prior/cross-agent-run.ts --phase experience $
 node --import tsx benchmarks/skill-prior/cross-agent-run.ts --phase live $ARGS
 node --import tsx benchmarks/skill-prior/cross-agent-run.ts --phase rep $ARGS
 ```
+
+### Replication result (2026-11-16)
+
+2,160 episodes (576 experience, 432 live, 1,152 evaluation), no errored run,
+$32.02 at list prices. Recipient `anthropic/claude-haiku-4-5`; one-off and
+live donors `openai/gpt-5.4-mini`. Protocol hash `0e3179319500e977`, written
+before the first evaluation run. All three registered steps were confirmed.
+
+| Step     | Contrast                        | Mean (pp) |  95% CI (pp) | Wins / losses / ties |   Sign p | Result    |
+| -------- | ------------------------------- | --------: | -----------: | -------------------: | -------: | --------- |
+| guard    | own+liar-guarded minus own+liar |      18.1 |  [4.2, 31.9] |          26 / 9 / 37 |   0.0030 | CONFIRMED |
+| quorum   | live-liar-quorum minus none     |      29.9 | [10.4, 49.3] |          35 / 6 / 31 | < 0.0001 | CONFIRMED |
+| net-gain | own+liar-guarded minus own      |      16.0 |  [6.3, 26.4] |          24 / 4 / 44 |   0.0001 | CONFIRMED |
+
+| Arm              | Model pass |
+| ---------------- | ---------: |
+| none             |      28.5% |
+| own              |      47.9% |
+| own+peer         |      70.1% |
+| own+liar         |      45.8% |
+| own+liar-guarded |      63.9% |
+| live             |      77.8% |
+| live-liar        |      16.0% |
+| live-liar-quorum |      58.3% |
+
+The guard dropped the lying donor (53 contradictions in 71 checks) and kept
+both honest donors (6 of 59 and 8 of 63).
+
+Exploratory, with intervals and no claim: own+peer minus own +22.2
+[9.7, 35.4]; live minus own +29.9 [13.2, 46.5]; live-liar minus none -12.5
+[-23.6, -1.4]; live-liar-quorum minus live -19.4 [-34.0, -4.9] (the quorum
+recovers 42.4 points of the liar's damage but not all of it);
+own+liar-guarded minus own+peer -6.3 [-16.7, 3.5].
+
+During the live phase the GPT cohort's pass rate by arrival was 33.3, 29.2,
+55.6, 65.3, 72.2 and 77.8%, against 25.0, 25.0, 25.0, 31.9, 41.7 and 31.9%
+for the one-off donors on the same instances, and it ended with an accepted
+variant in 63 of 72 cells against 50.
+
+Limits: one cohort of three per condition, so there is no between-cohort
+variance; one liar in three, lying in every cell, with no collusion (two
+colluding donors would pass a quorum of two); the guard needs the recipient
+to hold records of its own; the pool is synthetic with exact conventions;
+exchange is a signed file on one host. In this run the unguarded liar cost
+the experienced recipient little against its own record (-2.1 pp); the
+guard's gain is the pool's benefit it restores, not harm it removes below
+the own-experience baseline.
 
 ## Runtime integration
 
