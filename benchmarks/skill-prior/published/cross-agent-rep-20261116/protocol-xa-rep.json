@@ -1,0 +1,109 @@
+{
+  "hash": "0e3179319500e977508e26b4f479726b045916523fb66f1b66113244e4e6d0ec",
+  "protocol": {
+    "salt": "cross-agent-v1",
+    "followUpOf": "none (stand-alone replication)",
+    "registered": "2026-11-16, before any run of the replication; arms, thresholds and gate fixed from the follow-up",
+    "seedOffset": 5000,
+    "donors": 3,
+    "simulated": false,
+    "recipientModel": "anthropic/claude-haiku-4-5",
+    "donorModel": "openai/gpt-5.4-mini",
+    "budget": 2,
+    "families": [
+      "ledger-sum",
+      "log-triage",
+      "config-diff",
+      "dep-depth",
+      "regex-valid",
+      "multi-file-rename",
+      "csv-filter-sum",
+      "json-path",
+      "date-window"
+    ],
+    "envs": [
+      "alder",
+      "birch",
+      "cedar",
+      "dunmore",
+      "elm",
+      "fenwick",
+      "garnet",
+      "holloway"
+    ],
+    "evalSeeds": [
+      65005,
+      65017
+    ],
+    "arms": [
+      "none",
+      "own",
+      "own+peer",
+      "own+liar",
+      "own+liar-guarded",
+      "live",
+      "live-liar",
+      "live-liar-quorum"
+    ],
+    "gate": [
+      {
+        "id": "guard",
+        "claim": "Checking donors against own outcomes removes the harm of a lying donor",
+        "terms": [
+          [
+            "own+liar-guarded",
+            1
+          ],
+          [
+            "own+liar",
+            -1
+          ]
+        ],
+        "lowerBoundAbove": 0,
+        "needsSignTest": true
+      },
+      {
+        "id": "quorum",
+        "claim": "A live pool with one lying donor, read by quorum, still beats no card",
+        "terms": [
+          [
+            "live-liar-quorum",
+            1
+          ],
+          [
+            "none",
+            -1
+          ]
+        ],
+        "lowerBoundAbove": 0,
+        "needsSignTest": true
+      },
+      {
+        "id": "net-gain",
+        "claim": "A guarded pool containing a liar still adds to the recipient's own experience",
+        "terms": [
+          [
+            "own+liar-guarded",
+            1
+          ],
+          [
+            "own",
+            -1
+          ]
+        ],
+        "lowerBoundAbove": 0,
+        "needsSignTest": true
+      }
+    ],
+    "quorum": 2,
+    "trust": {
+      "minContradictions": 3,
+      "maxRate": 0.25
+    },
+    "liarIndex": 2,
+    "signAlphaOneSided": 0.025,
+    "liveBundles": "b9fcbc4ac9f48b378e64f163033e3873790faed696615127da6d398d1bf2a288",
+    "batchBundles": "bd591bcd896d5e2111344c8f6f3754608180e78e07922ac1e6a5fe09472c3d3c",
+    "ownRecords": "af44071ca462a220fe4c33ba844f285c33eaaa48b979aa0007550d8debc6cd7a"
+  }
+}

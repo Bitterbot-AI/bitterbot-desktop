@@ -416,7 +416,285 @@ an accept is 92-99% in every memory arm.
 
 Spend $34.70 (Haiku) and $18.79 (gpt-5.4-mini).
 
+## Cross-agent evidence cards (registered 2026-11-14, run 2026-11-15)
+
+Every study above has one agent. This one asks the network question
+directly: at the same per-agent budget, is experience that other agents
+earned worth more to a recipient than the experience it earned itself?
+
+One recipient and three donors each work two episodes in every cell of the
+latent-convention pool, with accept/reject feedback only and their own
+earlier outcomes shown as `<evidence>` lines. Each donor then signs its
+per-cell counts into a card bundle. The recipient verifies each bundle
+(signature against the stated origin, a fixed set of trusted donor keys, no
+cell claiming more runs than the budget, and a content hash per skill so a
+card about an edited SKILL.md is dropped), and is evaluated on held-out
+instances under twelve arms that differ only in the evidence lines:
+
+| Arm                         | Evidence shown                                            |
+| --------------------------- | --------------------------------------------------------- |
+| `none`                      | nothing                                                   |
+| `own-half`                  | the recipient's first half of its budget                  |
+| `own`                       | the recipient's full budget                               |
+| `peer1`                     | one donor's full budget                                   |
+| `peer`                      | three donors' budgets, pooled                             |
+| `own-half+peer`, `own+peer` | both sources                                              |
+| `peer-liar`                 | the pool with one donor replaced by a signed false report |
+| `stale`, `own+stale`        | a pool earned in a workspace with a different convention  |
+| `placebo`                   | the pool's usage counts with no outcome                   |
+| `oracle`                    | exact records                                             |
+
+A line names its source, for example `Your own runs here: REJECTED every
+time it was used (1 use). Runs here by 3 other agents: ACCEPTED every time
+it was used (2 uses).` Every variant of the family gets a line once the arm
+has any record in the cell, so "not tried yet" stays visible.
+
+The unit of analysis is the cell, because a cell's instances share one
+card. Intervals resample families and then cells within a family; tests are
+exact one-sided sign tests over cells at 0.025. The confirmatory family is
+tested in a fixed order, and everything after the first failure is
+exploratory:
+
+1. `peer` minus `own` (primary).
+2. `peer` minus `placebo`.
+3. (`peer` minus `none`) minus (`own+peer` minus `own`): the pool adds more
+   where the recipient has no experience. Interval only.
+4. `peer-liar` minus `none`.
+
+The report also gives `peer1` minus `own` with its interval (no claim: 72
+cells cannot support a useful non-inferiority margin), the pool's gain at
+three levels of local experience, flips per task in both directions, and a
+reference reader that uses each card perfectly, which is the ceiling the
+shown records can support.
+
+```sh
+# Free dry run with a simulated reader; no model calls.
+node --import tsx benchmarks/skill-prior/cross-agent-run.ts --phase all --simulate
+
+# The study: 2,304 episodes, about $30 on Claude Haiku 4.5 at the online
+# study's price per episode. Resumable; stops at --ceiling-usd (default 50).
+node --import tsx benchmarks/skill-prior/cross-agent-run.ts --phase experience --yes
+node --import tsx benchmarks/skill-prior/cross-agent-run.ts --phase eval --yes
+
+# Donors on another model (use a new output directory).
+node --import tsx benchmarks/skill-prior/cross-agent-run.ts --phase all --yes --donor-model openai/gpt-5.4-mini --out ~/bitterbot-skill-prior/cross-agent-gpt-donors
+```
+
+Limits: the pool is synthetic and its conventions are exact, so effects are
+upper bounds. Agents share one host and exchange a signed file; the mesh
+transport is not exercised. A pooled count is only as good as its sources:
+the reference reader collapses in the `stale` and `peer-liar` arms, and what
+the model does there is one of the things the study measures.
+
+### Result (2026-11-15, Claude Haiku 4.5, 72 cells, 144 instances per arm)
+
+The registered primary was **not confirmed**: pooled peer cards did not beat
+the recipient's own experience (+5.6 pp, 95% CI [-9.0, 20.1], sign p 0.155).
+Every later step is therefore exploratory.
+
+| Arm      |  Pass | Arm           |  Pass |
+| -------- | ----: | ------------- | ----: |
+| none     | 19.4% | own+peer      | 68.8% |
+| placebo  | 23.6% | own-half+peer | 66.0% |
+| own-half | 31.9% | oracle        | 81.3% |
+| peer1    | 47.2% | own+stale     | 41.0% |
+| own      | 51.4% | peer-liar     | 10.4% |
+| peer     | 56.9% | stale         |  4.9% |
+
+| Contrast (per cell)                                              | Mean (pp) |    95% CI (pp) | Wins / losses / ties |
+| ---------------------------------------------------------------- | --------: | -------------: | -------------------: |
+| peer minus own (primary)                                         |       5.6 |   [-9.0, 20.1] |         21 / 14 / 37 |
+| peer minus placebo                                               |      33.3 |   [19.4, 48.6] |          34 / 3 / 35 |
+| coverage difference in differences                               |      20.1 |    [2.1, 38.2] |          30 / 9 / 33 |
+| peer-liar minus none                                             |      -9.0 |   [-19.4, 2.1] |          8 / 21 / 43 |
+| peer minus none                                                  |      37.5 |   [20.1, 55.6] |          38 / 3 / 31 |
+| own+peer minus own                                               |      17.4 |    [5.6, 31.3] |          25 / 6 / 41 |
+| own+peer minus own, recipient had no accepted variant (44 cells) |      25.0 |   [10.2, 43.3] |          20 / 2 / 22 |
+| own+peer minus own, recipient had one (28 cells)                 |       5.4 |  [-10.4, 22.4] |           5 / 4 / 19 |
+| peer1 minus own                                                  |      -4.2 |   [-18.1, 9.0] |         18 / 19 / 35 |
+| peer-liar minus peer                                             |     -46.5 | [-63.2, -28.5] |          1 / 43 / 28 |
+| stale minus none                                                 |     -14.6 |  [-24.3, -5.6] |          4 / 21 / 47 |
+| oracle minus peer                                                |      24.3 |   [10.4, 38.9] |          27 / 4 / 41 |
+
+What this supports: a peer's records are worth about as much as the same
+amount of one's own experience, and a pool adds to own experience, mostly
+where the recipient has not yet found an accepted variant. What it does not
+support: that peers beat own experience. A pool read as summed counts is
+worse than no card when one donor lies or when it comes from the wrong
+workspace. 576 experience and 1,728 evaluation episodes, no errored runs,
+$47.36 at list prices. Episodes that reached the 120 s timeout count as
+failures in every arm; they concentrate in the multi-file-rename family.
+
+### Follow-up: live pool, quorum and guard (registered 2026-11-15, run 2026-11-15)
+
+Registered after an interim read of the first study (about one third of its
+evaluation) and before any of these arms ran. The interim read showed two
+things: donors repeat each other's exploration, and a pool read as summed
+counts is undone by one lying donor or by a pool from the wrong workspace.
+
+- **Live cohort** (`--phase live`): agents `l1..l3` work the same instances
+  and index order as donors `d1..d3`, one after another within a cell, and
+  each sees its own record plus everything the others have recorded there.
+- **Quorum**: one vote per donor per variant; a verdict is shown only when at
+  least two distinct donors agree and outnumber the dissent.
+- **Guard**: a donor is dropped when its records contradict the recipient's
+  own verified outcomes (3 or more contradictions that are at least 25% of
+  the checks, across all cells), and the recipient's own record speaks for
+  any variant it has tried. The thresholds were set from the experience
+  phase, where honest donors contradict the recipient on 7 to 12% of checks.
+
+Seven arms (`--phase eval2`) on the first study's instances, so contrasts are
+paired by cell: `live`, `own+live`, `live-liar`, `live-liar-quorum`,
+`own+liar`, `own+liar-guarded`, `own+stale-guarded`. In these arms the liar
+is one fixed donor that lies in every cell.
+
+Fixed-order family: (1) live minus peer, (2) live-liar-quorum minus none,
+(3) own+liar-guarded minus own+liar. Same unit, interval and sign test as the
+first study. Limits: the arms were designed after seeing interim data from
+the same instances; the liar's records are substituted after the live cohort
+ran, so it did not steer their exploration.
+
+```bash
+node --import tsx benchmarks/skill-prior/cross-agent-run.ts --phase live --yes --ceiling-usd 85
+node --import tsx benchmarks/skill-prior/cross-agent-run.ts --phase eval2 --yes --ceiling-usd 85
+```
+
+#### Follow-up result (2026-11-15, same model and instances)
+
+The registered first step was **not confirmed**: for the recipient, the live
+pool did not beat the one-off pool (+5.6 pp, 95% CI [-7.6, 18.8], sign p
+0.209). The two later steps meet their criteria and are exploratory.
+
+During experience, on the same instances and index order:
+
+| Pool             | Arrival 1 |     2 |     3 |     4 |     5 |     6 | Cells with an accepted variant | Distinct variants tried per cell |
+| ---------------- | --------: | ----: | ----: | ----: | ----: | ----: | -----------------------------: | -------------------------------: |
+| one-off (d1..d3) |     20.8% | 20.8% | 19.4% | 41.7% | 33.3% | 31.9% |                       49 of 72 |                             3.04 |
+| live (l1..l3)    |     27.8% | 44.4% | 55.6% | 63.9% | 59.7% | 65.3% |                       54 of 72 |                             2.65 |
+
+Arrival 1 has no evidence in either row, so its 7 pp gap is run-to-run noise.
+Live agents reuse a variant once one is accepted (fewer distinct variants
+tried), which raises their own pass rate but adds little coverage.
+
+| Arm               |  Pass | Arm              |  Pass |
+| ----------------- | ----: | ---------------- | ----: |
+| live              | 62.5% | live-liar        | 17.4% |
+| own+live          | 71.5% | live-liar-quorum | 54.9% |
+| own+liar          | 43.1% | own+liar-guarded | 67.4% |
+| own+stale-guarded | 50.0% |                  |       |
+
+| Contrast (per cell)                      | Mean (pp) |   95% CI (pp) | Wins / losses / ties |
+| ---------------------------------------- | --------: | ------------: | -------------------: |
+| live minus peer (step 1)                 |       5.6 |  [-7.6, 18.8] |         22 / 16 / 34 |
+| live-liar-quorum minus none (step 2)     |      35.4 |  [17.4, 54.2] |          37 / 7 / 28 |
+| own+liar-guarded minus own+liar (step 3) |      24.3 |   [9.7, 39.6] |          30 / 4 / 38 |
+| live-liar-quorum minus live-liar         |      37.5 |  [18.1, 56.3] |          36 / 4 / 32 |
+| live-liar-quorum minus live              |      -7.6 |  [-18.1, 3.5] |         10 / 17 / 45 |
+| own+liar-guarded minus own               |      16.0 |   [4.9, 29.2] |          24 / 7 / 41 |
+| own+liar-guarded minus own+peer          |      -1.4 |   [-8.3, 6.9] |          9 / 12 / 51 |
+| own+stale-guarded minus own+stale        |       9.0 |  [-5.6, 22.2] |         22 / 11 / 39 |
+| own+stale-guarded minus own              |      -1.4 | [-12.5, 10.4] |          9 / 12 / 51 |
+| own+live minus own                       |      20.1 |   [6.9, 34.7] |          28 / 8 / 36 |
+| oracle minus own+live                    |       9.7 |   [2.1, 17.4] |          18 / 4 / 50 |
+
+The guard dropped the lying donor (51 contradictions in 60 checks; honest
+donors 4 of 58 and 5 of 60) and all three donors of the misapplied pool (19
+to 21 contradictions in 47 to 64 checks). With the guard, a pool containing
+a liar performs like an honest pool. Read by quorum, a live pool with a liar
+recovers most of the honest pool's value without any own experience. 432
+live and 1,008 evaluation episodes, no errored runs; $77.09 in total for
+both studies.
+
+### Replication of the defences (registered and run 2026-11-16)
+
+The guard and the quorum met their criteria in the follow-up, but as steps
+after a failed first step and in arms designed after an interim look. This
+replication makes them the confirmatory family on data none of that touched:
+fresh instances (`--seed-offset 5000` shifts every experience and evaluation
+seed), a fresh recipient, and fresh one-off and live donor cohorts on a
+second model (`openai/gpt-5.4-mini`). Arms, quorum size, guard thresholds
+and the liar's construction are unchanged.
+
+Arms (`--phase rep`): `none`, `own`, `own+peer`, `own+liar`,
+`own+liar-guarded`, `live`, `live-liar`, `live-liar-quorum`.
+
+Fixed-order family: (1) own+liar-guarded minus own+liar, (2)
+live-liar-quorum minus none, (3) own+liar-guarded minus own. Same unit,
+interval and sign test as before.
+
+```bash
+OUT=~/bitterbot-skill-prior/cross-agent-rep
+ARGS="--seed-offset 5000 --donor-model openai/gpt-5.4-mini --out $OUT --ceiling-usd 55 --yes"
+node --import tsx benchmarks/skill-prior/cross-agent-run.ts --phase experience $ARGS
+node --import tsx benchmarks/skill-prior/cross-agent-run.ts --phase live $ARGS
+node --import tsx benchmarks/skill-prior/cross-agent-run.ts --phase rep $ARGS
+```
+
+### Replication result (2026-11-16)
+
+2,160 episodes (576 experience, 432 live, 1,152 evaluation), no errored run,
+$32.02 at list prices. Recipient `anthropic/claude-haiku-4-5`; one-off and
+live donors `openai/gpt-5.4-mini`. Protocol hash `0e3179319500e977`, written
+before the first evaluation run. All three registered steps were confirmed.
+
+| Step     | Contrast                        | Mean (pp) |  95% CI (pp) | Wins / losses / ties |   Sign p | Result    |
+| -------- | ------------------------------- | --------: | -----------: | -------------------: | -------: | --------- |
+| guard    | own+liar-guarded minus own+liar |      18.1 |  [4.2, 31.9] |          26 / 9 / 37 |   0.0030 | CONFIRMED |
+| quorum   | live-liar-quorum minus none     |      29.9 | [10.4, 49.3] |          35 / 6 / 31 | < 0.0001 | CONFIRMED |
+| net-gain | own+liar-guarded minus own      |      16.0 |  [6.3, 26.4] |          24 / 4 / 44 |   0.0001 | CONFIRMED |
+
+| Arm              | Model pass |
+| ---------------- | ---------: |
+| none             |      28.5% |
+| own              |      47.9% |
+| own+peer         |      70.1% |
+| own+liar         |      45.8% |
+| own+liar-guarded |      63.9% |
+| live             |      77.8% |
+| live-liar        |      16.0% |
+| live-liar-quorum |      58.3% |
+
+The guard dropped the lying donor (53 contradictions in 71 checks) and kept
+both honest donors (6 of 59 and 8 of 63).
+
+Exploratory, with intervals and no claim: own+peer minus own +22.2
+[9.7, 35.4]; live minus own +29.9 [13.2, 46.5]; live-liar minus none -12.5
+[-23.6, -1.4]; live-liar-quorum minus live -19.4 [-34.0, -4.9] (the quorum
+recovers 42.4 points of the liar's damage but not all of it);
+own+liar-guarded minus own+peer -6.3 [-16.7, 3.5].
+
+During the live phase the GPT cohort's pass rate by arrival was 33.3, 29.2,
+55.6, 65.3, 72.2 and 77.8%, against 25.0, 25.0, 25.0, 31.9, 41.7 and 31.9%
+for the one-off donors on the same instances, and it ended with an accepted
+variant in 63 of 72 cells against 50.
+
+Limits: one cohort of three per condition, so there is no between-cohort
+variance; one liar in three, lying in every cell, with no collusion (two
+colluding donors would pass a quorum of two); the guard needs the recipient
+to hold records of its own; the pool is synthetic with exact conventions;
+exchange is a signed file on one host. In this run the unguarded liar cost
+the experienced recipient little against its own record (-2.1 pp); the
+guard's gain is the pool's benefit it restores, not harm it removes below
+the own-experience baseline.
+
+### Published evidence
+
+Raw records, reports, protocols and the signed bundles for all three
+cross-agent studies are in [`published/`](published/README.md).
+`published.test.ts` recomputes every gate step from the raw records and
+verifies each bundle's signature.
+
 ## Runtime integration
+
+Cross-agent cards are integrated in the runtime as of this change:
+`src/agents/skills/skill-cards.ts` holds the pooling, quorum and guard
+functions (this benchmark imports them from there, so what was measured is
+what runs), and `skill-cards-runtime.ts` shows a quorum-agreed peer verdict
+beside skills the node has not tried. The runtime bundle
+(`bitterbot/skill-cards/2`) is keyed by skill content hash and travels on
+the opt-in public package mesh. The runtime applies the guard and the
+quorum together, a combination the studies did not run. See
+`docs/memory/skills-pipeline.md`.
 
 The live adapter can show evidence beside each skill when
 `skills.prior.enabled` is explicitly enabled. `skills.prior.evidence` selects

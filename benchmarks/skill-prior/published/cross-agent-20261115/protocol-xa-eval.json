@@ -1,0 +1,130 @@
+{
+  "hash": "3ee5be341ebaccca229587dc14bb897aadc9f6d35c92c96b39ef45d32412c487",
+  "protocol": {
+    "salt": "cross-agent-v1",
+    "simulated": false,
+    "recipientModel": "anthropic/claude-haiku-4-5",
+    "donorModel": "anthropic/claude-haiku-4-5",
+    "donors": 3,
+    "budget": 2,
+    "families": [
+      "ledger-sum",
+      "log-triage",
+      "config-diff",
+      "dep-depth",
+      "regex-valid",
+      "multi-file-rename",
+      "csv-filter-sum",
+      "json-path",
+      "date-window"
+    ],
+    "envs": [
+      "alder",
+      "birch",
+      "cedar",
+      "dunmore",
+      "elm",
+      "fenwick",
+      "garnet",
+      "holloway"
+    ],
+    "evalSeeds": [
+      60000,
+      60001
+    ],
+    "arms": [
+      "none",
+      "own-half",
+      "own",
+      "peer1",
+      "peer",
+      "own-half+peer",
+      "own+peer",
+      "peer-liar",
+      "stale",
+      "own+stale",
+      "placebo",
+      "oracle"
+    ],
+    "unit": "cell (<workspace>:<family>), mean pass over its evaluation instances",
+    "interval": "two-stage bootstrap: families, then cells within family",
+    "gate": [
+      {
+        "id": "primary",
+        "claim": "Pooled peer cards beat the recipient's own experience at equal per-agent budget",
+        "terms": [
+          [
+            "peer",
+            1
+          ],
+          [
+            "own",
+            -1
+          ]
+        ],
+        "lowerBoundAbove": 0,
+        "needsSignTest": true
+      },
+      {
+        "id": "content",
+        "claim": "The gain comes from the outcomes, not from the presence of a peer line",
+        "terms": [
+          [
+            "peer",
+            1
+          ],
+          [
+            "placebo",
+            -1
+          ]
+        ],
+        "lowerBoundAbove": 0,
+        "needsSignTest": true
+      },
+      {
+        "id": "coverage",
+        "claim": "Peer cards help most when the recipient has no experience of its own",
+        "terms": [
+          [
+            "peer",
+            1
+          ],
+          [
+            "none",
+            -1
+          ],
+          [
+            "own+peer",
+            -1
+          ],
+          [
+            "own",
+            1
+          ]
+        ],
+        "lowerBoundAbove": 0,
+        "needsSignTest": false
+      },
+      {
+        "id": "liar",
+        "claim": "A pool with one lying donor still beats no card",
+        "terms": [
+          [
+            "peer-liar",
+            1
+          ],
+          [
+            "none",
+            -1
+          ]
+        ],
+        "lowerBoundAbove": 0,
+        "needsSignTest": true
+      }
+    ],
+    "signAlphaOneSided": 0.025,
+    "errors": "an errored run counts as a failure in every arm",
+    "bundles": "7047363324f8f87dae727856ddb6e2cd3bdb92c584346e19577bfd092194564a",
+    "ownRecords": "b489cfb441fde0f260ad25c570b13f3f38c4cb5462adb5b1b366056784044b10"
+  }
+}

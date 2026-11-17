@@ -1862,6 +1862,8 @@ See [Local Models](/gateway/local-models). TL;DR: run MiniMax M2.1 via LM Studio
       evidence: "verbal", // verbal | counts | verdict | off (ordering only)
       discount: 0.98,
       pseudoCount: 4,
+      peerEvidence: true, // show verdicts a quorum of peers agrees on
+      peerQuorum: 2,
     },
   },
 }
@@ -1894,6 +1896,25 @@ See [Local Models](/gateway/local-models). TL;DR: run MiniMax M2.1 via LM Studio
   At 10,000 durable credits, new credits stop without discarding history.
   Changing `discount` or `pseudoCount` requires a fresh path. See
   [Skills pipeline](/memory/skills-pipeline) for attribution and retention limits.
+- `prior.peerEvidence` (default `true`): cross-agent evidence cards. Beside a
+  skill this node has not tried in the context cell, the index may show the
+  verdict that at least `prior.peerQuorum` (default `2`) distinct peers agree
+  on, for example "Reports from other agents here: ACCEPTED by 2 of 3 other
+  agents that tried it." Each peer has one vote per skill however many runs it
+  claims, and a peer whose records keep contradicting this node's own
+  verified outcomes is dropped first. The node's own record always speaks
+  for a skill it has tried. Peer records never change the ordering. Card
+  bundles are signed outcome counts keyed by skill content hash (no names,
+  no text) and are exchanged only over the public package mesh, so nothing
+  is sent or received unless `collective.enabled` and
+  `collective.publicMesh` are both set; with the mesh on, the node also
+  announces its own verified counts. A node records verified outcomes only
+  with `prior.writer: "on"`. Received bundles are kept in `prior.peersPath`
+  (default `CONFIG_DIR/skill-cards-peers.json`), one per origin, at most 64
+  origins, for at most 30 days. Set `peerEvidence: false` to neither show
+  nor announce. A signature identifies the claimant, not the truth of the
+  claim; two colluding signers can meet a quorum of two on a node with no
+  outcomes of its own to check them against.
 
 ---
 

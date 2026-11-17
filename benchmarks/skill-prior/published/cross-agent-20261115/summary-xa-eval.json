@@ -1,0 +1,948 @@
+{
+  "phase": "eval",
+  "simulated": false,
+  "recipientModel": "anthropic/claude-haiku-4-5",
+  "donorModel": "anthropic/claude-haiku-4-5",
+  "donors": 3,
+  "budget": 2,
+  "out": "~/bitterbot-skill-prior/cross-agent",
+  "evalSeeds": [
+    60000,
+    60001
+  ],
+  "protoHash": "3ee5be341ebaccca229587dc14bb897aadc9f6d35c92c96b39ef45d32412c487",
+  "summaries": [
+    {
+      "arm": "none",
+      "trials": 144,
+      "tasks": 144,
+      "pass": 0.19444444444444445,
+      "readCorrect": 0.2569444444444444,
+      "readDecoy": 0.7222222222222222,
+      "readAny": 0.9791666666666666,
+      "tokensPerTrial": 59205.82638888889,
+      "wallMsPerTrial": 35539.756944444445,
+      "errors": 0,
+      "byFamily": {
+        "ledger-sum": {
+          "trials": 16,
+          "pass": 0.375,
+          "readCorrect": 0.375
+        },
+        "log-triage": {
+          "trials": 16,
+          "pass": 0.125,
+          "readCorrect": 0.25
+        },
+        "config-diff": {
+          "trials": 16,
+          "pass": 0.125,
+          "readCorrect": 0.125
+        },
+        "dep-depth": {
+          "trials": 16,
+          "pass": 0.25,
+          "readCorrect": 0.3125
+        },
+        "regex-valid": {
+          "trials": 16,
+          "pass": 0.1875,
+          "readCorrect": 0.1875
+        },
+        "multi-file-rename": {
+          "trials": 16,
+          "pass": 0,
+          "readCorrect": 0.3125
+        },
+        "csv-filter-sum": {
+          "trials": 16,
+          "pass": 0.375,
+          "readCorrect": 0.375
+        },
+        "json-path": {
+          "trials": 16,
+          "pass": 0.125,
+          "readCorrect": 0.125
+        },
+        "date-window": {
+          "trials": 16,
+          "pass": 0.1875,
+          "readCorrect": 0.25
+        }
+      }
+    },
+    {
+      "arm": "own-half",
+      "trials": 144,
+      "tasks": 144,
+      "pass": 0.3194444444444444,
+      "readCorrect": 0.3819444444444444,
+      "readDecoy": 0.5833333333333334,
+      "readAny": 0.9652777777777778,
+      "tokensPerTrial": 66401.90277777778,
+      "wallMsPerTrial": 36780.52777777778,
+      "errors": 0,
+      "byFamily": {
+        "ledger-sum": {
+          "trials": 16,
+          "pass": 0.5625,
+          "readCorrect": 0.625
+        },
+        "log-triage": {
+          "trials": 16,
+          "pass": 0.3125,
+          "readCorrect": 0.4375
+        },
+        "config-diff": {
+          "trials": 16,
+          "pass": 0.3125,
+          "readCorrect": 0.375
+        },
+        "dep-depth": {
+          "trials": 16,
+          "pass": 0.3125,
+          "readCorrect": 0.3125
+        },
+        "regex-valid": {
+          "trials": 16,
+          "pass": 0.1875,
+          "readCorrect": 0.3125
+        },
+        "multi-file-rename": {
+          "trials": 16,
+          "pass": 0,
+          "readCorrect": 0.125
+        },
+        "csv-filter-sum": {
+          "trials": 16,
+          "pass": 0.625,
+          "readCorrect": 0.6875
+        },
+        "json-path": {
+          "trials": 16,
+          "pass": 0.125,
+          "readCorrect": 0.125
+        },
+        "date-window": {
+          "trials": 16,
+          "pass": 0.4375,
+          "readCorrect": 0.4375
+        }
+      }
+    },
+    {
+      "arm": "own",
+      "trials": 144,
+      "tasks": 144,
+      "pass": 0.5138888888888888,
+      "readCorrect": 0.5902777777777778,
+      "readDecoy": 0.375,
+      "readAny": 0.9652777777777778,
+      "tokensPerTrial": 58549.97222222222,
+      "wallMsPerTrial": 39350.395833333336,
+      "errors": 0,
+      "byFamily": {
+        "ledger-sum": {
+          "trials": 16,
+          "pass": 0.625,
+          "readCorrect": 0.8125
+        },
+        "log-triage": {
+          "trials": 16,
+          "pass": 0.625,
+          "readCorrect": 0.6875
+        },
+        "config-diff": {
+          "trials": 16,
+          "pass": 0.625,
+          "readCorrect": 0.6875
+        },
+        "dep-depth": {
+          "trials": 16,
+          "pass": 0.6875,
+          "readCorrect": 0.6875
+        },
+        "regex-valid": {
+          "trials": 16,
+          "pass": 0.375,
+          "readCorrect": 0.5
+        },
+        "multi-file-rename": {
+          "trials": 16,
+          "pass": 0,
+          "readCorrect": 0.125
+        },
+        "csv-filter-sum": {
+          "trials": 16,
+          "pass": 0.8125,
+          "readCorrect": 0.75
+        },
+        "json-path": {
+          "trials": 16,
+          "pass": 0.375,
+          "readCorrect": 0.375
+        },
+        "date-window": {
+          "trials": 16,
+          "pass": 0.5,
+          "readCorrect": 0.6875
+        }
+      }
+    },
+    {
+      "arm": "peer1",
+      "trials": 144,
+      "tasks": 144,
+      "pass": 0.4722222222222222,
+      "readCorrect": 0.5486111111111112,
+      "readDecoy": 0.4236111111111111,
+      "readAny": 0.9722222222222222,
+      "tokensPerTrial": 67414.28472222222,
+      "wallMsPerTrial": 41001.27777777778,
+      "errors": 0,
+      "byFamily": {
+        "ledger-sum": {
+          "trials": 16,
+          "pass": 0.5,
+          "readCorrect": 0.5625
+        },
+        "log-triage": {
+          "trials": 16,
+          "pass": 0.3125,
+          "readCorrect": 0.4375
+        },
+        "config-diff": {
+          "trials": 16,
+          "pass": 0.625,
+          "readCorrect": 0.8125
+        },
+        "dep-depth": {
+          "trials": 16,
+          "pass": 0.6875,
+          "readCorrect": 0.6875
+        },
+        "regex-valid": {
+          "trials": 16,
+          "pass": 0.4375,
+          "readCorrect": 0.5
+        },
+        "multi-file-rename": {
+          "trials": 16,
+          "pass": 0,
+          "readCorrect": 0.1875
+        },
+        "csv-filter-sum": {
+          "trials": 16,
+          "pass": 0.8125,
+          "readCorrect": 0.8125
+        },
+        "json-path": {
+          "trials": 16,
+          "pass": 0.5,
+          "readCorrect": 0.5625
+        },
+        "date-window": {
+          "trials": 16,
+          "pass": 0.375,
+          "readCorrect": 0.375
+        }
+      }
+    },
+    {
+      "arm": "peer",
+      "trials": 144,
+      "tasks": 144,
+      "pass": 0.5694444444444444,
+      "readCorrect": 0.6180555555555556,
+      "readDecoy": 0.3333333333333333,
+      "readAny": 0.9513888888888888,
+      "tokensPerTrial": 71823.38194444444,
+      "wallMsPerTrial": 42057.61111111111,
+      "errors": 0,
+      "byFamily": {
+        "ledger-sum": {
+          "trials": 16,
+          "pass": 0.625,
+          "readCorrect": 0.625
+        },
+        "log-triage": {
+          "trials": 16,
+          "pass": 0.5,
+          "readCorrect": 0.625
+        },
+        "config-diff": {
+          "trials": 16,
+          "pass": 0.9375,
+          "readCorrect": 1
+        },
+        "dep-depth": {
+          "trials": 16,
+          "pass": 0.9375,
+          "readCorrect": 0.9375
+        },
+        "regex-valid": {
+          "trials": 16,
+          "pass": 0.5,
+          "readCorrect": 0.5
+        },
+        "multi-file-rename": {
+          "trials": 16,
+          "pass": 0,
+          "readCorrect": 0.0625
+        },
+        "csv-filter-sum": {
+          "trials": 16,
+          "pass": 0.8125,
+          "readCorrect": 0.8125
+        },
+        "json-path": {
+          "trials": 16,
+          "pass": 0.5,
+          "readCorrect": 0.5
+        },
+        "date-window": {
+          "trials": 16,
+          "pass": 0.3125,
+          "readCorrect": 0.5
+        }
+      }
+    },
+    {
+      "arm": "own-half+peer",
+      "trials": 144,
+      "tasks": 144,
+      "pass": 0.6597222222222222,
+      "readCorrect": 0.7013888888888888,
+      "readDecoy": 0.2916666666666667,
+      "readAny": 0.9930555555555556,
+      "tokensPerTrial": 56230.29861111111,
+      "wallMsPerTrial": 40625.243055555555,
+      "errors": 0,
+      "byFamily": {
+        "ledger-sum": {
+          "trials": 16,
+          "pass": 0.6875,
+          "readCorrect": 0.75
+        },
+        "log-triage": {
+          "trials": 16,
+          "pass": 0.625,
+          "readCorrect": 0.6875
+        },
+        "config-diff": {
+          "trials": 16,
+          "pass": 0.75,
+          "readCorrect": 0.875
+        },
+        "dep-depth": {
+          "trials": 16,
+          "pass": 1,
+          "readCorrect": 1
+        },
+        "regex-valid": {
+          "trials": 16,
+          "pass": 0.4375,
+          "readCorrect": 0.5
+        },
+        "multi-file-rename": {
+          "trials": 16,
+          "pass": 0.0625,
+          "readCorrect": 0.1875
+        },
+        "csv-filter-sum": {
+          "trials": 16,
+          "pass": 0.9375,
+          "readCorrect": 0.9375
+        },
+        "json-path": {
+          "trials": 16,
+          "pass": 0.6875,
+          "readCorrect": 0.75
+        },
+        "date-window": {
+          "trials": 16,
+          "pass": 0.75,
+          "readCorrect": 0.625
+        }
+      }
+    },
+    {
+      "arm": "own+peer",
+      "trials": 144,
+      "tasks": 144,
+      "pass": 0.6875,
+      "readCorrect": 0.75,
+      "readDecoy": 0.24305555555555555,
+      "readAny": 0.9930555555555556,
+      "tokensPerTrial": 65284.694444444445,
+      "wallMsPerTrial": 34726.15277777778,
+      "errors": 0,
+      "byFamily": {
+        "ledger-sum": {
+          "trials": 16,
+          "pass": 0.8125,
+          "readCorrect": 0.875
+        },
+        "log-triage": {
+          "trials": 16,
+          "pass": 0.625,
+          "readCorrect": 0.75
+        },
+        "config-diff": {
+          "trials": 16,
+          "pass": 0.8125,
+          "readCorrect": 0.875
+        },
+        "dep-depth": {
+          "trials": 16,
+          "pass": 0.9375,
+          "readCorrect": 0.9375
+        },
+        "regex-valid": {
+          "trials": 16,
+          "pass": 0.5,
+          "readCorrect": 0.5625
+        },
+        "multi-file-rename": {
+          "trials": 16,
+          "pass": 0,
+          "readCorrect": 0.125
+        },
+        "csv-filter-sum": {
+          "trials": 16,
+          "pass": 1,
+          "readCorrect": 1
+        },
+        "json-path": {
+          "trials": 16,
+          "pass": 0.9375,
+          "readCorrect": 0.9375
+        },
+        "date-window": {
+          "trials": 16,
+          "pass": 0.5625,
+          "readCorrect": 0.6875
+        }
+      }
+    },
+    {
+      "arm": "peer-liar",
+      "trials": 144,
+      "tasks": 144,
+      "pass": 0.10416666666666667,
+      "readCorrect": 0.125,
+      "readDecoy": 0.8472222222222222,
+      "readAny": 0.9722222222222222,
+      "tokensPerTrial": 63642.791666666664,
+      "wallMsPerTrial": 38115.569444444445,
+      "errors": 0,
+      "byFamily": {
+        "ledger-sum": {
+          "trials": 16,
+          "pass": 0.125,
+          "readCorrect": 0.125
+        },
+        "log-triage": {
+          "trials": 16,
+          "pass": 0.125,
+          "readCorrect": 0.1875
+        },
+        "config-diff": {
+          "trials": 16,
+          "pass": 0.0625,
+          "readCorrect": 0.1875
+        },
+        "dep-depth": {
+          "trials": 16,
+          "pass": 0.3125,
+          "readCorrect": 0.3125
+        },
+        "regex-valid": {
+          "trials": 16,
+          "pass": 0.0625,
+          "readCorrect": 0.0625
+        },
+        "multi-file-rename": {
+          "trials": 16,
+          "pass": 0,
+          "readCorrect": 0
+        },
+        "csv-filter-sum": {
+          "trials": 16,
+          "pass": 0.125,
+          "readCorrect": 0.125
+        },
+        "json-path": {
+          "trials": 16,
+          "pass": 0,
+          "readCorrect": 0
+        },
+        "date-window": {
+          "trials": 16,
+          "pass": 0.125,
+          "readCorrect": 0.125
+        }
+      }
+    },
+    {
+      "arm": "stale",
+      "trials": 144,
+      "tasks": 144,
+      "pass": 0.04861111111111111,
+      "readCorrect": 0.11805555555555555,
+      "readDecoy": 0.8402777777777778,
+      "readAny": 0.9583333333333334,
+      "tokensPerTrial": 74553.16666666667,
+      "wallMsPerTrial": 38071.993055555555,
+      "errors": 0,
+      "byFamily": {
+        "ledger-sum": {
+          "trials": 16,
+          "pass": 0.125,
+          "readCorrect": 0.0625
+        },
+        "log-triage": {
+          "trials": 16,
+          "pass": 0,
+          "readCorrect": 0
+        },
+        "config-diff": {
+          "trials": 16,
+          "pass": 0,
+          "readCorrect": 0
+        },
+        "dep-depth": {
+          "trials": 16,
+          "pass": 0,
+          "readCorrect": 0
+        },
+        "regex-valid": {
+          "trials": 16,
+          "pass": 0.125,
+          "readCorrect": 0.125
+        },
+        "multi-file-rename": {
+          "trials": 16,
+          "pass": 0,
+          "readCorrect": 0.5
+        },
+        "csv-filter-sum": {
+          "trials": 16,
+          "pass": 0.0625,
+          "readCorrect": 0.0625
+        },
+        "json-path": {
+          "trials": 16,
+          "pass": 0,
+          "readCorrect": 0
+        },
+        "date-window": {
+          "trials": 16,
+          "pass": 0.125,
+          "readCorrect": 0.3125
+        }
+      }
+    },
+    {
+      "arm": "own+stale",
+      "trials": 144,
+      "tasks": 144,
+      "pass": 0.4097222222222222,
+      "readCorrect": 0.4444444444444444,
+      "readDecoy": 0.5277777777777778,
+      "readAny": 0.9722222222222222,
+      "tokensPerTrial": 68854.5,
+      "wallMsPerTrial": 36046.569444444445,
+      "errors": 0,
+      "byFamily": {
+        "ledger-sum": {
+          "trials": 16,
+          "pass": 0.6875,
+          "readCorrect": 0.6875
+        },
+        "log-triage": {
+          "trials": 16,
+          "pass": 0.3125,
+          "readCorrect": 0.3125
+        },
+        "config-diff": {
+          "trials": 16,
+          "pass": 0.3125,
+          "readCorrect": 0.375
+        },
+        "dep-depth": {
+          "trials": 16,
+          "pass": 0.4375,
+          "readCorrect": 0.4375
+        },
+        "regex-valid": {
+          "trials": 16,
+          "pass": 0.5,
+          "readCorrect": 0.4375
+        },
+        "multi-file-rename": {
+          "trials": 16,
+          "pass": 0,
+          "readCorrect": 0.25
+        },
+        "csv-filter-sum": {
+          "trials": 16,
+          "pass": 0.4375,
+          "readCorrect": 0.4375
+        },
+        "json-path": {
+          "trials": 16,
+          "pass": 0.375,
+          "readCorrect": 0.375
+        },
+        "date-window": {
+          "trials": 16,
+          "pass": 0.625,
+          "readCorrect": 0.6875
+        }
+      }
+    },
+    {
+      "arm": "placebo",
+      "trials": 144,
+      "tasks": 144,
+      "pass": 0.2361111111111111,
+      "readCorrect": 0.3125,
+      "readDecoy": 0.6458333333333334,
+      "readAny": 0.9583333333333334,
+      "tokensPerTrial": 58044.520833333336,
+      "wallMsPerTrial": 42694.26388888889,
+      "errors": 0,
+      "byFamily": {
+        "ledger-sum": {
+          "trials": 16,
+          "pass": 0.1875,
+          "readCorrect": 0.25
+        },
+        "log-triage": {
+          "trials": 16,
+          "pass": 0.3125,
+          "readCorrect": 0.4375
+        },
+        "config-diff": {
+          "trials": 16,
+          "pass": 0.3125,
+          "readCorrect": 0.3125
+        },
+        "dep-depth": {
+          "trials": 16,
+          "pass": 0.4375,
+          "readCorrect": 0.375
+        },
+        "regex-valid": {
+          "trials": 16,
+          "pass": 0.25,
+          "readCorrect": 0.25
+        },
+        "multi-file-rename": {
+          "trials": 16,
+          "pass": 0,
+          "readCorrect": 0.125
+        },
+        "csv-filter-sum": {
+          "trials": 16,
+          "pass": 0.3125,
+          "readCorrect": 0.3125
+        },
+        "json-path": {
+          "trials": 16,
+          "pass": 0.25,
+          "readCorrect": 0.25
+        },
+        "date-window": {
+          "trials": 16,
+          "pass": 0.0625,
+          "readCorrect": 0.5
+        }
+      }
+    },
+    {
+      "arm": "oracle",
+      "trials": 144,
+      "tasks": 144,
+      "pass": 0.8125,
+      "readCorrect": 0.9930555555555556,
+      "readDecoy": 0,
+      "readAny": 0.9930555555555556,
+      "tokensPerTrial": 57812.02777777778,
+      "wallMsPerTrial": 32826.506944444445,
+      "errors": 0,
+      "byFamily": {
+        "ledger-sum": {
+          "trials": 16,
+          "pass": 0.9375,
+          "readCorrect": 1
+        },
+        "log-triage": {
+          "trials": 16,
+          "pass": 0.8125,
+          "readCorrect": 1
+        },
+        "config-diff": {
+          "trials": 16,
+          "pass": 0.9375,
+          "readCorrect": 1
+        },
+        "dep-depth": {
+          "trials": 16,
+          "pass": 1,
+          "readCorrect": 1
+        },
+        "regex-valid": {
+          "trials": 16,
+          "pass": 0.9375,
+          "readCorrect": 1
+        },
+        "multi-file-rename": {
+          "trials": 16,
+          "pass": 0,
+          "readCorrect": 1
+        },
+        "csv-filter-sum": {
+          "trials": 16,
+          "pass": 1,
+          "readCorrect": 1
+        },
+        "json-path": {
+          "trials": 16,
+          "pass": 0.9375,
+          "readCorrect": 0.9375
+        },
+        "date-window": {
+          "trials": 16,
+          "pass": 0.75,
+          "readCorrect": 1
+        }
+      }
+    }
+  ],
+  "gate": [
+    {
+      "label": "primary",
+      "n": 72,
+      "mean": 0.05555555555555555,
+      "lo": -0.09027777777777778,
+      "hi": 0.2013888888888889,
+      "wins": 21,
+      "losses": 14,
+      "ties": 37,
+      "p": 0.15525232953950965,
+      "id": "primary",
+      "claim": "Pooled peer cards beat the recipient's own experience at equal per-agent budget",
+      "passed": false,
+      "confirmatory": true
+    },
+    {
+      "label": "content",
+      "n": 72,
+      "mean": 0.3333333333333333,
+      "lo": 0.19444444444444445,
+      "hi": 0.4861111111111111,
+      "wins": 34,
+      "losses": 3,
+      "ties": 35,
+      "p": 6.165646482259038e-8,
+      "id": "content",
+      "claim": "The gain comes from the outcomes, not from the presence of a peer line",
+      "passed": true,
+      "confirmatory": false
+    },
+    {
+      "label": "coverage",
+      "n": 72,
+      "mean": 0.2013888888888889,
+      "lo": 0.020833333333333332,
+      "hi": 0.3819444444444444,
+      "wins": 30,
+      "losses": 9,
+      "ties": 33,
+      "p": 0.0005325098172761543,
+      "id": "coverage",
+      "claim": "Peer cards help most when the recipient has no experience of its own",
+      "passed": true,
+      "confirmatory": false
+    },
+    {
+      "label": "liar",
+      "n": 72,
+      "mean": -0.09027777777777778,
+      "lo": -0.19444444444444445,
+      "hi": 0.020833333333333332,
+      "wins": 8,
+      "losses": 21,
+      "ties": 43,
+      "p": 0.9959349706768998,
+      "id": "liar",
+      "claim": "A pool with one lying donor still beats no card",
+      "passed": false,
+      "confirmatory": false
+    }
+  ],
+  "coverage": [
+    {
+      "label": "pool added to no own experience (peer minus none)",
+      "n": 72,
+      "mean": 0.375,
+      "lo": 0.2013888888888889,
+      "hi": 0.5555555555555556,
+      "wins": 38,
+      "losses": 3,
+      "ties": 31,
+      "p": 5.239598976913809e-9
+    },
+    {
+      "label": "pool added to half the own budget (own-half+peer minus own-half)",
+      "n": 72,
+      "mean": 0.3402777777777778,
+      "lo": 0.19444444444444445,
+      "hi": 0.4930555555555556,
+      "wins": 40,
+      "losses": 2,
+      "ties": 30,
+      "p": 2.0554580260067904e-10
+    },
+    {
+      "label": "pool added to the full own budget (own+peer minus own)",
+      "n": 72,
+      "mean": 0.1736111111111111,
+      "lo": 0.05555555555555555,
+      "hi": 0.3125,
+      "wins": 25,
+      "losses": 6,
+      "ties": 41,
+      "p": 0.000438955146819355
+    }
+  ],
+  "byState": [
+    {
+      "label": "own+peer minus own, cells where the recipient had NOT found an accepted variant",
+      "n": 44,
+      "mean": 0.25,
+      "lo": 0.10204081632653061,
+      "hi": 0.43333333333333335,
+      "wins": 20,
+      "losses": 2,
+      "ties": 22,
+      "p": 0.000060558319091797065
+    },
+    {
+      "label": "own+peer minus own, cells where it HAD found one",
+      "n": 28,
+      "mean": 0.05357142857142857,
+      "lo": -0.10416666666666667,
+      "hi": 0.22413793103448276,
+      "wins": 5,
+      "losses": 4,
+      "ties": 19,
+      "p": 0.500000000000001
+    }
+  ],
+  "exploratory": [
+    {
+      "label": "peer minus none",
+      "n": 72,
+      "mean": 0.375,
+      "lo": 0.2013888888888889,
+      "hi": 0.5555555555555556,
+      "wins": 38,
+      "losses": 3,
+      "ties": 31,
+      "p": 5.239598976913809e-9
+    },
+    {
+      "label": "own minus none",
+      "n": 72,
+      "mean": 0.3194444444444444,
+      "lo": 0.18055555555555555,
+      "hi": 0.4583333333333333,
+      "wins": 35,
+      "losses": 4,
+      "ties": 33,
+      "p": 1.676580723142257e-7
+    },
+    {
+      "label": "own+peer minus peer",
+      "n": 72,
+      "mean": 0.11805555555555555,
+      "lo": -0.013888888888888888,
+      "hi": 0.2569444444444444,
+      "wins": 20,
+      "losses": 7,
+      "ties": 45,
+      "p": 0.009578645229339652
+    },
+    {
+      "label": "peer1 minus own (one peer's experience against the same amount of one's own)",
+      "n": 72,
+      "mean": -0.041666666666666664,
+      "lo": -0.18055555555555555,
+      "hi": 0.09027777777777778,
+      "wins": 18,
+      "losses": 19,
+      "ties": 35,
+      "p": 0.6285853206354752
+    },
+    {
+      "label": "peer minus peer1 (more donors, same per-agent budget)",
+      "n": 72,
+      "mean": 0.09722222222222222,
+      "lo": -0.006944444444444444,
+      "hi": 0.2152777777777778,
+      "wins": 16,
+      "losses": 7,
+      "ties": 49,
+      "p": 0.046569824218750035
+    },
+    {
+      "label": "peer-liar minus peer (cost of one lying donor)",
+      "n": 72,
+      "mean": -0.4652777777777778,
+      "lo": -0.6319444444444444,
+      "hi": -0.2847222222222222,
+      "wins": 1,
+      "losses": 43,
+      "ties": 28,
+      "p": 0.9999999999999368
+    },
+    {
+      "label": "stale minus none (harm of a misapplied pool)",
+      "n": 72,
+      "mean": -0.14583333333333334,
+      "lo": -0.24305555555555555,
+      "hi": -0.05555555555555555,
+      "wins": 4,
+      "losses": 21,
+      "ties": 47,
+      "p": 0.9999217391014104
+    },
+    {
+      "label": "own+stale minus own (does own experience protect?)",
+      "n": 72,
+      "mean": -0.10416666666666667,
+      "lo": -0.2569444444444444,
+      "hi": 0.04861111111111111,
+      "wins": 11,
+      "losses": 23,
+      "ties": 38,
+      "p": 0.9878467449452878
+    },
+    {
+      "label": "oracle minus peer (room left above the pool)",
+      "n": 72,
+      "mean": 0.24305555555555555,
+      "lo": 0.10416666666666667,
+      "hi": 0.3888888888888889,
+      "wins": 27,
+      "losses": 4,
+      "ties": 41,
+      "p": 0.00001697661355137831
+    }
+  ],
+  "solvedCells": 28,
+  "spentUsd": 47.36380050000004
+}

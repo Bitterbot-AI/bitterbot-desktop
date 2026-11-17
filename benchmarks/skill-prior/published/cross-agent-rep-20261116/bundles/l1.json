@@ -1,0 +1,646 @@
+{
+  "protocol": "bitterbot/skill-cards/1",
+  "origin": "ed25519:51c7dbced7ba104f1ff67df8d41ddc205ac5dc8ded03fe5df5cd9d5a10e1903b",
+  "model": "openai/gpt-5.4-mini",
+  "budget": 2,
+  "skills": {
+    "xp-ledger-sum-a": "c54bf830a1cb798cfa565bd2a349635662d98ea17529952ce28f343b0fa3ecd0",
+    "xp-ledger-sum-b": "823ee3319dac9d21e28a3e57875c2fa31593850322f41fb075e1692593713826",
+    "xp-ledger-sum-c": "e08af1c9717b50a2e2e32b86093afaf855d48f6ecf90887b1e3a5c09e239429c",
+    "xp-ledger-sum-d": "f7d71863e95036f70633f9befda37774607dade87fe883fb1de69b5307246f8f",
+    "xp-log-triage-a": "94e04b4964ebbe65b054379e484e7d7792903edda40443ce855bed1a3c5e10b7",
+    "xp-log-triage-b": "3c913c0e0bcfc8f3769915a2db92397735f9af5cb5079679284debf7142cf1f1",
+    "xp-log-triage-c": "cd237ace621fff527409f36fe3a4b2cf48c68e863f4e50643ea212fad952ef69",
+    "xp-log-triage-d": "6efbf4b39f125cdc56ee1784391222fe3379f3ea11ec3fdd0314e9433cc4d7d8",
+    "xp-config-diff-a": "6da5c26f56f820e142fe36393b50c272aee68ef3d7c64419deca4b1f323ea4cf",
+    "xp-config-diff-b": "9e4a0dcba51378afcfac1d1e91a3a25a06fe1d875a1bd19e8d13cbdbb23b4b6f",
+    "xp-config-diff-c": "5ad20d43acf966f07d081195342baebe9e4e272cb7db20faa5ec065046cb0461",
+    "xp-config-diff-d": "cb2972ef246628b80f3c448dd923358fb3eec6a7b89cf32924b1eaad27973fbf",
+    "xp-dep-depth-a": "c6672187d2d2a22d50ef4ff1cf8ec14532cf31f4e483153afbabf1a80346ed61",
+    "xp-dep-depth-b": "0807d9643c7b00d91dfa9fef69bb6a3fd43d505553d562dd518129030e58b95d",
+    "xp-dep-depth-c": "c8d2995343679202babc5769968f698c7e8c630962e4ddac241b1715f55e0ed4",
+    "xp-dep-depth-d": "ff408e5e0c602b9520907447033011359402d860834062dd856bceae78fb3c96",
+    "xp-regex-valid-a": "2553517a8e0e5e2551808a0e43da900b3c3d129b5e9126a581932f6afbeca6c6",
+    "xp-regex-valid-b": "fbe5039b1fb242fc5df35c7b2b9b590b234cebd3e4ec37ec9910153416eef4ef",
+    "xp-regex-valid-c": "4430ef29b68a98ef91e8073121514aa4a3f9ae3971977b53ea275ee828ec59e3",
+    "xp-regex-valid-d": "f9373d79ca5d3d49aeba0720079afed6c0d3d82e6c393296468fb6a4f1025b48",
+    "xp-multi-file-rename-b": "96d80c89ef2d0fef2fc1187b8bd569e3b6441e0745419ce9f75bd86a6937b350",
+    "xp-multi-file-rename-c": "5aa544d11a53b3c970296334e839589d62d52c11b00021444f6dea9ec4783280",
+    "xp-multi-file-rename-d": "d74630c08a91224801461200a9b383ac97ca203e485fe6788b3a0edc2e820384",
+    "xp-csv-filter-sum-a": "baf0a65ebd2e3ef83b2574f649213344c82a1b613b3c7802040cb7eccffcef9f",
+    "xp-csv-filter-sum-b": "aa7f512fe514f80114e699ed7c21b9c132335856efa402f56f2efc30dc2fb9e1",
+    "xp-csv-filter-sum-c": "0a22c3093669be4d927a2e5902498f5f6ebfde6a71942fa72ef46e739aa40208",
+    "xp-csv-filter-sum-d": "5b5c51f425f67edf1af4fa9958c9a083f8021a33b5390ed108d1da71aa3635b9",
+    "xp-json-path-a": "cd6e07c55d9db6888564350645f56c32e88028358d92be30ed7a94806f237777",
+    "xp-json-path-b": "ceb8daa58c49d581c184780c2e903b575cb6579f8ef479bd3e4605295dc4cdc1",
+    "xp-json-path-c": "df97367bf3aa81faaa7b226afe829e609c63484dfaf1966b980c5358ce8c34e2",
+    "xp-json-path-d": "98cd8ff1382179d49bdd0ec577b765be065e5029431f94021e7d0864db526067",
+    "xp-date-window-a": "34e767cd63cff940ff7d41561241cc1b3644dcbdacefe38ec220288df5330c3b",
+    "xp-date-window-b": "e4a32ce8da17ce733dcabe7e734104d3bdcd3b3aae70b3053cd2f36007254b7a",
+    "xp-date-window-c": "1f360811afb619bfd89fb25906e5f5adda36125be14c759f8b0becbe701c6113",
+    "xp-date-window-d": "18a4d84a286470a96af82a5d4ab50483e3182e41909aa4bba1e9d7fd3da94a06"
+  },
+  "cells": {
+    "alder:log-triage": {
+      "xp-log-triage-a": {
+        "passed": 0,
+        "runs": 1
+      },
+      "xp-log-triage-c": {
+        "passed": 0,
+        "runs": 1
+      }
+    },
+    "alder:ledger-sum": {
+      "xp-ledger-sum-d": {
+        "passed": 1,
+        "runs": 2
+      }
+    },
+    "alder:dep-depth": {
+      "xp-dep-depth-a": {
+        "passed": 0,
+        "runs": 1
+      },
+      "xp-dep-depth-c": {
+        "passed": 1,
+        "runs": 1
+      }
+    },
+    "alder:config-diff": {
+      "xp-config-diff-a": {
+        "passed": 0,
+        "runs": 1
+      },
+      "xp-config-diff-d": {
+        "passed": 1,
+        "runs": 1
+      }
+    },
+    "alder:regex-valid": {
+      "xp-regex-valid-a": {
+        "passed": 2,
+        "runs": 2
+      }
+    },
+    "alder:json-path": {
+      "xp-json-path-b": {
+        "passed": 1,
+        "runs": 1
+      },
+      "xp-json-path-c": {
+        "passed": 0,
+        "runs": 1
+      }
+    },
+    "alder:csv-filter-sum": {
+      "xp-csv-filter-sum-a": {
+        "passed": 2,
+        "runs": 2
+      }
+    },
+    "alder:multi-file-rename": {
+      "xp-multi-file-rename-c": {
+        "passed": 0,
+        "runs": 1
+      },
+      "xp-multi-file-rename-d": {
+        "passed": 0,
+        "runs": 1
+      }
+    },
+    "birch:ledger-sum": {
+      "xp-ledger-sum-b": {
+        "passed": 0,
+        "runs": 1
+      },
+      "xp-ledger-sum-c": {
+        "passed": 0,
+        "runs": 1
+      }
+    },
+    "alder:date-window": {
+      "xp-date-window-d": {
+        "passed": 1,
+        "runs": 2
+      }
+    },
+    "birch:config-diff": {
+      "xp-config-diff-c": {
+        "passed": 2,
+        "runs": 2
+      }
+    },
+    "birch:log-triage": {
+      "xp-log-triage-c": {
+        "passed": 2,
+        "runs": 2
+      }
+    },
+    "birch:regex-valid": {
+      "xp-regex-valid-b": {
+        "passed": 0,
+        "runs": 1
+      },
+      "xp-regex-valid-d": {
+        "passed": 1,
+        "runs": 1
+      }
+    },
+    "birch:dep-depth": {
+      "xp-dep-depth-a": {
+        "passed": 0,
+        "runs": 1
+      },
+      "xp-dep-depth-b": {
+        "passed": 1,
+        "runs": 1
+      }
+    },
+    "birch:csv-filter-sum": {
+      "xp-csv-filter-sum-b": {
+        "passed": 1,
+        "runs": 1
+      },
+      "xp-csv-filter-sum-c": {
+        "passed": 0,
+        "runs": 1
+      }
+    },
+    "birch:multi-file-rename": {
+      "xp-multi-file-rename-c": {
+        "passed": 0,
+        "runs": 2
+      }
+    },
+    "birch:json-path": {
+      "xp-json-path-b": {
+        "passed": 0,
+        "runs": 1
+      },
+      "xp-json-path-d": {
+        "passed": 1,
+        "runs": 1
+      }
+    },
+    "cedar:ledger-sum": {
+      "xp-ledger-sum-a": {
+        "passed": 0,
+        "runs": 1
+      },
+      "xp-ledger-sum-c": {
+        "passed": 1,
+        "runs": 1
+      }
+    },
+    "birch:date-window": {
+      "xp-date-window-a": {
+        "passed": 1,
+        "runs": 1
+      },
+      "xp-date-window-b": {
+        "passed": 0,
+        "runs": 1
+      }
+    },
+    "cedar:log-triage": {
+      "xp-log-triage-c": {
+        "passed": 2,
+        "runs": 2
+      }
+    },
+    "cedar:dep-depth": {
+      "xp-dep-depth-b": {
+        "passed": 0,
+        "runs": 1
+      },
+      "xp-dep-depth-c": {
+        "passed": 0,
+        "runs": 1
+      }
+    },
+    "cedar:regex-valid": {
+      "xp-regex-valid-a": {
+        "passed": 0,
+        "runs": 1
+      },
+      "xp-regex-valid-d": {
+        "passed": 0,
+        "runs": 1
+      }
+    },
+    "cedar:config-diff": {
+      "xp-config-diff-c": {
+        "passed": 1,
+        "runs": 2
+      }
+    },
+    "cedar:multi-file-rename": {
+      "xp-multi-file-rename-c": {
+        "passed": 0,
+        "runs": 1
+      },
+      "xp-multi-file-rename-d": {
+        "passed": 0,
+        "runs": 1
+      }
+    },
+    "dunmore:ledger-sum": {
+      "xp-ledger-sum-a": {
+        "passed": 1,
+        "runs": 1
+      },
+      "xp-ledger-sum-c": {
+        "passed": 0,
+        "runs": 1
+      }
+    },
+    "cedar:json-path": {
+      "xp-json-path-a": {
+        "passed": 0,
+        "runs": 1
+      },
+      "xp-json-path-b": {
+        "passed": 0,
+        "runs": 1
+      }
+    },
+    "cedar:csv-filter-sum": {
+      "xp-csv-filter-sum-c": {
+        "passed": 2,
+        "runs": 2
+      }
+    },
+    "cedar:date-window": {
+      "xp-date-window-b": {
+        "passed": 1,
+        "runs": 1
+      },
+      "xp-date-window-c": {
+        "passed": 0,
+        "runs": 1
+      }
+    },
+    "dunmore:log-triage": {
+      "xp-log-triage-b": {
+        "passed": 0,
+        "runs": 1
+      },
+      "xp-log-triage-c": {
+        "passed": 0,
+        "runs": 1
+      }
+    },
+    "dunmore:regex-valid": {
+      "xp-regex-valid-c": {
+        "passed": 1,
+        "runs": 1
+      },
+      "xp-regex-valid-d": {
+        "passed": 0,
+        "runs": 1
+      }
+    },
+    "dunmore:dep-depth": {
+      "xp-dep-depth-d": {
+        "passed": 2,
+        "runs": 2
+      }
+    },
+    "dunmore:config-diff": {
+      "xp-config-diff-c": {
+        "passed": 0,
+        "runs": 2
+      }
+    },
+    "dunmore:csv-filter-sum": {
+      "xp-csv-filter-sum-c": {
+        "passed": 1,
+        "runs": 1
+      },
+      "xp-csv-filter-sum-d": {
+        "passed": 0,
+        "runs": 1
+      }
+    },
+    "dunmore:json-path": {
+      "xp-json-path-d": {
+        "passed": 0,
+        "runs": 2
+      }
+    },
+    "dunmore:date-window": {
+      "xp-date-window-c": {
+        "passed": 2,
+        "runs": 2
+      }
+    },
+    "dunmore:multi-file-rename": {
+      "xp-multi-file-rename-b": {
+        "passed": 0,
+        "runs": 1
+      },
+      "xp-multi-file-rename-d": {
+        "passed": 0,
+        "runs": 1
+      }
+    },
+    "elm:ledger-sum": {
+      "xp-ledger-sum-a": {
+        "passed": 1,
+        "runs": 1
+      },
+      "xp-ledger-sum-c": {
+        "passed": 0,
+        "runs": 1
+      }
+    },
+    "elm:log-triage": {
+      "xp-log-triage-a": {
+        "passed": 0,
+        "runs": 1
+      },
+      "xp-log-triage-c": {
+        "passed": 0,
+        "runs": 1
+      }
+    },
+    "elm:config-diff": {
+      "xp-config-diff-b": {
+        "passed": 1,
+        "runs": 1
+      },
+      "xp-config-diff-d": {
+        "passed": 0,
+        "runs": 1
+      }
+    },
+    "elm:dep-depth": {
+      "xp-dep-depth-c": {
+        "passed": 2,
+        "runs": 2
+      }
+    },
+    "elm:regex-valid": {
+      "xp-regex-valid-a": {
+        "passed": 2,
+        "runs": 2
+      }
+    },
+    "elm:json-path": {
+      "xp-json-path-a": {
+        "passed": 2,
+        "runs": 2
+      }
+    },
+    "elm:csv-filter-sum": {
+      "xp-csv-filter-sum-a": {
+        "passed": 1,
+        "runs": 1
+      },
+      "xp-csv-filter-sum-d": {
+        "passed": 0,
+        "runs": 1
+      }
+    },
+    "elm:multi-file-rename": {
+      "xp-multi-file-rename-c": {
+        "passed": 0,
+        "runs": 2
+      }
+    },
+    "elm:date-window": {
+      "xp-date-window-c": {
+        "passed": 0,
+        "runs": 1
+      },
+      "xp-date-window-d": {
+        "passed": 0,
+        "runs": 1
+      }
+    },
+    "fenwick:log-triage": {
+      "xp-log-triage-a": {
+        "passed": 1,
+        "runs": 1
+      },
+      "xp-log-triage-b": {
+        "passed": 0,
+        "runs": 1
+      }
+    },
+    "fenwick:ledger-sum": {
+      "xp-ledger-sum-d": {
+        "passed": 2,
+        "runs": 2
+      }
+    },
+    "fenwick:config-diff": {
+      "xp-config-diff-a": {
+        "passed": 1,
+        "runs": 1
+      },
+      "xp-config-diff-d": {
+        "passed": 0,
+        "runs": 1
+      }
+    },
+    "fenwick:dep-depth": {
+      "xp-dep-depth-a": {
+        "passed": 2,
+        "runs": 2
+      }
+    },
+    "fenwick:regex-valid": {
+      "xp-regex-valid-c": {
+        "passed": 0,
+        "runs": 1
+      },
+      "xp-regex-valid-d": {
+        "passed": 1,
+        "runs": 1
+      }
+    },
+    "fenwick:csv-filter-sum": {
+      "xp-csv-filter-sum-d": {
+        "passed": 2,
+        "runs": 2
+      }
+    },
+    "fenwick:multi-file-rename": {
+      "xp-multi-file-rename-c": {
+        "passed": 0,
+        "runs": 1
+      },
+      "xp-multi-file-rename-d": {
+        "passed": 0,
+        "runs": 1
+      }
+    },
+    "garnet:log-triage": {
+      "xp-log-triage-a": {
+        "passed": 0,
+        "runs": 1
+      },
+      "xp-log-triage-d": {
+        "passed": 1,
+        "runs": 1
+      }
+    },
+    "fenwick:json-path": {
+      "xp-json-path-c": {
+        "passed": 2,
+        "runs": 2
+      }
+    },
+    "fenwick:date-window": {
+      "xp-date-window-d": {
+        "passed": 1,
+        "runs": 2
+      }
+    },
+    "garnet:ledger-sum": {
+      "xp-ledger-sum-c": {
+        "passed": 2,
+        "runs": 2
+      }
+    },
+    "garnet:dep-depth": {
+      "xp-dep-depth-a": {
+        "passed": 0,
+        "runs": 1
+      },
+      "xp-dep-depth-b": {
+        "passed": 1,
+        "runs": 1
+      }
+    },
+    "garnet:regex-valid": {
+      "xp-regex-valid-b": {
+        "passed": 0,
+        "runs": 1
+      },
+      "xp-regex-valid-c": {
+        "passed": 0,
+        "runs": 1
+      }
+    },
+    "garnet:config-diff": {
+      "xp-config-diff-d": {
+        "passed": 1,
+        "runs": 2
+      }
+    },
+    "garnet:multi-file-rename": {
+      "xp-multi-file-rename-b": {
+        "passed": 0,
+        "runs": 1
+      },
+      "xp-multi-file-rename-d": {
+        "passed": 0,
+        "runs": 1
+      }
+    },
+    "garnet:csv-filter-sum": {
+      "xp-csv-filter-sum-a": {
+        "passed": 0,
+        "runs": 1
+      },
+      "xp-csv-filter-sum-b": {
+        "passed": 1,
+        "runs": 1
+      }
+    },
+    "garnet:date-window": {
+      "xp-date-window-b": {
+        "passed": 2,
+        "runs": 2
+      }
+    },
+    "holloway:ledger-sum": {
+      "xp-ledger-sum-a": {
+        "passed": 0,
+        "runs": 1
+      },
+      "xp-ledger-sum-b": {
+        "passed": 1,
+        "runs": 1
+      }
+    },
+    "garnet:json-path": {
+      "xp-json-path-d": {
+        "passed": 2,
+        "runs": 2
+      }
+    },
+    "holloway:log-triage": {
+      "xp-log-triage-a": {
+        "passed": 1,
+        "runs": 1
+      },
+      "xp-log-triage-c": {
+        "passed": 0,
+        "runs": 1
+      }
+    },
+    "holloway:regex-valid": {
+      "xp-regex-valid-a": {
+        "passed": 0,
+        "runs": 1
+      },
+      "xp-regex-valid-c": {
+        "passed": 0,
+        "runs": 1
+      }
+    },
+    "holloway:dep-depth": {
+      "xp-dep-depth-d": {
+        "passed": 1,
+        "runs": 1
+      }
+    },
+    "holloway:config-diff": {
+      "xp-config-diff-c": {
+        "passed": 0,
+        "runs": 1
+      },
+      "xp-config-diff-d": {
+        "passed": 0,
+        "runs": 1
+      }
+    },
+    "holloway:csv-filter-sum": {
+      "xp-csv-filter-sum-a": {
+        "passed": 0,
+        "runs": 1
+      },
+      "xp-csv-filter-sum-d": {
+        "passed": 1,
+        "runs": 1
+      }
+    },
+    "holloway:date-window": {
+      "xp-date-window-a": {
+        "passed": 2,
+        "runs": 2
+      }
+    },
+    "holloway:json-path": {
+      "xp-json-path-c": {
+        "passed": 2,
+        "runs": 2
+      }
+    },
+    "holloway:multi-file-rename": {
+      "xp-multi-file-rename-b": {
+        "passed": 0,
+        "runs": 1
+      },
+      "xp-multi-file-rename-d": {
+        "passed": 0,
+        "runs": 1
+      }
+    }
+  },
+  "signature": "910527edecbd326318c7a796267100971fbf9d4462f5a053b2861975ac7352394884c5f0742760aadfb0ac895ff7d526aba119da876580b6b386d7ef91045901"
+}

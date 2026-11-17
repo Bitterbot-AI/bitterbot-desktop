@@ -15,6 +15,7 @@ import { resolveDefaultAgentId } from "../../src/agents/agent-scope.js";
 import { runEmbeddedPiAgent } from "../../src/agents/embedded-runner.js";
 import {
   annotateSkillsPrompt,
+  annotateSkillsPromptLines,
   reorderSkillsPrompt,
   type SkillEvidence,
   type SkillEvidenceStyle,
@@ -56,6 +57,8 @@ export interface TrialSpec {
   /** Verified outcome counts shown as an `<evidence>` line on these skills' index entries. */
   evidence?: Readonly<Record<string, SkillEvidence>>;
   evidenceStyle?: SkillEvidenceStyle;
+  /** Ready-made `<evidence>` text per skill (cross-agent cards); applied after `evidence`. */
+  evidenceLines?: Readonly<Record<string, string>>;
 }
 
 export interface TrialRecord {
@@ -193,6 +196,9 @@ export function makeExecutor(deps: ExecutorDeps) {
     }
     if (spec.evidence) {
       snapshot.prompt = annotateSkillsPrompt(snapshot.prompt, spec.evidence, spec.evidenceStyle);
+    }
+    if (spec.evidenceLines) {
+      snapshot.prompt = annotateSkillsPromptLines(snapshot.prompt, spec.evidenceLines);
     }
     const indexOrder = skillOrderInPrompt(snapshot.prompt);
     const runId = crypto.randomUUID();

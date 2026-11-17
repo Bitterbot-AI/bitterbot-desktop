@@ -259,6 +259,27 @@ export class SkillPriorLedger {
     return { passed: e.passed, runs: e.runs };
   }
 
+  /**
+   * Every exact verified record, by context cell then skill content hash.
+   * This is what a node may share and what it checks peers against; names
+   * stay local.
+   */
+  verifiedByHash(): Record<string, Record<string, SkillEvidence>> {
+    const out: Record<string, Record<string, SkillEvidence>> = {};
+    for (const [cell, skills] of Object.entries(this.state.cells)) {
+      for (const [name, p] of Object.entries(skills ?? {})) {
+        const e = p ? this.verifiedEvidence(cell, { name, hash: p.hash }) : null;
+        if (!e) {
+          continue;
+        }
+        const t = ((out[cell] ??= {})[p.hash] ??= { passed: 0, runs: 0 });
+        t.passed += e.passed;
+        t.runs += e.runs;
+      }
+    }
+    return out;
+  }
+
   mean(cell: string, skill: Candidate): number {
     const p = this.posterior(cell, skill);
     return p.alpha / (p.alpha + p.beta);
@@ -539,6 +560,30 @@ export function formatSkillEvidence(e: SkillEvidence, style: SkillEvidenceStyle)
 }
 
 /**
+ * Add an `<evidence>` line with the given text to the `<skill>` blocks named
+ * in `lines`, just before `</skill>`. Order and every other byte stay as they
+ * were; skills with no entry (or an empty line) are untouched. Angle brackets
+ * in the text are dropped so a line can never close or open a block.
+ */
+export function annotateSkillsPromptLines(
+  prompt: string,
+  lines: Readonly<Record<string, string>>,
+): string {
+  return prompt.replace(SKILL_BLOCK_RE, (block, name: string) => {
+    const text = Object.hasOwn(lines, name) ? lines[name]!.replace(/[<>\r\n]/g, " ").trim() : "";
+    if (!text) {
+      return block;
+    }
+    const m = /^([ \t]*)<\/skill>\n?$/m.exec(block);
+    if (!m || m.index === undefined) {
+      return block;
+    }
+    const line = `${m[1]}  <evidence>${text}</evidence>\n`;
+    return block.slice(0, m.index) + line + block.slice(m.index);
+  });
+}
+
+/**
  * Add an `<evidence>` line to the `<skill>` blocks named in `evidence`, just
  * before `</skill>`. Order and every other byte stay as they were; skills with
  * no entry (or zero runs) are untouched. Indexed, measured outcomes shown next
@@ -549,19 +594,13 @@ export function annotateSkillsPrompt(
   evidence: Readonly<Record<string, SkillEvidence>>,
   style: SkillEvidenceStyle = "counts",
 ): string {
-  return prompt.replace(SKILL_BLOCK_RE, (block, name: string) => {
-    const e = evidence[name];
-    if (!isSkillEvidence(e) || e.runs === 0) {
-      return block;
+  const lines: Record<string, string> = {};
+  for (const [name, e] of Object.entries(evidence)) {
+    if (isSkillEvidence(e) && e.runs > 0) {
+      lines[name] = formatSkillEvidence(e, style);
     }
-    const m = /^([ \t]*)<\/skill>\n?$/m.exec(block);
-    if (!m || m.index === undefined) {
-      return block;
-    }
-    const indent = `${m[1]}  `;
-    const line = `${indent}<evidence>${formatSkillEvidence(e, style)}</evidence>\n`;
-    return block.slice(0, m.index) + line + block.slice(m.index);
-  });
+  }
+  return annotateSkillsPromptLines(prompt, lines);
 }
 
 // ---------------------------------------------------------------------------
@@ -643,6 +682,11 @@ export function resolveSkillPriorWriterMode(
   cfg: SkillsPriorConfig | undefined,
 ): NonNullable<SkillsPriorConfig["writer"]> {
   return cfg?.enabled === false ? "off" : (cfg?.writer ?? "shadow");
+}
+
+/** Whether verified peer records may appear beside skills: on unless set, off with the prior. */
+export function resolveSkillPriorPeerEvidence(cfg: SkillsPriorConfig | undefined): boolean {
+  return resolveSkillPriorEvidence(cfg) !== "off" && cfg?.peerEvidence !== false;
 }
 
 export function resolveSkillPriorMode(cfg: SkillsPriorConfig | undefined): SkillPriorMode {
