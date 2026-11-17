@@ -199,14 +199,17 @@ export function exportSkillCards(args: {
         continue;
       }
       const runs = Math.min(e.runs, SKILL_CARD_LIMITS.maxRuns);
-      // Clamp proportionally so the verdict a peer derives is unchanged.
+      // Clamp proportionally; a unanimous record stays unanimous and a mixed one stays mixed.
+      const scaled = Math.round((e.passed / e.runs) * runs);
       const passed =
         e.runs === runs
           ? e.passed
           : e.passed === e.runs
             ? runs
-            : Math.min(runs - 1, Math.round((e.passed / e.runs) * runs));
-      flat.push({ cell, hash, e: { passed: Math.max(0, passed), runs } });
+            : e.passed === 0
+              ? 0
+              : Math.min(runs - 1, Math.max(1, scaled));
+      flat.push({ cell, hash, e: { passed, runs } });
     }
   }
   const ranked = flat.toSorted(
@@ -224,20 +227,33 @@ export function exportSkillCards(args: {
     (cells[r.cell] ??= {})[r.hash] = r.e;
     records++;
   }
-  if (records === 0) {
-    return null;
+  const sign = () =>
+    signRecord<Omit<SkillCardBundle, "signature">>(
+      SKILL_CARDS_PROTOCOL,
+      {
+        protocol: SKILL_CARDS_PROTOCOL,
+        origin: `ed25519:${args.key.publicKeyHex}`,
+        issuedAt: args.now,
+        expiresAt: args.now + SKILL_CARD_LIMITS.ttlMs,
+        cells,
+      },
+      args.key,
+    );
+  // Long cell names can push a full bundle over the size peers accept: shed the least-used records.
+  for (let i = ranked.length - 1; i >= 0 && records > 0; i--) {
+    if (JSON.stringify(sign()).length <= SKILL_CARD_LIMITS.maxBytes) {
+      break;
+    }
+    const r = ranked[i]!;
+    if (cells[r.cell]?.[r.hash]) {
+      delete cells[r.cell]![r.hash];
+      if (Object.keys(cells[r.cell]!).length === 0) {
+        delete cells[r.cell];
+      }
+      records--;
+    }
   }
-  return signRecord<Omit<SkillCardBundle, "signature">>(
-    SKILL_CARDS_PROTOCOL,
-    {
-      protocol: SKILL_CARDS_PROTOCOL,
-      origin: `ed25519:${args.key.publicKeyHex}`,
-      issuedAt: args.now,
-      expiresAt: args.now + SKILL_CARD_LIMITS.ttlMs,
-      cells,
-    },
-    args.key,
-  );
+  return records === 0 ? null : sign();
 }
 
 export type SkillCardImport = { ok: true; bundle: SkillCardBundle } | { ok: false; reason: string };
@@ -308,21 +324,26 @@ export function importSkillCards(
   return { ok: true, bundle: b as SkillCardBundle };
 }
 
+export interface PeerVerdict {
+  verdict: "accepted" | "rejected";
+  /** Trusted peers on the winning side, and all trusted peers that voted on this skill. */
+  agree: number;
+  voters: number;
+}
+
 export interface PeerEvidence {
   /** skill id -> the verdict a quorum of trusted peers agrees on. */
-  records: Records;
-  /** Trusted peers with at least one usable record in this cell. */
-  agents: number;
+  verdicts: Record<string, PeerVerdict>;
   /** Peers considered, and how many the guard dropped. */
   peers: number;
   dropped: number;
 }
 
-/** One vote per peer per skill: the side its own record favours; an even split abstains. */
-function ballot(recs: Records, skip: Records): Records {
+/** A peer's position on each skill: the side its record favours; an even split takes none. */
+function positions(recs: Records): Records {
   const out: Records = {};
   for (const [skill, e] of Object.entries(recs)) {
-    if (e.runs <= 0 || (skip[skill]?.runs ?? 0) > 0) {
+    if (e.runs <= 0) {
       continue;
     }
     if (e.passed * 2 > e.runs) {
@@ -335,9 +356,12 @@ function ballot(recs: Records, skip: Records): Records {
 }
 
 /**
- * What peers add to one cell: drop every peer the guard distrusts (scored
- * over ALL cells against the recipient's own verified outcomes), leave out
- * skills the recipient has tried here, then read the rest by quorum.
+ * What peers add to one cell. Each peer's records are first reduced to one
+ * position per skill, and the guard and the vote both use that position, so
+ * a peer cannot vote with records the guard is unable to check. Peers the
+ * guard distrusts (scored over ALL cells against the recipient's own
+ * verified outcomes) are dropped, skills the recipient has tried here are
+ * left out, and the rest is read by quorum.
  */
 export function peerEvidenceFor(args: {
   own: CellRecords;
@@ -348,23 +372,50 @@ export function peerEvidenceFor(args: {
   const quorum = Math.max(1, Math.floor(args.quorum ?? QUORUM));
   const ownHere = args.own[args.cell] ?? {};
   let dropped = 0;
-  const ballots: Records[] = [];
+  const votes = new Map<string, { accept: number; reject: number }>();
   for (const peer of args.peers) {
-    if (!donorTrust(args.own, peer).trusted) {
+    const stance: CellRecords = Object.fromEntries(
+      Object.entries(peer).map(([cell, recs]) => [cell, positions(recs)]),
+    );
+    if (!donorTrust(args.own, stance).trusted) {
       dropped++;
       continue;
     }
-    ballots.push(ballot(peer[args.cell] ?? {}, ownHere));
+    for (const [skill, e] of Object.entries(stance[args.cell] ?? {})) {
+      if ((ownHere[skill]?.runs ?? 0) > 0) {
+        continue;
+      }
+      const v = votes.get(skill) ?? { accept: 0, reject: 0 };
+      if (e.passed > 0) {
+        v.accept++;
+      } else {
+        v.reject++;
+      }
+      votes.set(skill, v);
+    }
   }
-  const { records, agents } = quorumRecords(ballots, quorum);
-  return { records, agents, peers: args.peers.length, dropped };
+  const verdicts: Record<string, PeerVerdict> = {};
+  for (const [skill, v] of votes) {
+    const voters = v.accept + v.reject;
+    if (v.accept >= quorum && v.accept > v.reject) {
+      verdicts[skill] = { verdict: "accepted", agree: v.accept, voters };
+    } else if (v.reject >= quorum && v.reject > v.accept) {
+      verdicts[skill] = { verdict: "rejected", agree: v.reject, voters };
+    }
+  }
+  return { verdicts, peers: args.peers.length, dropped };
 }
 
-const agentsText = (n: number) => (n === 1 ? "1 other agent" : `${n} other agents`);
-
-/** The peer half of an evidence line, in the wording the studies used. */
-export function peerEvidenceText(verbal: string, agents: number): string {
-  return `Runs here by ${agentsText(agents)}: ${verbal}.`;
+/**
+ * The peer half of an evidence line. It says what it is: how many other
+ * agents that tried the skill report which outcome, dissent included. The
+ * studies showed quorum verdicts in the own-record wording; this keeps
+ * their verdict words and states the counts as agents, not uses.
+ */
+export function peerEvidenceText(v: PeerVerdict): string {
+  const word = v.verdict === "accepted" ? "ACCEPTED" : "REJECTED";
+  const who = v.voters === 1 ? "the 1 other agent" : `${v.agree} of ${v.voters} other agents`;
+  return `Reports from other agents here: ${word} by ${who} that tried it.`;
 }
 
 /** The own half, used only when a peer half appears somewhere in the same index. */

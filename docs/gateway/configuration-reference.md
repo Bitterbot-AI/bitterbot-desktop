@@ -1899,8 +1899,8 @@ See [Local Models](/gateway/local-models). TL;DR: run MiniMax M2.1 via LM Studio
 - `prior.peerEvidence` (default `true`): cross-agent evidence cards. Beside a
   skill this node has not tried in the context cell, the index may show the
   verdict that at least `prior.peerQuorum` (default `2`) distinct peers agree
-  on, worded as `Runs here by 2 other agents:` followed by the same verbal
-  record. Each peer has one vote per skill however many runs it
+  on, for example "Reports from other agents here: ACCEPTED by 2 of 3 other
+  agents that tried it." Each peer has one vote per skill however many runs it
   claims, and a peer whose records keep contradicting this node's own
   verified outcomes is dropped first. The node's own record always speaks
   for a skill it has tried. Peer records never change the ordering. Card

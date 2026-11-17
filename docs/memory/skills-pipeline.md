@@ -612,21 +612,27 @@ the next turn. Consequences the rest of this document depends on:
   The recipient never sums peer claims. It keeps one bundle per origin
   (newest wins, 64 origins, 30 days, at most one replacement per origin
   every ten minutes, at most 16 new origins an hour, and a full store only
-  makes room by dropping a bundle older than a week), re-verifies signatures when the file changes, and at
+  makes room by dropping an origin it has not heard from for a week; both
+  throttles run on the recipient's clock, not the signer's dates), re-verifies signatures when the file changes, and at
   run time applies two defences:
   - **Guard.** A peer is dropped when at least 3 of its unanimous records
     contradict this node's own unanimous verified records and those are at
     least 25% of the comparable pairs, across all cells. The node's own
     record speaks for any skill it has tried in the cell.
   - **Quorum.** Each remaining peer casts one vote per skill (the side its
-    record favours; an even split abstains). A verdict is shown only when
+    record favours; an even split abstains). The guard checks a peer on
+    that same position, so near-unanimous records cannot avoid it. A verdict is shown only when
     at least `peerQuorum` peers (default 2) agree and outnumber the dissent.
 
   When a peer verdict is shown, own records in the same index are prefixed
-  `Your own runs here:` and peer verdicts `Runs here by N other agents:`.
+  `Your own runs here:` and a peer verdict reads "Reports from other agents
+  here: ACCEPTED by 2 of 3 other agents that tried it.", so the count is
+  agents, not uses, and dissent is visible. The studies showed quorum
+  verdicts in the own-record wording; the runtime keeps their verdict words
+  and changes the rest to say what the numbers are.
   When none applies the index is byte-identical to the own-only form. Peer
   records never affect ordering and never reach the ledger. The run event
-  adds `peerAnnotated` and `peers: {agents, peers, dropped}`.
+  adds `peerAnnotated` and `peers: {peers, dropped}`.
 
   The evidence is in `benchmarks/skill-prior/` ("Cross-agent evidence
   cards"): on a synthetic pool, a registered replication confirmed that the
@@ -635,7 +641,8 @@ the next turn. Consequences the rest of this document depends on:
   guarded pool still adds to own experience (+16.0 pp). Limits that carry
   over: the studies tested each defence alone and the runtime applies both;
   two colluding signers meet a quorum of two on a node with no outcomes of
-  its own; keys are free to mint, so the quorum counts keys, not operators;
+  its own; keys are free to mint, so the quorum counts keys, not operators, and
+  enough keys can also fill the 64-origin store and keep newcomers out;
   the live context cell is `default` for every node, so a peer's record is
   evidence about the skill version, not about this node's context; and the
   exchange has not yet been measured between real nodes on real tasks.

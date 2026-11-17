@@ -6,6 +6,7 @@ import {
   exportSkillCards,
   importSkillCards,
   peerEvidenceFor,
+  peerEvidenceText,
 } from "./skill-cards.js";
 
 const h = (c: string) => c.repeat(64);
@@ -82,12 +83,49 @@ describe("skill card bundles", () => {
     expect(JSON.stringify(bundle).length).toBeLessThanOrEqual(SKILL_CARD_LIMITS.maxBytes);
     expect(importSkillCards(bundle, { now: NOW }).ok).toBe(true);
   });
+
+  it("never turns a mixed record into a unanimous one when clamping", () => {
+    const bundle = exportSkillCards({
+      cells: {
+        default: {
+          [h("a")]: { passed: 1, runs: 5_000 },
+          [h("b")]: { passed: 4_999, runs: 5_000 },
+          [h("c")]: { passed: 0, runs: 5_000 },
+          [h("d")]: { passed: 5_000, runs: 5_000 },
+        },
+      },
+      key,
+      now: NOW,
+    })!;
+    expect(bundle.cells.default).toEqual({
+      [h("a")]: { passed: 1, runs: 1_000 },
+      [h("b")]: { passed: 999, runs: 1_000 },
+      [h("c")]: { passed: 0, runs: 1_000 },
+      [h("d")]: { passed: 1_000, runs: 1_000 },
+    });
+  });
+
+  it("sheds records until a bundle with long cell names fits the size peers accept", () => {
+    const big: CellRecords = {};
+    for (let c = 0; c < 16; c++) {
+      const cell = `${"x".repeat(110)}-${c}`;
+      big[cell] = {};
+      for (let i = 0; i < 9; i++) {
+        big[cell]![(c * 16 + i).toString(16).padStart(64, "0")] = accepted(c * 16 + i + 1);
+      }
+    }
+    const bundle = exportSkillCards({ cells: big, key, now: NOW })!;
+    expect(JSON.stringify(bundle).length).toBeLessThanOrEqual(SKILL_CARD_LIMITS.maxBytes);
+    expect(importSkillCards(bundle, { now: NOW }).ok).toBe(true);
+  });
 });
 
 describe("peer evidence for a cell", () => {
   const A = h("a");
   const B = h("b");
   const C = h("c");
+  const acc = (agree: number, voters = agree) => ({ verdict: "accepted", agree, voters });
+  const rej = (agree: number, voters = agree) => ({ verdict: "rejected", agree, voters });
 
   it("shows a verdict only when a quorum of peers agrees and outnumbers the dissent", () => {
     const one = peerEvidenceFor({
@@ -95,7 +133,7 @@ describe("peer evidence for a cell", () => {
       peers: [{ default: { [A]: accepted() } }],
       cell: "default",
     });
-    expect(one.records).toEqual({});
+    expect(one.verdicts).toEqual({});
     const two = peerEvidenceFor({
       own: {},
       peers: [
@@ -104,8 +142,7 @@ describe("peer evidence for a cell", () => {
       ],
       cell: "default",
     });
-    expect(two.records).toEqual({ [A]: { passed: 2, runs: 2 } });
-    expect(two.agents).toBe(2);
+    expect(two.verdicts).toEqual({ [A]: acc(2) });
     const split = peerEvidenceFor({
       own: {},
       peers: [
@@ -116,10 +153,10 @@ describe("peer evidence for a cell", () => {
       ],
       cell: "default",
     });
-    expect(split.records).toEqual({});
+    expect(split.verdicts).toEqual({});
   });
 
-  it("gives each peer one vote however many runs it claims", () => {
+  it("gives each peer one vote however many runs it claims, and reports the dissent", () => {
     const res = peerEvidenceFor({
       own: {},
       peers: [
@@ -129,7 +166,13 @@ describe("peer evidence for a cell", () => {
       ],
       cell: "default",
     });
-    expect(res.records).toEqual({ [A]: { passed: 2, runs: 2 } });
+    expect(res.verdicts).toEqual({ [A]: acc(2, 3) });
+    expect(peerEvidenceText(res.verdicts[A]!)).toBe(
+      "Reports from other agents here: ACCEPTED by 2 of 3 other agents that tried it.",
+    );
+    expect(peerEvidenceText({ verdict: "rejected", agree: 1, voters: 1 })).toBe(
+      "Reports from other agents here: REJECTED by the 1 other agent that tried it.",
+    );
   });
 
   it("counts a mixed record by its majority and lets an even split abstain", () => {
@@ -141,7 +184,7 @@ describe("peer evidence for a cell", () => {
       ],
       cell: "default",
     });
-    expect(res.records).toEqual({ [A]: { passed: 0, runs: 2 } });
+    expect(res.verdicts).toEqual({ [A]: rej(2) });
   });
 
   it("leaves out skills the recipient has tried itself in the cell", () => {
@@ -153,29 +196,43 @@ describe("peer evidence for a cell", () => {
       ],
       cell: "default",
     });
-    expect(res.records).toEqual({ [B]: { passed: 2, runs: 2 } });
+    expect(res.verdicts).toEqual({ [B]: acc(2) });
   });
 
+  const own: CellRecords = {
+    c1: { [A]: accepted() },
+    c2: { [A]: accepted() },
+    c3: { [A]: accepted() },
+    c4: {},
+  };
+  const honest: CellRecords = { c1: { [A]: accepted() }, c4: { [C]: rejected() } };
+
   it("drops a peer whose records keep contradicting the recipient's own outcomes", () => {
-    const own: CellRecords = {
-      c1: { [A]: accepted() },
-      c2: { [A]: accepted() },
-      c3: { [A]: accepted() },
-      c4: {},
-    };
     const liar: CellRecords = {
       c1: { [A]: rejected() },
       c2: { [A]: rejected() },
       c3: { [A]: rejected() },
       c4: { [C]: accepted() },
     };
-    const honest: CellRecords = { c1: { [A]: accepted() }, c4: { [C]: rejected() } };
     const res = peerEvidenceFor({ own, peers: [liar, honest, honest], cell: "c4" });
     expect(res.dropped).toBe(1);
-    expect(res.records).toEqual({ [C]: { passed: 0, runs: 2 } });
+    expect(res.verdicts).toEqual({ [C]: rej(2) });
     // Known limit: with no own outcomes to check against, two colluding signers meet a quorum of two.
     const unguarded = peerEvidenceFor({ own: {}, peers: [liar, liar, honest], cell: "c4" });
-    expect(unguarded.records).toEqual({ [C]: { passed: 2, runs: 2 } });
+    expect(unguarded.verdicts).toEqual({ [C]: acc(2, 3) });
+  });
+
+  it("checks a peer on the same position it votes with, so near-unanimous records cannot dodge the guard", () => {
+    const almost = { passed: 1, runs: 1_000 };
+    const dodger: CellRecords = {
+      c1: { [A]: almost },
+      c2: { [A]: almost },
+      c3: { [A]: almost },
+      c4: { [C]: { passed: 999, runs: 1_000 } },
+    };
+    const res = peerEvidenceFor({ own, peers: [dodger, dodger, honest, honest], cell: "c4" });
+    expect(res.dropped).toBe(2);
+    expect(res.verdicts).toEqual({ [C]: rej(2) });
   });
 
   it("uses only the requested cell", () => {
@@ -184,7 +241,6 @@ describe("peer evidence for a cell", () => {
       peers: [{ other: { [A]: accepted() } }, { other: { [A]: accepted() } }],
       cell: "default",
     });
-    expect(res.records).toEqual({});
-    expect(res.agents).toBe(0);
+    expect(res.verdicts).toEqual({});
   });
 });

@@ -44,7 +44,7 @@ export const MIN_REPLACE_INTERVAL_MS = 10 * 60_000;
 /** New origins admitted per window, per process. */
 export const MAX_NEW_ORIGINS_PER_WINDOW = 16;
 export const NEW_ORIGIN_WINDOW_MS = 60 * 60_000;
-/** At capacity, only a bundle at least this old makes room for a new origin. */
+/** At capacity, only an origin not heard from for this long makes room for a new one. */
 export const EVICTABLE_AFTER_MS = 7 * 86_400_000;
 let admissions: number[] = [];
 
@@ -52,7 +52,10 @@ interface PeerFile {
   version: 1;
   /** origin -> its latest bundle */
   bundles: Record<string, SkillCardBundle>;
+  /** origin -> when this node last stored a bundle from it (local clock). */
+  receivedAt: Record<string, number>;
 }
+const emptyFile = (): PeerFile => ({ version: 1, bundles: {}, receivedAt: {} });
 
 export function skillCardPeersPath(cfg: BitterbotConfig | undefined): string {
   return cfg?.skills?.prior?.peersPath ?? path.join(CONFIG_DIR, "skill-cards-peers.json");
@@ -65,7 +68,7 @@ function readPeerFile(file: string): PeerFile {
   try {
     mtimeMs = fsSync.statSync(file).mtimeMs;
   } catch {
-    return { version: 1, bundles: {} };
+    return emptyFile();
   }
   if (peerCache && peerCache.path === file && peerCache.mtimeMs === mtimeMs) {
     return peerCache.file;
@@ -75,12 +78,20 @@ function readPeerFile(file: string): PeerFile {
     if (parsed.version !== 1 || !parsed.bundles || typeof parsed.bundles !== "object") {
       throw new Error("unsupported or malformed peer card file");
     }
-    const value: PeerFile = { version: 1, bundles: parsed.bundles };
+    const value: PeerFile = {
+      version: 1,
+      bundles: parsed.bundles,
+      receivedAt:
+        parsed.receivedAt && typeof parsed.receivedAt === "object" ? parsed.receivedAt : {},
+    };
     peerCache = { path: file, mtimeMs, file: value };
     return value;
   } catch (err) {
     log.warn(`peer skill cards unreadable at ${file}: ${String(err)}; ignoring them`);
-    return { version: 1, bundles: {} };
+    // Remember the failure for this version of the file, so it is reported once.
+    const value = emptyFile();
+    peerCache = { path: file, mtimeMs, file: value };
+    return value;
   }
 }
 
@@ -124,41 +135,46 @@ export function storePeerSkillCards(
   const file = skillCardPeersPath(cfg);
   const current = readPeerFile(file);
   const bundles: Record<string, SkillCardBundle> = {};
+  const receivedAt: Record<string, number> = {};
   for (const [origin, b] of Object.entries(current.bundles)) {
     if (b && Number.isSafeInteger(b.expiresAt) && b.expiresAt > opts.now) {
       bundles[origin] = b;
+      const at = current.receivedAt[origin];
+      receivedAt[origin] = Number.isFinite(at) ? Math.min(at!, opts.now) : opts.now;
     }
   }
-  const prior = bundles[res.bundle.origin];
+  const origin = res.bundle.origin;
+  const prior = bundles[origin];
   if (prior) {
     if (res.bundle.issuedAt <= prior.issuedAt) {
       return { stored: false, reason: "not newer than the stored bundle" };
     }
-    if (res.bundle.issuedAt - prior.issuedAt < MIN_REPLACE_INTERVAL_MS) {
+    // Throttled on this node's clock: the signer's dates cannot buy rewrites.
+    if (opts.now - receivedAt[origin]! < MIN_REPLACE_INTERVAL_MS) {
       return { stored: false, reason: "replaced too recently" };
     }
-  }
-  if (!prior) {
-    // New origins are admitted slowly and never push out a recent one, so a
-    // burst of fresh keys can neither flush the store nor churn the disk.
+  } else {
+    // New origins are admitted slowly and never push out a recently heard
+    // one, so a burst of fresh keys can neither flush the store nor churn
+    // the disk.
     const recent = admissions.filter((at) => opts.now - at < NEW_ORIGIN_WINDOW_MS);
     if (recent.length >= MAX_NEW_ORIGINS_PER_WINDOW) {
       return { stored: false, reason: "too many new origins" };
     }
     const origins = Object.keys(bundles);
     if (origins.length >= MAX_PEER_ORIGINS) {
-      const oldest = origins.reduce((a, b) =>
-        bundles[a]!.issuedAt <= bundles[b]!.issuedAt ? a : b,
-      );
-      if (opts.now - bundles[oldest]!.issuedAt < EVICTABLE_AFTER_MS) {
+      const oldest = origins.reduce((a, b) => (receivedAt[a]! <= receivedAt[b]! ? a : b));
+      if (opts.now - receivedAt[oldest]! < EVICTABLE_AFTER_MS) {
         return { stored: false, reason: "peer store full" };
       }
       delete bundles[oldest];
+      delete receivedAt[oldest];
     }
     admissions = [...recent, opts.now];
   }
-  bundles[res.bundle.origin] = res.bundle;
-  const next: PeerFile = { version: 1, bundles };
+  bundles[origin] = res.bundle;
+  receivedAt[origin] = opts.now;
+  const next: PeerFile = { version: 1, bundles, receivedAt };
   fsSync.mkdirSync(path.dirname(file), { recursive: true });
   const tmp = `${file}.${process.pid}.tmp`;
   fsSync.writeFileSync(tmp, JSON.stringify(next), { mode: 0o600 });
@@ -186,7 +202,7 @@ export interface PeerLines {
   lines: Record<string, string>;
   /** Skill names that carry a peer verdict. */
   annotated: string[];
-  summary: Pick<PeerEvidence, "agents" | "peers" | "dropped">;
+  summary: Pick<PeerEvidence, "peers" | "dropped">;
 }
 
 /**
@@ -209,7 +225,7 @@ export function peerEvidenceLines(args: {
   const empty: PeerLines = {
     lines: {},
     annotated: [],
-    summary: { agents: 0, peers: 0, dropped: 0 },
+    summary: { peers: 0, dropped: 0 },
   };
   if (!resolveSkillPriorPeerEvidence(args.config?.skills?.prior)) {
     return empty;
@@ -231,10 +247,10 @@ export function peerEvidenceLines(args: {
     cell: args.cell,
     quorum: args.config?.skills?.prior?.peerQuorum ?? QUORUM,
   });
-  const summary = { agents: peer.agents, peers: peer.peers, dropped: peer.dropped };
+  const summary = { peers: peer.peers, dropped: peer.dropped };
   const annotated = args.names.filter((n) => {
     const hash = args.hashes[n];
-    return !!hash && hash !== "unknown" && !!peer.records[hash] && !args.ownEvidence[n];
+    return !!hash && hash !== "unknown" && !!peer.verdicts[hash] && !args.ownEvidence[n];
   });
   if (annotated.length === 0) {
     return { ...empty, summary };
@@ -248,7 +264,7 @@ export function peerEvidenceLines(args: {
           ? ownEvidenceText(verbalRecord(mine))
           : formatSkillEvidence(mine, args.style);
     } else if (annotated.includes(name)) {
-      lines[name] = peerEvidenceText(verbalRecord(peer.records[args.hashes[name]!]!), peer.agents);
+      lines[name] = peerEvidenceText(peer.verdicts[args.hashes[name]!]!);
     }
   }
   return { lines, annotated, summary };

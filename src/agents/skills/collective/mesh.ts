@@ -26,6 +26,7 @@ export class PackageMesh {
   private unsub: (() => void) | undefined;
   private readonly rates = new Map<string, { at: number; count: number }>();
   private cardTimers: NodeJS.Timeout[] = [];
+  private selfOrigin: string | undefined;
   private lastCards: { digest: string; at: number } | null = null;
   constructor(
     readonly bridge: OrchestratorBridge,
@@ -72,9 +73,10 @@ export class PackageMesh {
           // formed and signed; the guard and the quorum decide what is shown.
           const cfg = loadConfig();
           if (!resolveSkillPriorPeerEvidence(cfg.skills?.prior)) return;
+          this.selfOrigin ??= `ed25519:${skillCardKey().publicKeyHex}`;
           const res = storePeerSkillCards(cfg, decoded.body, {
             now: Date.now(),
-            self: `ed25519:${skillCardKey().publicKeyHex}`,
+            self: this.selfOrigin,
           });
           if (!res.stored) log.debug(`Skill cards ignored: ${res.reason}`);
           return;

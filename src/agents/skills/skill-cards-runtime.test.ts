@@ -72,8 +72,8 @@ describe("skill cards runtime", () => {
     });
   const peer = (cells: CellRecords, key: KeyPair = generateKeyPair(), at = now) =>
     exportSkillCards({ cells, key, now: at })!;
-  const receive = (cells: CellRecords, key?: KeyPair, at = now) =>
-    storePeerSkillCards(cfg(), peer(cells, key, at), { now });
+  const receive = (cells: CellRecords, key?: KeyPair, at = now, heardAt = now) =>
+    storePeerSkillCards(cfg(), peer(cells, key, at), { now: heardAt });
   function ownOutcome(name: string, outcome: 0 | 1, cell = "default", runId = `${cell}-${name}`) {
     const ledger = fs.existsSync(ledgerPath)
       ? SkillPriorLedger.fromJSON(fs.readFileSync(ledgerPath, "utf8"))
@@ -116,7 +116,7 @@ describe("skill cards runtime", () => {
       "Your own runs here: REJECTED every time it was used (1 use).",
     );
     expect(evidenceOf(out, "beta")).toBe(
-      "Runs here by 2 other agents: ACCEPTED every time it was used (2 uses).",
+      "Reports from other agents here: ACCEPTED by 2 of 2 other agents that tried it.",
     );
     expect(evidenceOf(out, "gamma")).toBeUndefined();
     const event = vi.mocked(emitAgentEvent).mock.calls.at(-1)![0].data as {
@@ -140,14 +140,14 @@ describe("skill cards runtime", () => {
     receive({ default: { [hash.beta!]: { passed: 1, runs: 1 } } });
     resetSkillCardCachesForTest();
     expect(evidenceOf(apply(), "beta")).toBe(
-      "Runs here by 2 other agents: ACCEPTED every time it was used (2 uses).",
+      "Reports from other agents here: ACCEPTED by 2 of 2 other agents that tried it.",
     );
   });
 
   it("can be switched off, follows the quorum setting, and stays off with evidence off", () => {
     receive({ default: { [hash.beta!]: { passed: 1, runs: 1 } } });
     expect(evidenceOf(apply({ peerQuorum: 1 }), "beta")).toBe(
-      "Runs here by 1 other agent: ACCEPTED every time it was used (1 use).",
+      "Reports from other agents here: ACCEPTED by the 1 other agent that tried it.",
     );
     expect(apply({ peerQuorum: 1, peerEvidence: false })).toBe(PROMPT);
     expect(apply({ peerQuorum: 1, evidence: "off" })).toBe(PROMPT);
@@ -163,19 +163,32 @@ describe("skill cards runtime", () => {
 
   it("keeps one bundle per origin: newer replaces, older and too-frequent are refused", () => {
     const key = generateKeyPair();
+    const hour = 3_600_000;
     const cells = { default: { [hash.beta!]: { passed: 1, runs: 1 } } };
-    expect(receive(cells, key, now - 3_600_000).stored).toBe(true);
-    expect(receive(cells, key, now - 7_200_000)).toMatchObject({ stored: false });
-    expect(receive(cells, key, now - 3_600_000 + 1_000)).toEqual({
+    expect(receive(cells, key, now - 2 * hour, now - hour).stored).toBe(true);
+    expect(receive(cells, key, now - 3 * hour)).toMatchObject({ stored: false });
+    // The throttle runs on the receiver's clock: back-dated steps cannot buy rewrites.
+    expect(receive(cells, key, now - hour, now - hour + 1_000)).toEqual({
       stored: false,
       reason: "replaced too recently",
     });
     expect(receive({ default: { [hash.beta!]: { passed: 0, runs: 1 } } }, key, now).stored).toBe(
       true,
     );
+    expect(receive(cells, key, now + 60_000, now + 60_000)).toEqual({
+      stored: false,
+      reason: "replaced too recently",
+    });
     const kept = loadPeerSkillCards(cfg(), now);
     expect(kept).toHaveLength(1);
     expect(kept[0]!.cells.default![hash.beta!]).toEqual({ passed: 0, runs: 1 });
+  });
+
+  it("reports a malformed peer file once and ignores it", () => {
+    fs.writeFileSync(peersPath, "{not json");
+    expect(loadPeerSkillCards(cfg(), now)).toEqual([]);
+    expect(loadPeerSkillCards(cfg(), now)).toEqual([]);
+    expect(apply()).toBe(PROMPT);
   });
 
   it("refuses tampered and own bundles, admits new origins slowly, and re-verifies the file", () => {
@@ -190,7 +203,11 @@ describe("skill cards runtime", () => {
     expect(
       storePeerSkillCards(cfg(), peer(cells, mine), { now, self: `ed25519:${mine.publicKeyHex}` }),
     ).toEqual({ stored: false, reason: "own bundle" });
-    // New origins are admitted slowly, and a full store keeps recent bundles.
+    // An origin last heard from over a week ago, then new origins, admitted slowly.
+    const old = generateKeyPair();
+    const week = 8 * 86_400_000;
+    expect(receive(cells, old, now - week, now - week).stored).toBe(true);
+    resetSkillCardCachesForTest();
     for (let i = 0; i < MAX_NEW_ORIGINS_PER_WINDOW; i++) {
       expect(receive(cells, generateKeyPair()).stored).toBe(true);
     }
@@ -198,10 +215,8 @@ describe("skill cards runtime", () => {
       stored: false,
       reason: "too many new origins",
     });
-    const old = generateKeyPair();
-    const week = 8 * 86_400_000;
+    // Later hours (the admission window is per process; reset stands in for time passing).
     resetSkillCardCachesForTest();
-    expect(receive(cells, old, now - week).stored).toBe(true);
     for (let i = MAX_NEW_ORIGINS_PER_WINDOW + 1; i < MAX_PEER_ORIGINS; i++) {
       if (i % MAX_NEW_ORIGINS_PER_WINDOW === 0) {
         resetSkillCardCachesForTest();
