@@ -14,9 +14,11 @@ import type { BitterbotConfig } from "../../config/config.js";
 import { emitAgentEvent } from "../../infra/agent-events.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { CONFIG_DIR } from "../../utils.js";
+import { peerEvidenceLines } from "./skill-cards-runtime.js";
 import type { Skill } from "./skill-loader.js";
 import {
   annotateSkillsPrompt,
+  annotateSkillsPromptLines,
   applySkillPrior,
   type SkillEvidence,
   resolveSkillPriorMode,
@@ -129,10 +131,25 @@ export function applySkillPriorForRun(params: {
         }
       }
     }
+    // Peer verdicts (guarded, by quorum) for skills this node has not tried here.
+    const peers =
+      evidenceStyle === "off"
+        ? null
+        : peerEvidenceLines({
+            config: params.config,
+            ledger,
+            cell,
+            names: applied.baseline,
+            hashes,
+            ownEvidence: evidence,
+            style: evidenceStyle,
+          });
     const prompt =
       evidenceStyle === "off"
         ? applied.prompt
-        : annotateSkillsPrompt(applied.prompt, evidence, evidenceStyle);
+        : peers && peers.annotated.length > 0
+          ? annotateSkillsPromptLines(applied.prompt, peers.lines)
+          : annotateSkillsPrompt(applied.prompt, evidence, evidenceStyle);
     emitAgentEvent({
       runId: params.runId,
       stream: "skills",
@@ -144,6 +161,9 @@ export function applySkillPriorForRun(params: {
           changed: prompt !== params.prompt,
           evidenceStyle,
           annotated: Object.keys(evidence),
+          ...(peers && peers.summary.peers > 0
+            ? { peerAnnotated: peers.annotated, peers: peers.summary }
+            : {}),
           baseline: applied.baseline,
           order: applied.order,
           means: applied.result?.means ?? {},

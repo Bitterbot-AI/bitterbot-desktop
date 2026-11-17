@@ -234,6 +234,17 @@ export type SkillsPriorConfig = {
   pseudoCount?: number;
   /** Ledger file (JSON). Default: CONFIG_DIR/skill-prior.json. */
   ledgerPath?: string;
+  /**
+   * Show verdicts that a quorum of peers agrees on, beside skills this node
+   * has not tried in the cell. Peers are checked against this node's own
+   * verified outcomes first. Only has an effect once signed card bundles
+   * have been received (see `skills.collective.publicMesh`). Default: true.
+   */
+  peerEvidence?: boolean;
+  /** Distinct agreeing peers needed before a peer verdict is shown. Default: 2. */
+  peerQuorum?: number;
+  /** Received card bundles (JSON). Default: CONFIG_DIR/skill-cards-peers.json. */
+  peersPath?: string;
 };
 
 export type SkillsConfig = {

@@ -16,6 +16,14 @@
 
 import { createHash } from "node:crypto";
 import { signRecord, verifyRecord } from "../../src/agents/skills/collective/signatures.js";
+import {
+  type CellRecords,
+  type Records,
+  donorTrust,
+  guardedPool,
+  poolRecords,
+  quorumRecords,
+} from "../../src/agents/skills/skill-cards.js";
 import { type SkillEvidence, verbalRecord } from "../../src/agents/skills/skill-prior.js";
 import { type KeyPair, generateKeyPair } from "../../src/commerce/envelope.js";
 import type { JsonValue } from "../../src/commerce/sku.js";
@@ -24,10 +32,19 @@ import { clusterBootstrapCi, shuffled } from "./conventions-analysis.js";
 import { mulberry32 } from "./tasks.js";
 
 export { generateKeyPair, type KeyPair };
-
-export type Records = Record<string, SkillEvidence>;
-/** cell -> skill -> counts */
-export type CellRecords = Record<string, Records>;
+// The pooling, quorum and guard logic the studies measured is the runtime's.
+export {
+  QUORUM,
+  TRUST_MAX_RATE,
+  TRUST_MIN_CONTRADICTIONS,
+  donorTrust,
+  guardedPool,
+  poolRecords,
+  quorumRecords,
+  type CellRecords,
+  type DonorTrust,
+  type Records,
+} from "../../src/agents/skills/skill-cards.js";
 
 // ------------------------------------------------------------------ bundles
 
@@ -160,25 +177,6 @@ export function importCardBundle(
     }
   }
   return { ok: true, origin: b.origin, cells, dropped };
-}
-
-/** Sum counts across sources; `agents` is how many contributed at least one run. */
-export function poolRecords(sources: readonly Records[]): { records: Records; agents: number } {
-  const records: Records = {};
-  let agents = 0;
-  for (const src of sources) {
-    let any = false;
-    for (const [skill, e] of Object.entries(src)) {
-      if (e.runs > 0) {
-        any = true;
-        const t = (records[skill] ??= { passed: 0, runs: 0 });
-        t.passed += e.passed;
-        t.runs += e.runs;
-      }
-    }
-    agents += any ? 1 : 0;
-  }
-  return { records, agents };
 }
 
 // --------------------------------------------------------------------- arms
@@ -615,93 +613,6 @@ export function bundleDigest(bundles: readonly CardBundle[]): string {
 //   guard    a donor whose records contradict the recipient's own verified
 //            outcomes is dropped, and own outcomes speak for any variant the
 //            recipient has tried
-
-export const QUORUM = 2;
-/** A donor is dropped at this many contradictions, when they are this share of the checks. */
-export const TRUST_MIN_CONTRADICTIONS = 3;
-export const TRUST_MAX_RATE = 0.25;
-
-const verdictOf = (e: SkillEvidence | undefined): "accepted" | "rejected" | null =>
-  !e || e.runs === 0 ? null : e.passed === e.runs ? "accepted" : e.passed === 0 ? "rejected" : null;
-
-export interface DonorTrust {
-  /** (cell, skill) pairs where both sides hold a unanimous record. */
-  checks: number;
-  contradictions: number;
-  trusted: boolean;
-}
-
-/** Score a donor only against outcomes the recipient verified itself. */
-export function donorTrust(own: CellRecords, donor: CellRecords): DonorTrust {
-  let checks = 0;
-  let contradictions = 0;
-  for (const [cell, recs] of Object.entries(donor)) {
-    for (const [skill, e] of Object.entries(recs)) {
-      const mine = verdictOf(own[cell]?.[skill]);
-      const theirs = verdictOf(e);
-      if (mine && theirs) {
-        checks++;
-        contradictions += mine === theirs ? 0 : 1;
-      }
-    }
-  }
-  const trusted = !(
-    contradictions >= TRUST_MIN_CONTRADICTIONS && contradictions / checks >= TRUST_MAX_RATE
-  );
-  return { checks, contradictions, trusted };
-}
-
-/**
- * Pool by votes instead of counts. Each donor casts at most one vote per
- * variant; the verdict shown is the side with at least `quorum` votes and
- * strictly more than the other side. Anything else is left out, so the
- * variant reads "not tried yet" and no single signer can move a line.
- */
-export function quorumRecords(
-  sources: readonly Records[],
-  quorum = QUORUM,
-): { records: Records; agents: number } {
-  const votes = new Map<string, { accept: number; reject: number }>();
-  let agents = 0;
-  for (const src of sources) {
-    let any = false;
-    for (const [skill, e] of Object.entries(src)) {
-      if (e.runs === 0) {
-        continue;
-      }
-      any = true;
-      const v = votes.get(skill) ?? { accept: 0, reject: 0 };
-      if (e.passed > 0) {
-        v.accept++;
-      } else {
-        v.reject++;
-      }
-      votes.set(skill, v);
-    }
-    agents += any ? 1 : 0;
-  }
-  const records: Records = {};
-  for (const [skill, v] of votes) {
-    if (v.accept >= quorum && v.accept > v.reject) {
-      records[skill] = { passed: v.accept, runs: v.accept };
-    } else if (v.reject >= quorum && v.reject > v.accept) {
-      records[skill] = { passed: 0, runs: v.reject };
-    }
-  }
-  return { records, agents };
-}
-
-/** Pool the trusted donors, leaving out any variant the recipient has tried itself. */
-export function guardedPool(
-  own: Records,
-  donors: readonly Records[],
-  trusted: readonly boolean[],
-): { records: Records; agents: number } {
-  const kept = donors
-    .filter((_, i) => trusted[i] !== false)
-    .map((d) => Object.fromEntries(Object.entries(d).filter(([s]) => !(own[s]?.runs ?? 0))));
-  return poolRecords(kept);
-}
 
 /**
  * Follow-up arms, run on the first study's instances and index order.

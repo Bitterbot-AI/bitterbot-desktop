@@ -686,6 +686,16 @@ verifies each bundle's signature.
 
 ## Runtime integration
 
+Cross-agent cards are integrated in the runtime as of this change:
+`src/agents/skills/skill-cards.ts` holds the pooling, quorum and guard
+functions (this benchmark imports them from there, so what was measured is
+what runs), and `skill-cards-runtime.ts` shows a quorum-agreed peer verdict
+beside skills the node has not tried. The runtime bundle
+(`bitterbot/skill-cards/2`) is keyed by skill content hash and travels on
+the opt-in public package mesh. The runtime applies the guard and the
+quorum together, a combination the studies did not run. See
+`docs/memory/skills-pipeline.md`.
+
 The live adapter can show evidence beside each skill when
 `skills.prior.enabled` is explicitly enabled. `skills.prior.evidence` selects
 `verbal` (default), `counts`, `verdict` or `off` (ordering only). The feature

@@ -259,6 +259,27 @@ export class SkillPriorLedger {
     return { passed: e.passed, runs: e.runs };
   }
 
+  /**
+   * Every exact verified record, by context cell then skill content hash.
+   * This is what a node may share and what it checks peers against; names
+   * stay local.
+   */
+  verifiedByHash(): Record<string, Record<string, SkillEvidence>> {
+    const out: Record<string, Record<string, SkillEvidence>> = {};
+    for (const [cell, skills] of Object.entries(this.state.cells)) {
+      for (const [name, p] of Object.entries(skills ?? {})) {
+        const e = p ? this.verifiedEvidence(cell, { name, hash: p.hash }) : null;
+        if (!e) {
+          continue;
+        }
+        const t = ((out[cell] ??= {})[p.hash] ??= { passed: 0, runs: 0 });
+        t.passed += e.passed;
+        t.runs += e.runs;
+      }
+    }
+    return out;
+  }
+
   mean(cell: string, skill: Candidate): number {
     const p = this.posterior(cell, skill);
     return p.alpha / (p.alpha + p.beta);
@@ -661,6 +682,11 @@ export function resolveSkillPriorWriterMode(
   cfg: SkillsPriorConfig | undefined,
 ): NonNullable<SkillsPriorConfig["writer"]> {
   return cfg?.enabled === false ? "off" : (cfg?.writer ?? "shadow");
+}
+
+/** Whether verified peer records may appear beside skills: on unless set, off with the prior. */
+export function resolveSkillPriorPeerEvidence(cfg: SkillsPriorConfig | undefined): boolean {
+  return resolveSkillPriorEvidence(cfg) !== "off" && cfg?.peerEvidence !== false;
 }
 
 export function resolveSkillPriorMode(cfg: SkillsPriorConfig | undefined): SkillPriorMode {

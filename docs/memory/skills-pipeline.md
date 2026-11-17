@@ -593,6 +593,53 @@ the next turn. Consequences the rest of this document depends on:
   `benchmarks/skill-prior/` continue to test global-success, shuffled and
   ungated controls independently of live evidence.
 
+- **Cross-agent evidence cards.** A node can also show what other nodes
+  verified (`skills.prior.peerEvidence`, on by default,
+  `src/agents/skills/skill-cards.ts` and `skill-cards-runtime.ts`). A card
+  bundle (`bitterbot/skill-cards/2`) is one node's exact verified counts per
+  context cell and per skill content hash, signed with the node key. It
+  carries no skill name and no text, so a record can only ever apply to a
+  skill whose bytes the recipient already holds. Bundles travel on the
+  public package mesh as `type: "cards"` announcements, which exist only
+  when `skills.collective.enabled` and `publicMesh` are set; a node on the
+  mesh announces its own bundle shortly after start, hourly when it has
+  changed and every six hours otherwise. A node with the writer in shadow
+  has no verified counts and announces nothing. A content hash of a
+  published skill is recognisable, so an announced bundle reveals which
+  public skill versions the node has used and how they fared; a private
+  skill's hash reveals nothing about its content.
+
+  The recipient never sums peer claims. It keeps one bundle per origin
+  (newest wins, 64 origins, 30 days, at most one replacement per origin
+  every ten minutes, at most 16 new origins an hour, and a full store only
+  makes room by dropping a bundle older than a week), re-verifies signatures when the file changes, and at
+  run time applies two defences:
+  - **Guard.** A peer is dropped when at least 3 of its unanimous records
+    contradict this node's own unanimous verified records and those are at
+    least 25% of the comparable pairs, across all cells. The node's own
+    record speaks for any skill it has tried in the cell.
+  - **Quorum.** Each remaining peer casts one vote per skill (the side its
+    record favours; an even split abstains). A verdict is shown only when
+    at least `peerQuorum` peers (default 2) agree and outnumber the dissent.
+
+  When a peer verdict is shown, own records in the same index are prefixed
+  `Your own runs here:` and peer verdicts `Runs here by N other agents:`.
+  When none applies the index is byte-identical to the own-only form. Peer
+  records never affect ordering and never reach the ledger. The run event
+  adds `peerAnnotated` and `peers: {agents, peers, dropped}`.
+
+  The evidence is in `benchmarks/skill-prior/` ("Cross-agent evidence
+  cards"): on a synthetic pool, a registered replication confirmed that the
+  guard restores a pool poisoned by one liar in three (+18.1 pp), that a
+  quorum-read pool with a liar beats no card (+29.9 pp), and that the
+  guarded pool still adds to own experience (+16.0 pp). Limits that carry
+  over: the studies tested each defence alone and the runtime applies both;
+  two colluding signers meet a quorum of two on a node with no outcomes of
+  its own; keys are free to mint, so the quorum counts keys, not operators;
+  the live context cell is `default` for every node, so a peer's record is
+  evidence about the skill version, not about this node's context; and the
+  exchange has not yet been measured between real nodes on real tasks.
+
 ## Skill Lifecycle
 
 ```mermaid

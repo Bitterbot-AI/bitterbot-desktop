@@ -968,6 +968,9 @@ export const BitterbotSchema = z
             discount: z.number().min(0).max(1).optional().describe("Default: 0.98"),
             pseudoCount: z.number().min(0).max(100).optional().describe("Default: 4"),
             ledgerPath: z.string().optional().describe("Default: CONFIG_DIR/skill-prior.json"),
+            peerEvidence: z.boolean().optional().describe("Default: true"),
+            peerQuorum: z.number().int().min(1).max(16).optional().describe("Default: 2"),
+            peersPath: z.string().optional().describe("Default: CONFIG_DIR/skill-cards-peers.json"),
           })
           .strict()
           .optional(),

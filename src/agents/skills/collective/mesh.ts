@@ -2,6 +2,9 @@ import type { BitterbotConfig } from "../../../config/config.js";
 import { loadConfig } from "../../../config/config.js";
 import type { OrchestratorBridge } from "../../../infra/orchestrator-bridge.js";
 import { createSubsystemLogger } from "../../../logging/subsystem.js";
+import { ownSkillCards, skillCardKey, storePeerSkillCards } from "../skill-cards-runtime.js";
+import { loadSkillPriorLedger } from "../skill-prior-runtime.js";
+import { resolveSkillPriorPeerEvidence } from "../skill-prior.js";
 import { learningHash, type SkillRelease } from "./contracts.js";
 import { PeerEvidenceSchema } from "./evidence.js";
 import { getCollectiveRuntime, type CollectiveRuntime } from "./runtime.js";
@@ -10,6 +13,10 @@ import type { ObjectChunk, PackageTransport } from "./transport.js";
 import { withdrawRelease } from "./transport.js";
 
 export const PACKAGE_TOPIC = "bitterbot/packages/v1";
+/** First card publication after start, then the check interval and the unchanged-bundle refresh. */
+const CARDS_FIRST_MS = 2 * 60_000;
+const CARDS_CHECK_MS = 60 * 60_000;
+const CARDS_REFRESH_MS = 6 * 60 * 60_000;
 const log = createSubsystemLogger("skills/packages/mesh");
 let active: PackageMesh | null = null;
 export function getPackageMesh(): PackageMesh | null {
@@ -18,6 +25,8 @@ export function getPackageMesh(): PackageMesh | null {
 export class PackageMesh {
   private unsub: (() => void) | undefined;
   private readonly rates = new Map<string, { at: number; count: number }>();
+  private cardTimers: NodeJS.Timeout[] = [];
+  private lastCards: { digest: string; at: number } | null = null;
   constructor(
     readonly bridge: OrchestratorBridge,
     readonly runtime: CollectiveRuntime,
@@ -58,6 +67,18 @@ export class PackageMesh {
           withdrawRelease(this.runtime.store, decoded.body);
           return;
         }
+        if (decoded.type === "cards") {
+          // Verified outcome counts by skill content hash. Kept only when well
+          // formed and signed; the guard and the quorum decide what is shown.
+          const cfg = loadConfig();
+          if (!resolveSkillPriorPeerEvidence(cfg.skills?.prior)) return;
+          const res = storePeerSkillCards(cfg, decoded.body, {
+            now: Date.now(),
+            self: `ed25519:${skillCardKey().publicKeyHex}`,
+          });
+          if (!res.stored) log.debug(`Skill cards ignored: ${res.reason}`);
+          return;
+        }
         if (decoded.type === "evidence") {
           const evidence = PeerEvidenceSchema.parse(decoded.body);
           if (evidence.scope.kind !== "public") throw new Error("Private evidence on public topic");
@@ -81,9 +102,48 @@ export class PackageMesh {
         log.debug(`Package announcement ignored: ${String(error)}`);
       }
     });
+    this.scheduleCards();
+  }
+  /**
+   * Announce this node's verified outcome counts (content hashes and counts
+   * only). Skipped when the mesh or peer evidence is off, when nothing is
+   * verified, or when an unchanged bundle was announced recently.
+   */
+  async publishCards(now = Date.now()): Promise<boolean> {
+    if (!this.enabled()) return false;
+    const cfg = loadConfig();
+    if (!resolveSkillPriorPeerEvidence(cfg.skills?.prior)) return false;
+    const bundle = ownSkillCards(loadSkillPriorLedger(cfg), skillCardKey(), now);
+    if (!bundle) return false;
+    const digest = JSON.stringify(bundle.cells);
+    if (
+      this.lastCards &&
+      this.lastCards.digest === digest &&
+      now - this.lastCards.at < CARDS_REFRESH_MS
+    )
+      return false;
+    await this.bridge.publishCircleTopic(
+      PACKAGE_TOPIC,
+      Buffer.from(JSON.stringify({ type: "cards", body: bundle })).toString("base64"),
+    );
+    this.lastCards = { digest, at: now };
+    return true;
+  }
+  private scheduleCards(): void {
+    const run = () =>
+      void this.publishCards().catch((error: unknown) =>
+        log.debug(`Skill cards not announced: ${String(error)}`),
+      );
+    const first = setTimeout(run, CARDS_FIRST_MS);
+    const every = setInterval(run, CARDS_CHECK_MS);
+    first.unref();
+    every.unref();
+    this.cardTimers = [first, every];
   }
   async stop(): Promise<void> {
     this.unsub?.();
+    for (const timer of this.cardTimers) clearTimeout(timer);
+    this.cardTimers = [];
     await this.bridge.unsubscribeCircleTopic(PACKAGE_TOPIC);
     if (active === this) active = null;
   }
