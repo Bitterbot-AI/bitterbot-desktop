@@ -677,6 +677,13 @@ the experienced recipient little against its own record (-2.1 pp); the
 guard's gain is the pool's benefit it restores, not harm it removes below
 the own-experience baseline.
 
+### Published evidence
+
+Raw records, reports, protocols and the signed bundles for all three
+cross-agent studies are in [`published/`](published/README.md).
+`published.test.ts` recomputes every gate step from the raw records and
+verifies each bundle's signature.
+
 ## Runtime integration
 
 The live adapter can show evidence beside each skill when

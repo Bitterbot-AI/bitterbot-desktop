@@ -1,0 +1,106 @@
+{
+  "hash": "35710e02549aab13318a21d4b1a442d73a6185be84c46936a5c9e4664df8df60",
+  "protocol": {
+    "salt": "cross-agent-v1",
+    "followUpOf": "3ee5be341ebaccca229587dc14bb897aadc9f6d35c92c96b39ef45d32412c487",
+    "registered": "after an interim read of the first study (about one third of its evaluation), before any of these arms ran",
+    "simulated": false,
+    "recipientModel": "anthropic/claude-haiku-4-5",
+    "donorModel": "anthropic/claude-haiku-4-5",
+    "budget": 2,
+    "families": [
+      "ledger-sum",
+      "log-triage",
+      "config-diff",
+      "dep-depth",
+      "regex-valid",
+      "multi-file-rename",
+      "csv-filter-sum",
+      "json-path",
+      "date-window"
+    ],
+    "envs": [
+      "alder",
+      "birch",
+      "cedar",
+      "dunmore",
+      "elm",
+      "fenwick",
+      "garnet",
+      "holloway"
+    ],
+    "evalSeeds": [
+      60000,
+      60001
+    ],
+    "arms": [
+      "live",
+      "own+live",
+      "live-liar",
+      "live-liar-quorum",
+      "own+liar",
+      "own+liar-guarded",
+      "own+stale-guarded"
+    ],
+    "gate": [
+      {
+        "id": "live",
+        "claim": "A live pool beats a one-off exchange built from the same number of episodes",
+        "terms": [
+          [
+            "live",
+            1
+          ],
+          [
+            "peer",
+            -1
+          ]
+        ],
+        "lowerBoundAbove": 0,
+        "needsSignTest": true
+      },
+      {
+        "id": "quorum",
+        "claim": "A live pool with one lying donor, read by quorum, still beats no card",
+        "terms": [
+          [
+            "live-liar-quorum",
+            1
+          ],
+          [
+            "none",
+            -1
+          ]
+        ],
+        "lowerBoundAbove": 0,
+        "needsSignTest": true
+      },
+      {
+        "id": "guard",
+        "claim": "Checking donors against own outcomes removes the harm of a lying donor",
+        "terms": [
+          [
+            "own+liar-guarded",
+            1
+          ],
+          [
+            "own+liar",
+            -1
+          ]
+        ],
+        "lowerBoundAbove": 0,
+        "needsSignTest": true
+      }
+    ],
+    "quorum": 2,
+    "trust": {
+      "minContradictions": 3,
+      "maxRate": 0.25
+    },
+    "liarIndex": 2,
+    "signAlphaOneSided": 0.025,
+    "liveBundles": "46bbea7502cf8bc2654e75b7dede869998120ca068195e85e28f6685d6daa6b1",
+    "batchBundles": "7047363324f8f87dae727856ddb6e2cd3bdb92c584346e19577bfd092194564a",
+    "ownRecords": "b489cfb441fde0f260ad25c570b13f3f38c4cb5462adb5b1b366056784044b10"
+  }
+}

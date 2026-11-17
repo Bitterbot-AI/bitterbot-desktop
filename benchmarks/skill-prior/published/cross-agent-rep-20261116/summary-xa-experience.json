@@ -1,0 +1,10 @@
+{
+  "phase": "experience",
+  "simulated": false,
+  "recipientModel": "anthropic/claude-haiku-4-5",
+  "donorModel": "openai/gpt-5.4-mini",
+  "donors": 3,
+  "budget": 2,
+  "out": "~/bitterbot-skill-prior/cross-agent-rep",
+  "spentUsd": 5.797293050000003
+}

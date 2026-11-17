@@ -1,0 +1,249 @@
+{
+  "phase": "rep",
+  "simulated": false,
+  "recipientModel": "anthropic/claude-haiku-4-5",
+  "donorModel": "openai/gpt-5.4-mini",
+  "donors": 3,
+  "budget": 2,
+  "out": "~/bitterbot-skill-prior/cross-agent-rep",
+  "protoHash": "0e3179319500e977508e26b4f479726b045916523fb66f1b66113244e4e6d0ec",
+  "gate": [
+    {
+      "label": "guard",
+      "n": 72,
+      "mean": 0.18055555555555555,
+      "lo": 0.041666666666666664,
+      "hi": 0.3194444444444444,
+      "wins": 26,
+      "losses": 9,
+      "ties": 37,
+      "p": 0.0029940602835268073,
+      "id": "guard",
+      "claim": "Checking donors against own outcomes removes the harm of a lying donor",
+      "passed": true,
+      "confirmatory": true
+    },
+    {
+      "label": "quorum",
+      "n": 72,
+      "mean": 0.2986111111111111,
+      "lo": 0.10416666666666667,
+      "hi": 0.4930555555555556,
+      "wins": 35,
+      "losses": 6,
+      "ties": 31,
+      "p": 0.0000024367991500184647,
+      "id": "quorum",
+      "claim": "A live pool with one lying donor, read by quorum, still beats no card",
+      "passed": true,
+      "confirmatory": true
+    },
+    {
+      "label": "net-gain",
+      "n": 72,
+      "mean": 0.1597222222222222,
+      "lo": 0.0625,
+      "hi": 0.2638888888888889,
+      "wins": 24,
+      "losses": 4,
+      "ties": 44,
+      "p": 0.00008999556303024295,
+      "id": "net-gain",
+      "claim": "A guarded pool containing a liar still adds to the recipient's own experience",
+      "passed": true,
+      "confirmatory": true
+    }
+  ],
+  "exploratory": [
+    {
+      "label": "own+peer minus own (honest pool added to own experience)",
+      "n": 72,
+      "mean": 0.2222222222222222,
+      "lo": 0.09722222222222222,
+      "hi": 0.3541666666666667,
+      "wins": 27,
+      "losses": 5,
+      "ties": 40,
+      "p": 0.000056537101045250954
+    },
+    {
+      "label": "live minus none",
+      "n": 72,
+      "mean": 0.4930555555555556,
+      "lo": 0.3194444444444444,
+      "hi": 0.6527777777777778,
+      "wins": 49,
+      "losses": 3,
+      "ties": 20,
+      "p": 5.213385279034844e-12
+    },
+    {
+      "label": "live minus own (three peers sharing live against one's own experience)",
+      "n": 72,
+      "mean": 0.2986111111111111,
+      "lo": 0.13194444444444445,
+      "hi": 0.4652777777777778,
+      "wins": 33,
+      "losses": 7,
+      "ties": 32,
+      "p": 0.000021138511328899686
+    },
+    {
+      "label": "own+live minus own+peer",
+      "n": 0,
+      "mean": null,
+      "lo": null,
+      "hi": null,
+      "wins": 0,
+      "losses": 0,
+      "ties": 0,
+      "p": null
+    },
+    {
+      "label": "own+live minus own",
+      "n": 0,
+      "mean": null,
+      "lo": null,
+      "hi": null,
+      "wins": 0,
+      "losses": 0,
+      "ties": 0,
+      "p": null
+    },
+    {
+      "label": "oracle minus own+live (room left)",
+      "n": 0,
+      "mean": null,
+      "lo": null,
+      "hi": null,
+      "wins": 0,
+      "losses": 0,
+      "ties": 0,
+      "p": null
+    },
+    {
+      "label": "live-liar minus none (live pool, one liar, counts summed)",
+      "n": 72,
+      "mean": -0.125,
+      "lo": -0.2361111111111111,
+      "hi": -0.013888888888888888,
+      "wins": 8,
+      "losses": 22,
+      "ties": 42,
+      "p": 0.9973885603249123
+    },
+    {
+      "label": "live-liar-quorum minus live-liar (what the quorum recovers)",
+      "n": 72,
+      "mean": 0.4236111111111111,
+      "lo": 0.24305555555555555,
+      "hi": 0.6111111111111112,
+      "wins": 37,
+      "losses": 1,
+      "ties": 34,
+      "p": 1.4188117347657634e-10
+    },
+    {
+      "label": "live-liar-quorum minus live (what the liar still costs)",
+      "n": 72,
+      "mean": -0.19444444444444445,
+      "lo": -0.3402777777777778,
+      "hi": -0.04861111111111111,
+      "wins": 6,
+      "losses": 26,
+      "ties": 40,
+      "p": 0.999943462898958
+    },
+    {
+      "label": "own+liar minus own (harm of one lying donor on top of own experience)",
+      "n": 72,
+      "mean": -0.020833333333333332,
+      "lo": -0.1736111111111111,
+      "hi": 0.13194444444444445,
+      "wins": 14,
+      "losses": 17,
+      "ties": 41,
+      "p": 0.7634351700544398
+    },
+    {
+      "label": "own+liar-guarded minus own (is the guarded pool still a net gain?)",
+      "n": 72,
+      "mean": 0.1597222222222222,
+      "lo": 0.0625,
+      "hi": 0.2638888888888889,
+      "wins": 24,
+      "losses": 4,
+      "ties": 44,
+      "p": 0.00008999556303024295
+    },
+    {
+      "label": "own+liar-guarded minus own+peer (cost against an honest pool)",
+      "n": 72,
+      "mean": -0.0625,
+      "lo": -0.16666666666666666,
+      "hi": 0.034722222222222224,
+      "wins": 8,
+      "losses": 12,
+      "ties": 52,
+      "p": 0.8684120178222635
+    },
+    {
+      "label": "own+stale-guarded minus own+stale",
+      "n": 0,
+      "mean": null,
+      "lo": null,
+      "hi": null,
+      "wins": 0,
+      "losses": 0,
+      "ties": 0,
+      "p": null
+    },
+    {
+      "label": "own+stale-guarded minus own",
+      "n": 0,
+      "mean": null,
+      "lo": null,
+      "hi": null,
+      "wins": 0,
+      "losses": 0,
+      "ties": 0,
+      "p": null
+    }
+  ],
+  "trustLiar": [
+    {
+      "checks": 59,
+      "contradictions": 6,
+      "trusted": true
+    },
+    {
+      "checks": 63,
+      "contradictions": 8,
+      "trusted": true
+    },
+    {
+      "checks": 71,
+      "contradictions": 53,
+      "trusted": false
+    }
+  ],
+  "trustStale": [
+    {
+      "checks": 57,
+      "contradictions": 21,
+      "trusted": false
+    },
+    {
+      "checks": 65,
+      "contradictions": 28,
+      "trusted": false
+    },
+    {
+      "checks": 64,
+      "contradictions": 25,
+      "trusted": false
+    }
+  ],
+  "liarIndex": 2,
+  "spentUsd": 32.01925134999998
+}

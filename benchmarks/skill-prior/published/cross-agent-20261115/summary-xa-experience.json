@@ -1,0 +1,10 @@
+{
+  "phase": "experience",
+  "simulated": false,
+  "recipientModel": "anthropic/claude-haiku-4-5",
+  "donorModel": "anthropic/claude-haiku-4-5",
+  "donors": 3,
+  "budget": 2,
+  "out": "~/bitterbot-skill-prior/cross-agent",
+  "spentUsd": 11.043411399999998
+}

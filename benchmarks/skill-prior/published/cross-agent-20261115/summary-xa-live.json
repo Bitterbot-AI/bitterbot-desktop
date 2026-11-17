@@ -1,0 +1,28 @@
+{
+  "phase": "live",
+  "simulated": false,
+  "recipientModel": "anthropic/claude-haiku-4-5",
+  "donorModel": "anthropic/claude-haiku-4-5",
+  "donors": 3,
+  "budget": 2,
+  "out": "~/bitterbot-skill-prior/cross-agent",
+  "livePassByArrival": [
+    "27.8%",
+    "44.4%",
+    "55.6%",
+    "63.9%",
+    "59.7%",
+    "65.3%"
+  ],
+  "batchPassByArrival": [
+    "20.8%",
+    "20.8%",
+    "19.4%",
+    "41.7%",
+    "33.3%",
+    "31.9%"
+  ],
+  "liveCellsFound": "54 of 72",
+  "batchCellsFound": "49 of 72",
+  "spentUsd": 77.09396429999998
+}
