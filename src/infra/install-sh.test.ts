@@ -352,13 +352,18 @@ describeInstaller("scripts/install.sh", () => {
     const stable = runInstaller([], {}, freshHome());
     expect(stable.status, stable.out).toBe(0);
     expect(fs.readlinkSync(path.join(stable.home, ".bitterbot/app/current"))).toBe("1.5.0");
+    // Some macOS runners ship neither minisign nor OpenSSL 3. There the
+    // signature cannot be required, and the pin is still exercised.
+    const canVerify = opensslCanVerify() || hasCommand("minisign");
     const beta = runInstaller(
-      ["--version", "1.10.0-beta.1", "--require-signature"],
+      ["--version", "1.10.0-beta.1", ...(canVerify ? ["--require-signature"] : [])],
       {},
       stable.home,
     );
     expect(beta.status, beta.out).toBe(0);
-    expect(beta.out).toContain("Verified:");
+    if (canVerify) {
+      expect(beta.out).toContain("Verified:");
+    }
     expect(fs.readlinkSync(path.join(beta.home, ".bitterbot/app/current"))).toBe("1.10.0-beta.1");
     expect(fs.readlinkSync(path.join(beta.home, ".bitterbot/app/previous"))).toBe("1.5.0");
   });
