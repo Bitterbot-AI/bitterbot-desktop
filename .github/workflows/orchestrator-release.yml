@@ -45,12 +45,12 @@ jobs:
             bin: bitterbot-orchestrator
             asset: bitterbot-orchestrator-linux-arm64
           - target: darwin-x64
-            os: macos-14
+            os: macos-15
             rust-target: x86_64-apple-darwin
             bin: bitterbot-orchestrator
             asset: bitterbot-orchestrator-darwin-x64
           - target: darwin-arm64
-            os: macos-14
+            os: macos-15
             rust-target: aarch64-apple-darwin
             bin: bitterbot-orchestrator
             asset: bitterbot-orchestrator-darwin-arm64
