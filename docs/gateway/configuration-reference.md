@@ -1907,7 +1907,8 @@ See [Local Models](/gateway/local-models). TL;DR: run MiniMax M2.1 via LM Studio
   bundles are signed outcome counts keyed by skill content hash (no names,
   no text) and are exchanged only over the public package mesh, so nothing
   is sent or received unless `collective.enabled` and
-  `collective.publicMesh` are both set; with the mesh on, the node also
+  `collective.publicMesh` are both set and the sidecar is orchestrator
+  0.2.5 or newer (bundled from the release after 1.14.0); with the mesh on, the node also
   announces its own verified counts. A node records verified outcomes only
   with `prior.writer: "on"`. Received bundles are kept in `prior.peersPath`
   (default `CONFIG_DIR/skill-cards-peers.json`), one per origin, at most 64

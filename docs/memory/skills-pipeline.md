@@ -601,7 +601,10 @@ the next turn. Consequences the rest of this document depends on:
   carries no skill name and no text, so a record can only ever apply to a
   skill whose bytes the recipient already holds. Bundles travel on the
   public package mesh as `type: "cards"` announcements, which exist only
-  when `skills.collective.enabled` and `publicMesh` are set; a node on the
+  when `skills.collective.enabled` and `publicMesh` are set and the
+  sidecar is orchestrator 0.2.5 or newer (the 0.2.4 sidecar bundled up to
+  release 1.14.0 refuses the topic, and the gateway then logs `Complete
+  package mesh unavailable` at start); a node on the
   mesh announces its own bundle shortly after start, hourly when it has
   changed and every six hours otherwise. A node with the writer in shadow
   has no verified counts and announces nothing. A content hash of a
@@ -1375,7 +1378,7 @@ bitterbot-orchestrator/<crate version>/edge
 bitterbot-orchestrator/<crate version>/management
 ```
 
-The version segment is the orchestrator crate's own version (0.2.4 at the
+The version segment is the orchestrator crate's own version (0.2.5 at the
 time of writing), not a protocol version.
 
 When a peer identifies as `management`, the receiving node:

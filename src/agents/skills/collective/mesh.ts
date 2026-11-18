@@ -51,8 +51,23 @@ export class PackageMesh {
       this.rates.set(peer, { at: now, count: 1 });
     }
   }
+  private async publish(dataB64: string): Promise<void> {
+    const sent = (await this.bridge.publishCircleTopic(PACKAGE_TOPIC, dataB64)) as
+      | { ok?: boolean; error?: string }
+      | undefined;
+    if (sent?.ok !== true)
+      throw new Error(`Package topic publish refused: ${sent?.error ?? "no reply"}`);
+  }
   async start(): Promise<void> {
-    await this.bridge.subscribeCircleTopic(PACKAGE_TOPIC);
+    // A sidecar older than 0.2.5 refuses this topic with an ok:false reply
+    // rather than an error, which would otherwise leave the mesh silently dead.
+    const subscribed = (await this.bridge.subscribeCircleTopic(PACKAGE_TOPIC)) as
+      | { ok?: boolean; error?: string }
+      | undefined;
+    if (subscribed?.ok !== true)
+      throw new Error(
+        `the orchestrator refused the package topic (${subscribed?.error ?? "no reply"}); packages and skill cards need orchestrator 0.2.5 or newer`,
+      );
     this.unsub = this.bridge.onCircleTopicMessage((event) => {
       if (event.topic !== PACKAGE_TOPIC) return;
       try {
@@ -124,8 +139,7 @@ export class PackageMesh {
       now - this.lastCards.at < CARDS_REFRESH_MS
     )
       return false;
-    await this.bridge.publishCircleTopic(
-      PACKAGE_TOPIC,
+    await this.publish(
       Buffer.from(JSON.stringify({ type: "cards", body: bundle })).toString("base64"),
     );
     this.lastCards = { digest, at: now };
@@ -166,16 +180,14 @@ export class PackageMesh {
       withdraw: async (body) => {
         if (!this.enabled() || release.scope.kind !== "public")
           throw new Error("Public mesh disabled");
-        await this.bridge.publishCircleTopic(
-          PACKAGE_TOPIC,
+        await this.publish(
           Buffer.from(JSON.stringify({ type: "withdrawal", body })).toString("base64"),
         );
       },
       evidence: async (body) => {
         if (!this.enabled() || body.scope.kind !== "public")
           throw new Error("Evidence scope mismatch");
-        await this.bridge.publishCircleTopic(
-          PACKAGE_TOPIC,
+        await this.publish(
           Buffer.from(JSON.stringify({ type: "evidence", body })).toString("base64"),
         );
       },
@@ -184,7 +196,7 @@ export class PackageMesh {
           throw new Error("Public publication not enabled");
         const bytes = Buffer.from(JSON.stringify(value));
         if (bytes.length > 16384) throw new Error("Announcement too large");
-        await this.bridge.publishCircleTopic(PACKAGE_TOPIC, bytes.toString("base64"));
+        await this.publish(bytes.toString("base64"));
       },
       fetch: async (request, signal) => {
         signal.throwIfAborted();

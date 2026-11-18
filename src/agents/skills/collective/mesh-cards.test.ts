@@ -31,7 +31,7 @@ function gossip() {
   const sent: string[] = [];
   const bridge = (id: string) =>
     ({
-      subscribeCircleTopic: async () => undefined,
+      subscribeCircleTopic: async () => ({ ok: true }),
       unsubscribeCircleTopic: async () => undefined,
       onCircleTopicMessage: (fn: Listener) => {
         listeners.push({ id, fn });
@@ -46,6 +46,7 @@ function gossip() {
             l.fn({ topic, from_peer_id: id, data_b64 });
           }
         }
+        return { ok: true };
       },
     }) as unknown as OrchestratorBridge;
   return { bridge, sent };
@@ -144,6 +145,24 @@ describe("skill cards over the package mesh", () => {
     expect(await meshA.publishCards(9e12)).toBe(false);
     use(a);
     expect(await mesh(net.bridge("peer-off"), false).publishCards()).toBe(false);
+  });
+
+  it("fails loudly when the sidecar refuses the package topic or a publish", async () => {
+    const refused = {
+      subscribeCircleTopic: async () => ({
+        ok: false,
+        error: "only exact Compute or valid blinded circle topics allowed",
+      }),
+      unsubscribeCircleTopic: async () => undefined,
+      onCircleTopicMessage: () => () => undefined,
+      publishCircleTopic: async () => ({ ok: false, error: "publish failed" }),
+    } as unknown as OrchestratorBridge;
+    await expect(mesh(refused).start()).rejects.toThrow(/orchestrator 0\.2\.5 or newer/);
+
+    const a = node("a", generateKeyPair());
+    use(a);
+    learn(a, 1);
+    await expect(mesh(refused).publishCards(Date.now())).rejects.toThrow(/publish refused/);
   });
 
   it("ignores forged cards and cards when peer evidence is off", async () => {

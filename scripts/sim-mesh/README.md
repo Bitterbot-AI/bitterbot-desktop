@@ -23,7 +23,19 @@ them as soon as the run is done.
 ## Run
 
 Build first (`pnpm build`) so `dist/entry.js` is current. All paths below
-are relative to the repository root. Replace `$A`/`$B` with the state dirs.
+are relative to the repository root.
+
+To test an installed release instead of the checkout, start each node with
+`~/.bitterbot/app/<version>/bin/bitterbot gateway` in place of
+`node dist/entry.js gateway`, and set `SIM_MESH_ORCHESTRATOR` to the sidecar
+to run (the release's own `bin/bitterbot-orchestrator`, or a build from
+`orchestrator/target`). The wrapper defaults to
+`orchestrator/target/release/bitterbot-orchestrator`.
+
+Skill cards and complete packages need `skills.collective.enabled` and
+`publicMesh` in each node's config and a sidecar of 0.2.5 or newer. Start
+the receiving node first: a node announces its cards two minutes after
+start and retries only hourly. Replace `$A`/`$B` with the state dirs.
 
 ```bash
 A=~/bitterbot-sim/a; B=~/bitterbot-sim/b
