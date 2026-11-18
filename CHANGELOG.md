@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.14.1](https://github.com/Bitterbot-AI/bitterbot-desktop/compare/v1.14.0...v1.14.1) (2026-11-18)
+
+
+### Bug Fixes
+
+* **skills:** ship a sidecar that carries the package topic, and fail loudly without one ([#379](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/379)) ([3ea732a](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/3ea732a8c0272924aff79f3c689d0dbc9f568cd6))
+
 ## [1.14.0](https://github.com/Bitterbot-AI/bitterbot-desktop/compare/v1.13.0...v1.14.0) (2026-11-17)
 
 
