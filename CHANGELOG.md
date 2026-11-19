@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.14.2](https://github.com/Bitterbot-AI/bitterbot-desktop/compare/v1.14.1...v1.14.2) (2026-11-19)
+
+
+### Bug Fixes
+
+* **security:** run the deep_recall sandbox in a locked-down process and close vm escapes ([#387](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/387)) ([ac9552c](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/ac9552c9ba0e1caa02b3562b10cb7ab03b127919))
+
 ## [1.14.1](https://github.com/Bitterbot-AI/bitterbot-desktop/compare/v1.14.0...v1.14.1) (2026-11-18)
 
 
