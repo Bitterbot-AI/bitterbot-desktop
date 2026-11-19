@@ -1,7 +1,7 @@
 {
   "id": "device-pair",
   "name": "Device Pairing",
-  "description": "Generate setup codes and approve device pairing requests.",
+  "description": "Pair a phone with a one-time link (/pair) and approve device pairing requests.",
   "configSchema": {
     "type": "object",
     "additionalProperties": false,
@@ -13,8 +13,8 @@
   },
   "uiHints": {
     "publicUrl": {
-      "label": "Gateway URL",
-      "help": "Public WebSocket URL used for /pair setup codes (ws/wss or http/https)."
+      "label": "Phone address",
+      "help": "Address a phone should open this gateway at (http/https), e.g. https://box.tailnet.ts.net. Overrides gateway.mobile.publicUrl for /pair links."
     }
   }
 }

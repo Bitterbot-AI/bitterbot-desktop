@@ -157,4 +157,55 @@ describe("registerTelegramNativeCommands (plugin auth)", () => {
     );
     expect(bot.api.sendMessage).not.toHaveBeenCalled();
   });
+  it.each([
+    [111, true],
+    [222, false],
+  ])("passes the owner check to plugin commands (sender %s -> owner %s)", async (fromId, owner) => {
+    const command = { name: "pair", description: "Pair", handler: vi.fn() } as const;
+    getPluginCommandSpecs.mockReturnValue([{ name: "pair", description: "Pair" }]);
+    matchPluginCommand.mockReturnValue({ command, args: undefined });
+    executePluginCommand.mockReset();
+    executePluginCommand.mockResolvedValue({ text: "ok" });
+    const handlers: Record<string, (ctx: unknown) => Promise<void>> = {};
+    const bot = {
+      api: { setMyCommands: vi.fn().mockResolvedValue(undefined), sendMessage: vi.fn() },
+      command: (name: string, handler: (ctx: unknown) => Promise<void>) => {
+        handlers[name] = handler;
+      },
+    } as const;
+    registerTelegramNativeCommands({
+      bot: bot as unknown as Parameters<typeof registerTelegramNativeCommands>[0]["bot"],
+      cfg: {
+        channels: { telegram: { allowFrom: ["111", "222"] } },
+        commands: { ownerAllowFrom: ["telegram:111"] },
+      } as BitterbotConfig,
+      runtime: {} as RuntimeEnv,
+      accountId: "default",
+      telegramCfg: {} as TelegramAccountConfig,
+      allowFrom: ["111", "222"],
+      groupAllowFrom: [],
+      replyToMode: "off",
+      textLimit: 4000,
+      useAccessGroups: false,
+      nativeEnabled: false,
+      nativeSkillsEnabled: false,
+      nativeDisabledExplicit: false,
+      resolveGroupPolicy: () => ({ allowlistEnabled: false, allowed: true }) as ChannelGroupPolicy,
+      resolveTelegramGroupConfig: () => ({ groupConfig: undefined, topicConfig: undefined }),
+      shouldSkipUpdate: () => false,
+      opts: { token: "token" },
+    });
+    await handlers.pair?.({
+      message: {
+        chat: { id: fromId, type: "private" },
+        from: { id: fromId, username: "u" },
+        message_id: 10,
+        date: 123456,
+      },
+      match: "",
+    });
+    expect(executePluginCommand).toHaveBeenCalledWith(
+      expect.objectContaining({ isAuthorizedSender: true, senderIsOwner: owner }),
+    );
+  });
 });

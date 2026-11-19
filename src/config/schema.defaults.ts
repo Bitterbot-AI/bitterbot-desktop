@@ -36,6 +36,12 @@ export const FIELD_DEFAULTS: Record<string, unknown> = {
   "compute.awareness.stateBlock": true,
   // src/compute/awareness/nudges.ts (nudgeCompute): only `=== false` turns nudges off.
   "compute.awareness.nudges": true,
+  // src/gateway/mobile/push-dispatcher.ts (pushEnabled) and server-methods/mobile.ts: only `=== false` turns it off.
+  "gateway.mobile.enabled": true,
+  // src/gateway/mobile/push-dispatcher.ts (pushEnabled): only `=== false` turns push off.
+  "gateway.mobile.push.enabled": true,
+  // src/gateway/mobile/push-dispatcher.ts: DEFAULT_PUSH_MAX_PER_HOUR.
+  "gateway.mobile.push.maxPerHour": 30,
   // src/memory/embeddings-pool.ts (createPoolEmbeddingProvider): "local" turns routing off; anything else routes.
   "compute.embeddings.provider": "pool",
   "compute.embeddings.marginMs": 500,

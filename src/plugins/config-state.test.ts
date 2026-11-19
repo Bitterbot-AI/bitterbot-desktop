@@ -32,9 +32,16 @@ describe("resolveEnableState (bundled channel preload)", () => {
 
   it("leaves experimental bundled plugins off by default (PLAN-41 D-D flip)", () => {
     const normalized = normalizePluginsConfig({});
-    for (const id of ["twitch", "device-pair", "phone-control", "talk-voice"]) {
+    for (const id of ["twitch", "phone-control", "talk-voice"]) {
       expect(resolveEnableState(id, "bundled", normalized).enabled).toBe(false);
     }
+  });
+
+  it("enables device-pair by default so /pair works from a chat app (PLAN-62)", () => {
+    const normalized = normalizePluginsConfig({});
+    expect(resolveEnableState("device-pair", "bundled", normalized).enabled).toBe(true);
+    const off = normalizePluginsConfig({ entries: { "device-pair": { enabled: false } } });
+    expect(resolveEnableState("device-pair", "bundled", off).enabled).toBe(false);
   });
 
   it("still honors an explicit enabled:false for a bundled channel", () => {

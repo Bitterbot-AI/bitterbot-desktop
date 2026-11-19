@@ -28,6 +28,7 @@ import {
   Radio,
   ScrollText,
   Server,
+  Smartphone,
   Settings,
   Shield,
   ShieldCheck,
@@ -52,6 +53,8 @@ const NAV_MANIFEST_LITERAL = [
   // PLAN-50: cost is a daily-glance surface, second only to health.
   { id: "usage", label: "Usage", icon: BarChart3, group: "main" },
   { id: "channels", label: "Channels", icon: Radio, group: "main" },
+  // PLAN-62: paired phones and node hosts; "Pair a phone" lives here.
+  { id: "nodes", label: "Devices", icon: Smartphone, group: "main" },
   { id: "agents", label: "Agents", icon: Bot, group: "main" },
   { id: "skills", label: "Skills", icon: Puzzle, group: "main" },
   { id: "connectors", label: "Connectors", icon: Plug, group: "main" },
@@ -69,7 +72,6 @@ const NAV_MANIFEST_LITERAL = [
   { id: "wallet", label: "Wallet", icon: Wallet, group: "advanced" },
   { id: "spendGrants", label: "Spend Grants", icon: Coins, group: "advanced" },
   { id: "workspace", label: "Workspace", icon: FolderOpen, group: "advanced" },
-  { id: "nodes", label: "Nodes", icon: Server, group: "advanced" },
   { id: "logs", label: "Logs", icon: ScrollText, group: "advanced" },
   {
     id: "management",

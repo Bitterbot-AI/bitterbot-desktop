@@ -186,19 +186,31 @@ export function publicKeyRawBase64UrlFromPem(publicKeyPem: string): string {
   return base64UrlEncode(derivePublicKeyRaw(publicKeyPem));
 }
 
+/**
+ * DER prefix of a P-256 SubjectPublicKeyInfo wrapping an uncompressed point
+ * (0x04 || X || Y, 65 bytes). Browsers that lack WebCrypto Ed25519 (Safari
+ * before 17, Chrome before 137) sign with ECDSA P-256 instead; the raw key is
+ * the 65-byte point, which can never be confused with a 32-byte Ed25519 key.
+ */
+const P256_SPKI_PREFIX = Buffer.from("3059301306072a8648ce3d020106082a8648ce3d030107034200", "hex");
+
+/** Which signature scheme a raw device public key belongs to, by length and form. */
+export function deviceKeyAlgorithm(raw: Buffer): "ed25519" | "p256" | null {
+  if (raw.length === 32) {
+    return "ed25519";
+  }
+  if (raw.length === 65 && raw[0] === 0x04) {
+    return "p256";
+  }
+  return null;
+}
+
 export function verifyDeviceSignature(
   publicKey: string,
   payload: string,
   signatureBase64Url: string,
 ): boolean {
   try {
-    const key = publicKey.includes("BEGIN")
-      ? crypto.createPublicKey(publicKey)
-      : crypto.createPublicKey({
-          key: Buffer.concat([ED25519_SPKI_PREFIX, base64UrlDecode(publicKey)]),
-          type: "spki",
-          format: "der",
-        });
     const sig = (() => {
       try {
         return base64UrlDecode(signatureBase64Url);
@@ -206,6 +218,45 @@ export function verifyDeviceSignature(
         return Buffer.from(signatureBase64Url, "base64");
       }
     })();
+    if (publicKey.includes("BEGIN")) {
+      const key = crypto.createPublicKey(publicKey);
+      if (key.asymmetricKeyType === "ec") {
+        return crypto.verify(
+          "sha256",
+          Buffer.from(payload, "utf8"),
+          { key, dsaEncoding: "ieee-p1363" },
+          sig,
+        );
+      }
+      return crypto.verify(null, Buffer.from(payload, "utf8"), key, sig);
+    }
+    const raw = base64UrlDecode(publicKey);
+    const algorithm = deviceKeyAlgorithm(raw);
+    if (algorithm === "p256") {
+      // WebCrypto ECDSA emits the IEEE P1363 form (r || s), not DER.
+      if (sig.length !== 64) {
+        return false;
+      }
+      const key = crypto.createPublicKey({
+        key: Buffer.concat([P256_SPKI_PREFIX, raw]),
+        type: "spki",
+        format: "der",
+      });
+      return crypto.verify(
+        "sha256",
+        Buffer.from(payload, "utf8"),
+        { key, dsaEncoding: "ieee-p1363" },
+        sig,
+      );
+    }
+    if (algorithm !== "ed25519") {
+      return false;
+    }
+    const key = crypto.createPublicKey({
+      key: Buffer.concat([ED25519_SPKI_PREFIX, raw]),
+      type: "spki",
+      format: "der",
+    });
     return crypto.verify(null, Buffer.from(payload, "utf8"), key, sig);
   } catch {
     return false;

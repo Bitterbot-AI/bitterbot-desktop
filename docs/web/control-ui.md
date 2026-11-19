@@ -61,8 +61,13 @@ you revoke it with `bitterbot devices revoke --device <id> --role <role>`. See
   `BITTERBOT_BOOTSTRAP_PAIRING=1`, which the Fly, VPS and Compose setups set), the
   first Control UI that proves the gateway token is paired automatically, once,
   while no device is paired. See [Docker and always-on hosting](/platforms/docker).
-- Each browser profile generates a unique device ID, so switching browsers or
-  clearing browser data will require re-pairing.
+- Each browser profile generates its own device key (WebCrypto, non-extractable,
+  kept in IndexedDB; Ed25519, or ECDSA P-256 on older browsers) and signs every
+  connection with it, so switching browsers or clearing browser data requires
+  re-pairing. Over plain HTTP browsers withhold WebCrypto, so the UI connects
+  without a device (see [Insecure HTTP](#insecure-http)).
+- To use Bitterbot from a phone, pair it with **Devices > Pair a phone**
+  instead; see the [phone app](/web/mobile).
 
 ## What it can do (today)
 

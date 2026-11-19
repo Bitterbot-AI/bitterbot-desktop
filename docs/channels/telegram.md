@@ -317,11 +317,11 @@ curl "https://api.telegram.org/bot<bot_token>/getUpdates"
 
     When the `device-pair` plugin is installed:
 
-    1. `/pair` generates setup code
-    2. paste code in your node's gateway settings
-    3. `/pair approve` approves latest pending request
+    1. `/pair` replies with a one-time link for your phone (five minutes, single use)
+    2. open it on the phone; the [phone app](/web/mobile) shows a six-digit code
+    3. `/pair approve <code>` approves it when the code matches
 
-    More details: [Pairing](/channels/pairing#pair-via-telegram).
+    More details: [Pairing](/channels/pairing#pair-a-phone-from-a-chat-app).
 
   </Accordion>
 

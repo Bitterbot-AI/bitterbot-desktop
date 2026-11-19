@@ -1,4 +1,5 @@
 import { callGateway } from "../../gateway/call.js";
+import { isPhoneSurface, phoneApprovalRefusal } from "../../gateway/mobile/phone-policy.js";
 import { logVerbose } from "../../globals.js";
 import {
   GATEWAY_CLIENT_MODES,
@@ -123,6 +124,20 @@ export const handleApproveCommand: CommandHandler = async (params, allowTextComm
 
   const resolvedBy = buildResolvedByLabel(params);
 
+  // PLAN-62: a paired phone answers approvals in its own app, once, and never
+  // approves money. The decision below runs on a backend connection, so the
+  // phone's scopes travel with it (originScopes) and are checked here too.
+  const originScopes = params.ctx.GatewayClientScopes ?? [];
+  if (isPhoneSurface(originScopes) && parsed.decision !== "deny") {
+    const refusal =
+      parsed.decision === "allow-always"
+        ? phoneApprovalRefusal({ scopes: originScopes, decision: "allow-always" })
+        : null;
+    if (refusal) {
+      return { shouldContinue: false, reply: { text: refusal } };
+    }
+  }
+
   // PLAN-53 Track B: ids that start with "rv-" are held actions (a spend or a
   // public post), decided through review.resolve. Approving one makes the
   // gateway carry the action out, so the reply says what happened.
@@ -131,7 +146,13 @@ export const handleApproveCommand: CommandHandler = async (params, allowTextComm
     try {
       const outcome = (await callGateway({
         method: "review.resolve",
-        params: { id: parsed.id, decision, decidedBy: resolvedBy, via: "chat" },
+        params: {
+          id: parsed.id,
+          decision,
+          decidedBy: resolvedBy,
+          via: "chat",
+          ...(isPhoneSurface(originScopes) ? { originScopes } : {}),
+        },
         clientName: GATEWAY_CLIENT_NAMES.GATEWAY_CLIENT,
         clientDisplayName: `Chat approval (${resolvedBy})`,
         mode: GATEWAY_CLIENT_MODES.BACKEND,

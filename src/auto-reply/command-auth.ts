@@ -3,6 +3,7 @@ import { getChannelDock, listChannelDocks } from "../channels/dock.js";
 import type { ChannelId } from "../channels/plugins/types.js";
 import { normalizeAnyChannelId } from "../channels/registry.js";
 import type { BitterbotConfig } from "../config/config.js";
+import { isPhoneCommandAllowed } from "../gateway/mobile/phone-policy.js";
 import { INTERNAL_MESSAGE_CHANNEL } from "../utils/message-channel.js";
 import type { MsgContext } from "./templating.js";
 
@@ -294,9 +295,15 @@ export function resolveCommandAuthorization(params: {
   // chat.send is the Control UI (and other gateway clients): it is reachable
   // only with the gateway's own credentials, so its sender is the operator.
   // No channel monitor builds a context with this provider.
+  // PLAN-62: except a paired phone (gateway/mobile/phone-policy.ts). It holds
+  // a scoped device token, not the owner's credentials, so it is never the
+  // owner and only its allow-listed commands are authorized.
+  const isPhoneSurface = ctx.GatewayPhoneSurface === true;
   const isGatewayOperator =
-    ctx.Provider === INTERNAL_MESSAGE_CHANNEL && ctx.Surface === INTERNAL_MESSAGE_CHANNEL;
-  const senderIsOwner = Boolean(matchedSender) || isGatewayOperator;
+    !isPhoneSurface &&
+    ctx.Provider === INTERNAL_MESSAGE_CHANNEL &&
+    ctx.Surface === INTERNAL_MESSAGE_CHANNEL;
+  const senderIsOwner = !isPhoneSurface && (Boolean(matchedSender) || isGatewayOperator);
   const ownerAllowlistConfigured = ownerAllowAll || explicitOwners.length > 0;
   const requireOwner = enforceOwner || ownerAllowlistConfigured;
   const isOwnerForCommands = !requireOwner
@@ -320,6 +327,12 @@ export function resolveCommandAuthorization(params: {
   } else {
     // Fall back to existing behavior
     isAuthorizedSender = commandAuthorized && isOwnerForCommands;
+  }
+  if (isPhoneSurface) {
+    // Whatever commands.allowFrom says: a phone's only authorized commands are
+    // the harmless ones. Plain chat still flows (unauthorized senders chat).
+    isAuthorizedSender =
+      commandAuthorized && isPhoneCommandAllowed(ctx.CommandBody ?? ctx.RawBody ?? ctx.Body ?? "");
   }
 
   return {

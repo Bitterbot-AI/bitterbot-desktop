@@ -1,0 +1,274 @@
+/*
+ * The phone app's layer on top of the shared design tokens (globals.css,
+ * bitterbot-theme.css, motion.css). Same brand ladder, same type, same motion
+ * tokens; this file only adds what a one-handed touch screen needs: safe-area
+ * insets, 44px targets, a keyboard-aware composer, and the signature purple
+ * ramp as the app's ground instead of a sidebar.
+ */
+
+.mobile-app {
+  --m-gutter: 1rem;
+  --m-header-h: 3.25rem;
+  --m-tab-h: 3.5rem;
+  --m-safe-top: env(safe-area-inset-top, 0px);
+  --m-safe-bottom: env(safe-area-inset-bottom, 0px);
+  --m-safe-left: env(safe-area-inset-left, 0px);
+  --m-safe-right: env(safe-area-inset-right, 0px);
+  --m-surface: color-mix(in oklab, var(--foreground) 4%, transparent);
+  --m-surface-strong: color-mix(in oklab, var(--foreground) 7%, transparent);
+  --m-hairline: color-mix(in oklab, var(--foreground) 9%, transparent);
+  --m-user-bubble: color-mix(in oklab, var(--primary) 16%, var(--background));
+  --m-chrome: color-mix(in oklab, var(--sidebar-bg-primary) 92%, transparent);
+  -webkit-tap-highlight-color: transparent;
+  -webkit-text-size-adjust: 100%;
+  overscroll-behavior: none;
+  font-feature-settings: "ss01", "cv11";
+}
+
+.dark .mobile-app {
+  --m-user-bubble: color-mix(in oklab, var(--primary) 20%, var(--background));
+}
+
+/* The ground: the brand's vertical purple ramp, settling into near-black. */
+.mobile-ground {
+  background: linear-gradient(
+    to bottom,
+    var(--sidebar-bg-primary) 0%,
+    var(--sidebar-bg-secondary) 70%
+  );
+}
+
+.mobile-shell {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  padding-left: var(--m-safe-left);
+  padding-right: var(--m-safe-right);
+  height: 100dvh;
+}
+
+.mobile-header {
+  flex-shrink: 0;
+  padding-top: var(--m-safe-top);
+  background: var(--m-chrome);
+  border-bottom: 1px solid var(--m-hairline);
+}
+
+.mobile-header-row {
+  height: var(--m-header-h);
+}
+
+.mobile-main {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+.mobile-tabbar {
+  flex-shrink: 0;
+  padding-bottom: var(--m-safe-bottom);
+  background: var(--m-chrome);
+  border-top: 1px solid var(--m-hairline);
+}
+
+.mobile-tabbar-row {
+  height: var(--m-tab-h);
+}
+
+/* Every interactive thing is at least 44 x 44 (Apple HIG, WCAG 2.5.5). */
+.m-touch {
+  min-height: 2.75rem;
+  min-width: 2.75rem;
+}
+
+/* Tactile press: a quick dip instead of haptics. */
+.m-press {
+  transition:
+    transform var(--motion-duration-instant) var(--motion-ease-standard),
+    background-color var(--motion-duration-fast) var(--motion-ease-standard),
+    opacity var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.m-press:active {
+  transform: scale(0.96);
+}
+
+.m-card {
+  background: var(--m-surface);
+  border: 1px solid var(--m-hairline);
+  border-radius: 1rem;
+}
+
+.m-section-label {
+  font-size: var(--text-2xs);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+  font-weight: 600;
+}
+
+/* Composer: sits on the tab bar, or on the keyboard while typing (the tab bar
+   owns the home-indicator inset, so the composer never needs it). */
+.mobile-composer {
+  padding: 0.5rem var(--m-gutter);
+  background: var(--m-chrome);
+  border-top: 1px solid var(--m-hairline);
+}
+
+.m-input {
+  font-size: 1rem; /* 16px: stops iOS zooming into the field on focus */
+}
+
+/* Streaming caret, in the brand purple. */
+.m-caret > :last-child::after,
+.m-caret:empty::after {
+  content: "";
+  display: inline-block;
+  width: 0.5em;
+  height: 1em;
+  margin-left: 0.15em;
+  vertical-align: -0.12em;
+  border-radius: 2px;
+  background: var(--primary);
+  animation: m-caret-blink 1s steps(2, start) infinite;
+}
+
+@keyframes m-caret-blink {
+  to {
+    visibility: hidden;
+  }
+}
+
+.m-dots span {
+  display: inline-block;
+  width: 0.375rem;
+  height: 0.375rem;
+  margin: 0 0.125rem;
+  border-radius: 9999px;
+  background: var(--primary);
+  opacity: 0.35;
+  animation: m-dot 1.2s var(--motion-ease-standard) infinite;
+}
+
+.m-dots span:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.m-dots span:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+@keyframes m-dot {
+  0%,
+  80%,
+  100% {
+    opacity: 0.35;
+    transform: translateY(0);
+  }
+  40% {
+    opacity: 1;
+    transform: translateY(-0.2rem);
+  }
+}
+
+.m-fade-in {
+  animation: m-fade-in var(--motion-duration-standard) var(--motion-ease-arrival) both;
+}
+
+@keyframes m-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(0.375rem);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* The pairing code: big, mono, calm. */
+.m-confirm-code {
+  font-family: var(--font-mono);
+  font-size: 2.75rem;
+  line-height: 1;
+  letter-spacing: 0.08em;
+  font-variant-numeric: tabular-nums;
+}
+
+.m-pulse-ring {
+  position: absolute;
+  inset: -0.75rem;
+  border-radius: 9999px;
+  border: 2px solid color-mix(in oklab, var(--primary) 45%, transparent);
+  animation: m-pulse 2.4s var(--motion-ease-arrival) infinite;
+}
+
+@keyframes m-pulse {
+  0% {
+    opacity: 0.9;
+    transform: scale(0.9);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.25);
+  }
+}
+
+.mobile-app .chat-markdown {
+  font-size: 0.9375rem;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.mobile-app .chat-markdown pre {
+  margin: 0;
+  background: transparent;
+  padding: 0.75rem 0.875rem;
+  font-size: 0.8125rem;
+}
+
+/* A fenced block's code is plain text, not an inline-code pill. */
+.mobile-app .chat-markdown pre code {
+  background: transparent;
+  padding: 0;
+  border-radius: 0;
+  font-size: inherit;
+  white-space: pre;
+}
+
+.mobile-app .chat-markdown pre.m-code-wrap code {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* "There is more to the right": a soft fade over the last few characters. */
+.m-code-fade {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 2.5rem;
+  pointer-events: none;
+  background: linear-gradient(to right, transparent, var(--background));
+  opacity: 0.85;
+}
+
+.mobile-app .chat-markdown table {
+  display: block;
+  overflow-x: auto;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .m-press:active {
+    transform: none;
+  }
+  .m-caret > :last-child::after,
+  .m-dots span,
+  .m-pulse-ring,
+  .m-fade-in {
+    animation: none;
+  }
+}

@@ -22,6 +22,12 @@ export type DevicePairingPendingRequest = {
   remoteIp?: string;
   silent?: boolean;
   isRepair?: boolean;
+  /** Mobile pairing: the one-time setup code this request claimed. */
+  setupId?: string;
+  /** Mobile pairing: the short code the phone shows; the owner checks it matches. */
+  confirmCode?: string;
+  /** Set only by the gateway's phone pairing flow, never from client input. */
+  principal?: "phone";
   ts: number;
 };
 
@@ -55,6 +61,14 @@ export type PairedDevice = {
   roles?: string[];
   scopes?: string[];
   remoteIp?: string;
+  /** Owner-chosen name; wins over the displayName the client reports on connect. */
+  label?: string;
+  /**
+   * PLAN-62: "phone" when the device was paired through the phone flow. Set by
+   * the gateway at approval, sticky for the life of the pairing, and never
+   * changed by what the device reports or requests on connect.
+   */
+  principal?: "phone";
   tokens?: Record<string, DeviceAuthToken>;
   createdAtMs: number;
   approvedAtMs: number;
@@ -85,7 +99,35 @@ async function loadState(baseDir?: string): Promise<DevicePairingStateFile> {
     pairedByDeviceId: paired ?? {},
   };
   pruneExpiredPending(state.pendingById, Date.now(), PENDING_TTL_MS);
+  for (const device of Object.values(state.pairedByDeviceId)) {
+    markLegacyPhone(device);
+  }
   return state;
+}
+
+/**
+ * PLAN-62: a phone paired before `principal` existed has no marker, so it
+ * could ask for approvals only and shed the phone policy. Its persisted,
+ * gateway-approved scopes still say what it is: `operator.chat` and
+ * `operator.notifications` were created for phones, and no other client is
+ * ever approved for them without `operator.admin`.
+ */
+function markLegacyPhone(device: PairedDevice): void {
+  if (device.principal) {
+    return;
+  }
+  const approved = new Set(device.scopes ?? []);
+  for (const token of Object.values(device.tokens ?? {})) {
+    for (const scope of token.scopes ?? []) {
+      approved.add(scope);
+    }
+  }
+  if (
+    !approved.has("operator.admin") &&
+    (approved.has("operator.chat") || approved.has("operator.notifications"))
+  ) {
+    device.principal = "phone";
+  }
 }
 
 async function persistState(state: DevicePairingStateFile, baseDir?: string) {
@@ -256,8 +298,11 @@ export async function requestDevicePairing(
       roles: req.role ? [req.role] : undefined,
       scopes: req.scopes,
       remoteIp: req.remoteIp,
+      ...(req.principal === "phone" ? { principal: "phone" as const } : {}),
       silent: req.silent,
       isRepair,
+      setupId: req.setupId,
+      confirmCode: req.confirmCode,
       ts: Date.now(),
     };
     state.pendingById[request.requestId] = request;
@@ -307,6 +352,10 @@ export async function approveDevicePairing(
       roles,
       scopes,
       remoteIp: pending.remoteIp,
+      ...(existing?.principal === "phone" || pending.principal === "phone"
+        ? { principal: "phone" as const }
+        : {}),
+      label: existing?.label,
       tokens,
       createdAtMs: existing?.createdAtMs ?? now,
       approvedAtMs: now,
@@ -356,7 +405,12 @@ export async function updatePairedDeviceMetadata(
       role: patch.role ?? existing.role,
       roles,
       scopes,
+      // Provenance is the gateway's, not the client's: a connect cannot set or clear it.
+      principal: existing.principal,
     };
+    if (!existing.principal) {
+      delete state.pairedByDeviceId[deviceId].principal;
+    }
     await persistState(state, baseDir);
   });
 }
@@ -544,5 +598,57 @@ export async function revokeDeviceToken(params: {
     state.pairedByDeviceId[device.deviceId] = device;
     await persistState(state, params.baseDir);
     return entry;
+  });
+}
+
+/**
+ * Forget a paired device entirely: its record, roles, scopes and every token.
+ * A later connection from the same key is an unpaired device again and has to
+ * pair from scratch. Pending requests from the same device go too.
+ */
+export async function removePairedDevice(
+  deviceId: string,
+  baseDir?: string,
+): Promise<PairedDevice | null> {
+  return await withLock(async () => {
+    const state = await loadState(baseDir);
+    const id = normalizeDeviceId(deviceId);
+    const existing = state.pairedByDeviceId[id] ?? null;
+    let changed = false;
+    if (existing) {
+      delete state.pairedByDeviceId[id];
+      changed = true;
+    }
+    for (const [requestId, pending] of Object.entries(state.pendingById)) {
+      if (pending.deviceId === id) {
+        delete state.pendingById[requestId];
+        changed = true;
+      }
+    }
+    if (changed) {
+      await persistState(state, baseDir);
+    }
+    return existing;
+  });
+}
+
+/** Set (or clear, with an empty string) the owner-chosen name of a paired device. */
+export async function renamePairedDevice(
+  deviceId: string,
+  label: string,
+  baseDir?: string,
+): Promise<PairedDevice | null> {
+  return await withLock(async () => {
+    const state = await loadState(baseDir);
+    const id = normalizeDeviceId(deviceId);
+    const existing = state.pairedByDeviceId[id];
+    if (!existing) {
+      return null;
+    }
+    const trimmed = label.trim().slice(0, 64);
+    const next: PairedDevice = { ...existing, label: trimmed || undefined };
+    state.pairedByDeviceId[id] = next;
+    await persistState(state, baseDir);
+    return next;
   });
 }

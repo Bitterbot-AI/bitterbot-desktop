@@ -1,3 +1,5 @@
+import { DROP, phoneEventPayload } from "./mobile/phone-events.js";
+import { isMobileScopedConnection } from "./mobile/scopes.js";
 import { MAX_BUFFERED_BYTES } from "./server-constants.js";
 import type { GatewayWsClient } from "./server/ws-types.js";
 import { isSetupOnlyScopes, SETUP_EVENTS } from "./setup-token.js";
@@ -68,7 +70,14 @@ function hasEventScope(client: GatewayWsClient, event: string): boolean {
   return required.some((scope) => scopes.includes(scope));
 }
 
-export function createGatewayBroadcaster(params: { clients: Set<GatewayWsClient> }) {
+export function createGatewayBroadcaster(params: {
+  clients: Set<GatewayWsClient>;
+  /**
+   * PLAN-62: sees every untargeted broadcast, connected clients or not (the
+   * phone push dispatcher; a phone with the app closed has no socket).
+   */
+  onBroadcast?: (event: string, payload: unknown) => void;
+}) {
   let seq = 0;
 
   const broadcastInternal = (
@@ -77,6 +86,13 @@ export function createGatewayBroadcaster(params: { clients: Set<GatewayWsClient>
     opts?: GatewayBroadcastOpts,
     targetConnIds?: ReadonlySet<string>,
   ) => {
+    if (!targetConnIds && params.onBroadcast) {
+      try {
+        params.onBroadcast(event, payload);
+      } catch {
+        /* an observer never breaks the broadcast */
+      }
+    }
     if (params.clients.size === 0) {
       return;
     }
@@ -89,6 +105,31 @@ export function createGatewayBroadcaster(params: { clients: Set<GatewayWsClient>
       seq: eventSeq,
       stateVersion: opts?.stateVersion,
     });
+    // PLAN-62: phones get an allowlist (mobile/phone-events.ts), with tool
+    // activity cut down and conversations limited to that phone's own. Built
+    // once per phone per broadcast, only if a phone is listening.
+    const phoneFrames = new Map<string, string | typeof DROP>();
+    const frameForPhone = (deviceId: string | undefined): string | typeof DROP => {
+      const cacheKey = deviceId ?? "";
+      let phoneFrame = phoneFrames.get(cacheKey);
+      if (phoneFrame === undefined) {
+        const cut = phoneEventPayload(event, payload, deviceId);
+        phoneFrame =
+          cut === DROP
+            ? DROP
+            : cut === payload
+              ? frame
+              : JSON.stringify({
+                  type: "event",
+                  event,
+                  payload: cut,
+                  seq: eventSeq,
+                  stateVersion: opts?.stateVersion,
+                });
+        phoneFrames.set(cacheKey, phoneFrame);
+      }
+      return phoneFrame;
+    };
     if (shouldLogWs()) {
       const logMeta: Record<string, unknown> = {
         event,
@@ -111,6 +152,11 @@ export function createGatewayBroadcaster(params: { clients: Set<GatewayWsClient>
       if (!hasEventScope(c, event)) {
         continue;
       }
+      const isPhone = isMobileScopedConnection(c.connect.scopes);
+      const outFrame = isPhone ? frameForPhone(c.connect.device?.id) : frame;
+      if (outFrame === DROP) {
+        continue;
+      }
       const slow = c.socket.bufferedAmount > MAX_BUFFERED_BYTES;
       if (slow && opts?.dropIfSlow) {
         continue;
@@ -124,7 +170,7 @@ export function createGatewayBroadcaster(params: { clients: Set<GatewayWsClient>
         continue;
       }
       try {
-        c.socket.send(frame);
+        c.socket.send(outFrame);
       } catch {
         /* ignore */
       }
