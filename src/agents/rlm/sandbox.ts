@@ -557,7 +557,7 @@ export class RLMSandbox {
         );
       });
       const runError = await Promise.race([completion, deadline]);
-      if (this.pendingRun?.id === runId) {
+      if (this.isRunOpen(runId)) {
         // Deadline passed with the run still open: the process is stuck.
         this.pendingRun = null;
         this.killChild();
@@ -572,11 +572,16 @@ export class RLMSandbox {
       if (timer) {
         clearTimeout(timer);
       }
-      if (this.pendingRun?.id === runId) {
+      if (this.isRunOpen(runId)) {
         this.pendingRun = null;
       }
       this.armIdleTimer();
     }
+  }
+
+  /** Whether the given run is still waiting for its completion message. */
+  private isRunOpen(runId: string): boolean {
+    return this.pendingRun?.id === runId;
   }
 
   private armIdleTimer(): void {
