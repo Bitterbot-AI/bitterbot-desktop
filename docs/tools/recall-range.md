@@ -51,7 +51,7 @@ The tool reads the current conversation only, by default. Tool outputs carry fil
 - Subagents cannot call `recall_range`, `deep_recall` or `expand_message` at any depth.
 - Inbound A2A tasks cannot call them either (always-deny floor).
 
-The same posture applies to `deep_recall`: its `recent_sessions` and `all_sessions` scopes are owner-only, and non-owner senders are downgraded to `current_session`.
+`deep_recall` is stricter: the whole tool is owner-only, so a non-owner sender does not get it (see [Deep Recall](../memory/deep-recall.md#sandbox-isolation)).
 
 ## Hot set
 

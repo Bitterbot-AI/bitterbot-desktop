@@ -184,6 +184,8 @@ When `deep_recall` returns no useful answer, the failed query is registered as a
 | `recent_sessions` | The 10 most recent transcripts of this agent (dialogue only)                            | Owner senders only; others are downgraded to `current_session` |
 | `all_sessions`    | Every transcript of this agent, including `.reset.*` archives (dialogue only)           | Owner senders only; others are downgraded to `current_session` |
 
+`deep_recall` is an owner-only tool, like `code_interpreter`: a non-owner sender's turn does not get it at all, because it runs sub-LLM-written code on the gateway host (see [Sandbox isolation](#sandbox-isolation)). A non-owner turn still has `recall_range` for exact lookups in its own conversation. The scope downgrade below stays in place as a second layer.
+
 Cross-session scopes read other conversations, and tool results carry file reads and command output that the memory indexer deliberately does not index. A non-owner sender (a group member, another DM) therefore gets `current_session` whatever it asks for, and the result carries a `scopeNote` saying so. "Owner" has the same meaning as for `code_interpreter`: the sender matched the channel's owner allowlist. Subagents and inbound A2A tasks cannot call `deep_recall` at all (for subagents it is on the deny list in `agent-tools.policy.ts`, together with `recall_range` and `expand_message`).
 
 The owner flag also decides what a recall records and sees. Every search the tool issues (the smart shortcut, the somatic-marker assessment, the live `search()` API, the bootstrap snapshot's seed queries) passes `observe: senderIsOwner` and the agent `sessionKey`, so a retrieval-evidence row is written for owner recalls only and guest recalls leave no trace in the evidence ledger; the snapshot builder takes the same switch as `observeEvidence`. The same flag enables `tagSuperseded`, which ranks results the canonical ledger has superseded last and tags them with the current value; guests get untagged results.
@@ -232,3 +234,29 @@ The owner flag also decides what a recall records and sees. Every search the too
 - [Curiosity & Search](./curiosity-and-search.md) — search infrastructure deep recall builds on
 - [User Knowledge](./user-knowledge.md) — session extraction for long-term facts
 - [recall_range](../tools/recall-range.md) — the deterministic transcript reader for exact text and tool outputs
+
+## Sandbox isolation
+
+The REPL code is written by a model that reads transcripts, memory and tool output, so it is treated as hostile. Two independent layers contain it.
+
+**A separate process.** The code never runs inside the gateway. Each sandbox is its own `node` process, started with:
+
+- an empty environment (no API keys or tokens),
+- the Node permission model: no filesystem access, no child processes, no worker threads, no native addons,
+- a 512 MB heap cap.
+
+The gateway talks to it over an IPC channel that carries JSON. The only things the process can ask for are the calls sandbox code is allowed anyway (`llm_query`, `llm_query_parallel`, `search`, `loadTranscript`, `listSessions`), only while a code block is running, and at most 500 per block. A block that overruns its deadline, including one that loops forever after an `await`, gets its process killed; a block that exhausts memory only ends its own process. Either way the gateway keeps running and the call returns an error to the model.
+
+**A hardened realm inside that process.** The code runs in a `node:vm` context from which no object of the surrounding process is reachable:
+
+- The global object has a null prototype, and `eval` / `Function(string)` / WebAssembly compilation are disabled.
+- `print`, `console`, the text helpers, `store` / `get` / `has` and `FINAL` are defined inside the sandbox realm.
+- Bridged calls cross as strings only (JSON text in, JSON text out).
+- Stack traces are switched off (`.stack` is `undefined`), code containing the word `import` is refused, and `FinalizationRegistry` is not available, because the errors Node raises from those paths belong to the surrounding process.
+
+Consequences for sandbox code:
+
+- `store()` is the only state that is guaranteed to last. The sandbox process is stopped after two idle minutes and after a timeout, and the next block starts a fresh one from the stored values. Plain global variables do not survive that.
+- Stored values are kept as JSON. Functions, `Map` / `Set` and cyclic values are not carried between processes.
+
+Two limits remain. Node 22's permission model does not restrict outbound network access, so code that defeated the realm hardening could open a socket from the sandbox process; it would have the loaded context to send and nothing else. And the tool spends money on sub-LLM calls. Both are reasons it stays owner-only.
