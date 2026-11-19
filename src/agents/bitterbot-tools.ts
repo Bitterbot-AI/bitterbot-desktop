@@ -78,7 +78,8 @@ import { resolveWorkspaceRoot } from "./workspace-dir.js";
  * Tools that read or change what the agent has made of the owner's life:
  * dream insights, emotional anchors, curiosity about their knowledge. A
  * guest turn (PLAN-53 G2) gets a refusal instead. The memory_* tools filter
- * rather than refuse, and deep_recall / recall_range scope by sender.
+ * rather than refuse, and recall_range scopes by sender. deep_recall is
+ * owner-only (tool-policy.ts) and scopes by sender as a second layer.
  */
 const GUEST_REFUSED_TOOLS = new Set([
   "dream_search",

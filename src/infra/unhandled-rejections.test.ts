@@ -1,5 +1,26 @@
+import vm from "node:vm";
 import { describe, expect, it } from "vitest";
-import { isAbortError, isTransientNetworkError } from "./unhandled-rejections.js";
+import {
+  isAbortError,
+  isForeignRealmPromise,
+  isTransientNetworkError,
+} from "./unhandled-rejections.js";
+
+describe("isForeignRealmPromise", () => {
+  it("recognises a promise created inside a node:vm context (code_interpreter)", () => {
+    const context = vm.createContext(Object.create(null) as object);
+    const foreign = vm.runInContext(`(async () => 1)()`, context) as unknown;
+    expect(isForeignRealmPromise(foreign)).toBe(true);
+  });
+
+  it("does not match this realm's promises or non-promises", () => {
+    expect(isForeignRealmPromise(Promise.resolve())).toBe(false);
+    expect(isForeignRealmPromise((async () => 1)())).toBe(false);
+    expect(isForeignRealmPromise({})).toBe(false);
+    expect(isForeignRealmPromise(null)).toBe(false);
+    expect(isForeignRealmPromise("x")).toBe(false);
+  });
+});
 
 describe("isAbortError", () => {
   it("returns true for error with name AbortError", () => {

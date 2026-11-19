@@ -6,6 +6,7 @@ import { Type } from "@sinclair/typebox";
 import { resolveStateDir } from "../../config/paths.js";
 import { ensureDir } from "../../utils.js";
 import { stringEnum } from "../schema/typebox.js";
+import { assertNoImportKeyword, REALM_LOCKDOWN_SOURCE } from "../vm-realm-hardening.js";
 import { type AnyAgentTool, jsonResult, readStringParam } from "./common.js";
 
 const LANGUAGES = ["python", "javascript"] as const;
@@ -57,6 +58,12 @@ async function executeJavaScript(
   //      `.constructor` chain leads to the realm's own (inert) Function, never
   //      the host's. Output is captured into realm-local arrays and read back.
   //
+  //   4. Node's own host callbacks are closed off (vm-realm-hardening.ts, added
+  //      2026-11-19): stack capture is pinned off in the realm and source that
+  //      contains the `import` keyword is refused. Errors thrown by Node's stack
+  //      formatter and dynamic-import hook are host-realm objects, and each one
+  //      was a working escape with measures 1-3 in place.
+  //
   // This tool is additionally owner-only (see tool-policy.ts); the vm hardening
   // is defense in depth, not the sole boundary. Note: host extras like Buffer
   // and timers (setTimeout/setInterval) are intentionally no longer available.
@@ -65,6 +72,7 @@ async function executeJavaScript(
     context = vm.createContext(Object.create(null) as object, {
       codeGeneration: { strings: false, wasm: false },
     });
+    vm.runInContext(REALM_LOCKDOWN_SOURCE, context, { timeout: EXEC_TIMEOUT_MS });
     // One-time realm-local bootstrap: capture buffers + a console built entirely
     // from realm intrinsics (no host functions cross the boundary).
     vm.runInContext(CONSOLE_BOOTSTRAP, context, { timeout: EXEC_TIMEOUT_MS });
@@ -97,6 +105,7 @@ async function executeJavaScript(
   }
 
   try {
+    assertNoImportKeyword(code);
     // Wrap in async IIFE to support top-level await
     const wrappedCode = `(async () => {\n${code}\n})()`;
     const script = new vm.Script(wrappedCode, { filename: "code-interpreter.js" });

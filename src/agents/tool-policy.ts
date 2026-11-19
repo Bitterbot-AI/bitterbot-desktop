@@ -78,6 +78,12 @@ const OWNER_ONLY_TOOL_NAMES = new Set<string>([
   "code_interpreter",
   "computer_use",
   "browser",
+  // deep_recall runs code written by a sub-LLM that reads attacker-influenced
+  // text (src/agents/rlm/sandbox.ts). It runs in a locked-down child process,
+  // but it is still code execution on the host and it spends money on sub-LLM
+  // calls, so no non-owner sender may drive it (security report 2026-11-19).
+  // recall_range covers a guest's current-session lookups.
+  "deep_recall",
   // Card purchases from the owner's Link account (PLAN-53 C1).
   "purchase",
   // Money. The wallet sends USDC and pays x402 resources with numeric caps as

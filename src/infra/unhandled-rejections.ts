@@ -173,8 +173,30 @@ export function isUnhandledRejectionHandled(reason: unknown): boolean {
   return false;
 }
 
+/** True for a promise created in another JavaScript realm (a node:vm context). */
+export function isForeignRealmPromise(promise: unknown): boolean {
+  if (promise === null || typeof promise !== "object" || promise instanceof Promise) {
+    return false;
+  }
+  try {
+    return Object.prototype.toString.call(promise) === "[object Promise]";
+  } catch {
+    return false;
+  }
+}
+
 export function installUnhandledRejectionHandler(): void {
-  process.on("unhandledRejection", (reason, _promise) => {
+  process.on("unhandledRejection", (reason, promise) => {
+    // A promise that is not an instance of this realm's Promise was created
+    // inside an in-process node:vm sandbox (code_interpreter). Model-written
+    // code there can reject a promise nobody awaits; that must not be able to
+    // exit the gateway. The reason is a sandbox-controlled value (it may carry
+    // hostile getters), so it is deliberately not inspected or formatted.
+    if (isForeignRealmPromise(promise)) {
+      console.warn("[bitterbot] Ignored unhandled rejection from sandboxed code (continuing).");
+      return;
+    }
+
     if (isUnhandledRejectionHandled(reason)) {
       return;
     }

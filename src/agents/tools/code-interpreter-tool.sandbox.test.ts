@@ -31,6 +31,43 @@ describe("code_interpreter JS sandbox hardening (security/code-interpreter-vm-es
     });
   }
 
+  // Node host callbacks reachable from plain JS (red-team pass, 2026-11-19):
+  // the errors they throw are host-realm objects, so the payloads below use
+  // only property access, which disabling code generation does not stop.
+  const SHOW = `try { return "ESCAPED:" + typeof e.constructor.constructor("return process")(); } catch (x) { return "blocked"; }`;
+  const hostCallbackPayloads: Array<[string, string]> = [
+    [
+      "stack formatter, symbol name",
+      `const err = new Error("x"); err.name = Symbol(); try { return typeof err.stack; } catch (e) { ${SHOW} }`,
+    ],
+    [
+      "captureStackTrace on a plain object",
+      `const o = { name: Symbol() }; try { Error.captureStackTrace(o); return typeof o.stack; } catch (e) { ${SHOW} }`,
+    ],
+    [
+      "re-enabled stack capture",
+      `try { Error.stackTraceLimit = 10; } catch (_) {} const err = new TypeError("x"); err.name = Symbol(); try { return typeof err.stack; } catch (e) { ${SHOW} }`,
+    ],
+  ];
+  for (const [label, payload] of hostCallbackPayloads) {
+    it(`gets no host error from the ${label}`, async () => {
+      const r = await executeJavaScript(payload, freshSession());
+      expect(r.error).toBeNull();
+      expect(r.returnValue).toBe("undefined");
+    });
+  }
+
+  it("refuses dynamic import (its rejection is a host error)", async () => {
+    const r = await executeJavaScript(
+      `try { await import("x"); } catch (e) { ${SHOW} }`,
+      freshSession(),
+    );
+    expect(String(r.error)).toMatch(/"import" cannot appear/);
+    expect(r.returnValue).toBeNull();
+    const ok = await executeJavaScript(`return "important"`, freshSession());
+    expect(ok.returnValue).toBe("important");
+  });
+
   it("blocks eval() directly", async () => {
     const r = await executeJavaScript(`return eval('1+1')`, freshSession());
     expect(r.error).toBeTruthy();
