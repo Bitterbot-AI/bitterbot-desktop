@@ -159,6 +159,41 @@ export function extractAssistantText(message: AssistantMessage): string {
   );
 }
 
+type ThinkingOffMode = "disabled" | "between_tools";
+
+/**
+ * Models that reject `thinking: {type: "disabled"}` and name `between_tools` as the way to turn
+ * thinking off. Learned from the provider's own 400 rather than a hardcoded model list, so a
+ * new model id needs no code change.
+ */
+const modelsNeedingBetweenTools = new Set<string>();
+
+/** Test hook: forget which models were learned to need `between_tools`. */
+export function resetThinkingOffCacheForTest(): void {
+  modelsNeedingBetweenTools.clear();
+}
+
+/** `onPayload` hook: swap an outgoing `thinking: disabled` for `between_tools` when asked. */
+export function rewriteThinkingOff(payload: unknown, mode: ThinkingOffMode): unknown {
+  if (mode !== "between_tools" || !payload || typeof payload !== "object") {
+    return undefined;
+  }
+  const thinking = (payload as { thinking?: { type?: unknown } }).thinking;
+  if (!thinking || thinking.type !== "disabled") {
+    return undefined;
+  }
+  return { ...(payload as Record<string, unknown>), thinking: { type: "between_tools" } };
+}
+
+/** True for the provider 400 that says `disabled` is not accepted and `between_tools` is. */
+export function isThinkingDisabledRejection(message: unknown): boolean {
+  const m = message as { stopReason?: unknown; errorMessage?: unknown } | null | undefined;
+  if (!m || m.stopReason !== "error" || typeof m.errorMessage !== "string") {
+    return false;
+  }
+  return m.errorMessage.includes("between_tools") && m.errorMessage.includes("disabled");
+}
+
 export async function completeAttributed(
   params: CompleteAttributedParams,
 ): Promise<CompleteAttributedResult> {
@@ -288,19 +323,32 @@ export async function completeAttributed(
   }
 
   const startedAt = Date.now();
-  const message = await completeSimple(
-    resolved.model,
-    { messages },
-    {
-      apiKey,
-      // Dreams, extraction, curator, judges on OpenRouter count toward the app too.
-      headers: withOpenRouterAttribution(resolved.model),
-      maxTokens: params.maxTokens ?? 2048,
-      // No sampling params: current Anthropic models 400 on temperature, and completeSimple
-      // embeds that error in the response instead of throwing.
-      signal: params.signal,
-    },
+  const modelKey = `${providerName}/${resolved.model.id}`;
+  const callLive = (thinkingOff: ThinkingOffMode) =>
+    completeSimple(
+      resolved.model!,
+      { messages },
+      {
+        apiKey,
+        // Dreams, extraction, curator, judges on OpenRouter count toward the app too.
+        headers: withOpenRouterAttribution(resolved.model!),
+        maxTokens: params.maxTokens ?? 2048,
+        // No sampling params: current Anthropic models 400 on temperature, and completeSimple
+        // embeds that error in the response instead of throwing.
+        signal: params.signal,
+        onPayload: (payload) => rewriteThinkingOff(payload, thinkingOff),
+      },
+    );
+  let message = await callLive(
+    modelsNeedingBetweenTools.has(modelKey) ? "between_tools" : "disabled",
   );
+  if (!modelsNeedingBetweenTools.has(modelKey) && isThinkingDisabledRejection(message)) {
+    // The provider names the accepted value in the error; remember it for this model so only
+    // the first call in a process pays for the rejected request.
+    modelsNeedingBetweenTools.add(modelKey);
+    log.info(`${modelKey} rejects thinking "disabled"; retrying with "between_tools"`);
+    message = await callLive("between_tools");
+  }
 
   const failure = message as { stopReason?: string; errorMessage?: string };
   // pi-ai does not surface Anthropic's per-TTL cache_creation split, so the TTL on the row is the
