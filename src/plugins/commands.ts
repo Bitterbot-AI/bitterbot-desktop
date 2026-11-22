@@ -234,6 +234,7 @@ export async function executePluginCommand(params: {
   channel: string;
   channelId?: PluginCommandContext["channelId"];
   isAuthorizedSender: boolean;
+  senderIsOwner?: boolean;
   commandBody: string;
   config: BitterbotConfig;
   from?: PluginCommandContext["from"];
@@ -260,6 +261,7 @@ export async function executePluginCommand(params: {
     channel,
     channelId: params.channelId,
     isAuthorizedSender,
+    senderIsOwner: params.senderIsOwner === true,
     args: sanitizedArgs,
     commandBody,
     config,

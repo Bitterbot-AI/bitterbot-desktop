@@ -225,6 +225,7 @@
     "tslog": "^4.10.2",
     "undici": "^7.22.0",
     "viem": "^2.57.3",
+    "web-push": "^3.6.7",
     "ws": "^8.22.0",
     "yaml": "^2.9.1",
     "zod": "^4.6.5"
@@ -238,6 +239,7 @@
     "@types/node": "^26.6.5",
     "@types/proper-lockfile": "^4.1.4",
     "@types/qrcode-terminal": "^0.12.2",
+    "@types/web-push": "^3.6.4",
     "@types/ws": "^8.18.2",
     "@typescript/native-preview": "7.0.0-dev.20260215.1",
     "@vitest/coverage-v8": "^4.0.18",

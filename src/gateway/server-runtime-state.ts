@@ -15,6 +15,9 @@ import type { AuthRateLimiter } from "./auth-rate-limit.js";
 import type { ResolvedGatewayAuth } from "./auth.js";
 import type { ChatAbortControllerEntry } from "./chat-abort.js";
 import type { HooksConfigResolved } from "./hooks.js";
+import { setMobileClaimListener } from "./mobile/http.js";
+import { setLiveGatewayClients } from "./mobile/live-clients.js";
+import { createPushDispatcher, setActivePushDispatcher } from "./mobile/push-dispatcher.js";
 import { resolveGatewayListenHosts } from "./net.js";
 import {
   createGatewayBroadcaster,
@@ -108,13 +111,27 @@ export async function createGatewayRuntimeState(params: {
   }
 
   const clients = new Set<GatewayWsClient>();
-  const { broadcast, broadcastToConnIds } = createGatewayBroadcaster({ clients });
+  // PLAN-62: Web Push to paired phones rides the broadcast stream. The
+  // dispatcher checks gateway.mobile.push.enabled per event, so a config
+  // change applies without a restart.
+  const pushDispatcher = createPushDispatcher();
+  setActivePushDispatcher(pushDispatcher);
+  setLiveGatewayClients(clients);
+  const { broadcast, broadcastToConnIds } = createGatewayBroadcaster({
+    clients,
+    onBroadcast: (event, payload) => pushDispatcher.observe(event, payload),
+  });
   // PLAN-53 Track B: held actions and their decisions reach every approvals-scoped window.
   setReviewBroadcast((event, payload) => broadcast(event, payload));
   // PLAN-53 Track E: scheduled-job runs and gateway notices for the owner.
   setCronBroadcast((payload) => broadcast("cron", payload, { dropIfSlow: true }));
   setOwnerNoticeBroadcast((payload) => broadcast("owner.notice", payload));
   setMonitorBroadcast((payload) => broadcast("monitor", payload, { dropIfSlow: true }));
+  // PLAN-62: a phone claimed a setup code; the owner's screens show the
+  // request with its confirmation code (pairing-scoped connections only).
+  setMobileClaimListener((request) =>
+    broadcast("device.pair.requested", request, { dropIfSlow: true }),
+  );
 
   const handleHooksRequest = createGatewayHooksRequestHandler({
     deps: params.deps,

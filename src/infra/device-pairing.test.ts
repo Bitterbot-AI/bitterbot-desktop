@@ -1,4 +1,4 @@
-import { mkdtemp } from "node:fs/promises";
+import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
@@ -108,5 +108,40 @@ describe("device pairing tokens", () => {
         baseDir,
       }),
     ).resolves.toEqual({ ok: false, reason: "token-mismatch" });
+  });
+
+  test("marks a phone paired before principal existed, from its approved scopes", async () => {
+    const baseDir = await mkdtemp(join(tmpdir(), "bitterbot-device-pairing-"));
+    await mkdir(join(baseDir, "devices"), { recursive: true });
+    const token = (scopes: string[]) => ({
+      operator: { token: "t", role: "operator", scopes, createdAtMs: 1 },
+    });
+    // A pairings file written by the gateway before PLAN-62 added `principal`.
+    await writeFile(
+      join(baseDir, "devices", "paired.json"),
+      JSON.stringify({
+        phone: {
+          deviceId: "phone",
+          publicKey: "k1",
+          role: "operator",
+          scopes: ["operator.approvals", "operator.chat", "operator.notifications"],
+          tokens: token(["operator.approvals", "operator.chat", "operator.notifications"]),
+          createdAtMs: 1,
+          approvedAtMs: 1,
+        },
+        desktop: {
+          deviceId: "desktop",
+          publicKey: "k2",
+          role: "operator",
+          scopes: ["operator.admin", "operator.approvals"],
+          tokens: token(["operator.admin", "operator.approvals"]),
+          createdAtMs: 1,
+          approvedAtMs: 1,
+        },
+      }),
+    );
+
+    expect((await getPairedDevice("phone", baseDir))?.principal).toBe("phone");
+    expect((await getPairedDevice("desktop", baseDir))?.principal).toBeUndefined();
   });
 });

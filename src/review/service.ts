@@ -12,6 +12,7 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import crypto from "node:crypto";
 import { toolCallFingerprint } from "../agents/agent-tools.repeat-guard.js";
+import { phoneApprovalRefusal } from "../gateway/mobile/phone-policy.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import type { SpendDecision } from "../payments/ap2/gate.js";
 import {
@@ -83,7 +84,20 @@ export type ReviewDecider = {
   scopes?: ReadonlyArray<string>;
   /** The resolving gateway connection's client mode (cli, ui, webchat, backend...). */
   connectionMode?: string | null;
+  /**
+   * PLAN-62: scopes of the surface the decision started on, when it was
+   * relayed (a chat `/approve` from a phone runs on a backend connection).
+   */
+  originScopes?: ReadonlyArray<string>;
 };
+
+/** A decision the deciding surface is not allowed to make (PLAN-62 phone policy). */
+export class ReviewDecisionRefused extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ReviewDecisionRefused";
+  }
+}
 
 /** Runs an approved action with owner authority. One per gated tool. */
 export type ApprovedExecutor = (
@@ -231,6 +245,22 @@ export class ReviewService {
   ): Promise<ReviewAction | null> {
     const status = decision === "approve" ? "approved" : "denied";
     const before = this.deps.store.get(id);
+    // PLAN-62: the one place a phone's approval is checked, whichever path it
+    // took (the phone app, or /approve relayed through a backend connection).
+    if (before && before.status === "pending") {
+      for (const scopes of [by.scopes, by.originScopes]) {
+        const refusal = phoneApprovalRefusal({
+          scopes: scopes ? [...scopes] : undefined,
+          decision,
+          cls: before.cls,
+          tool: before.tool,
+          always: by.always,
+        });
+        if (refusal) {
+          throw new ReviewDecisionRefused(refusal);
+        }
+      }
+    }
     if (before?.cls === "command") {
       if (before.status !== "pending") {
         return null;

@@ -2,6 +2,8 @@ interface BitterBotAvatarProps {
   size?: number;
   variant?: "circle" | "logo";
   isThinking?: boolean;
+  /** Image source; the phone app passes a small icon instead of the 1.3 MB original. */
+  src?: string;
 }
 
 /**
@@ -119,6 +121,7 @@ export function BitterBotAvatar({
   size = 32,
   variant = "logo",
   isThinking = false,
+  src = "/bitterbot_avatar.png",
 }: BitterBotAvatarProps) {
   if (variant === "logo") {
     return (
@@ -126,13 +129,7 @@ export function BitterBotAvatar({
         className="bb-avatar flex items-center justify-center flex-shrink-0 relative"
         style={{ width: size, height: size }}
       >
-        <img
-          src="/bitterbot_avatar.png"
-          alt="BitterBot"
-          width={size}
-          height={size}
-          className="object-contain"
-        />
+        <img src={src} alt="BitterBot" width={size} height={size} className="object-contain" />
         {isThinking && <ThinkingEyes size={size} />}
       </div>
     );

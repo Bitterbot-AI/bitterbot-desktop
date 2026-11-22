@@ -145,6 +145,8 @@ export type PluginCommandContext = {
   channelId?: ChannelId;
   /** Whether the sender is on the allowlist */
   isAuthorizedSender: boolean;
+  /** Whether the sender is the owner (same check as owner-only tools); absent = not known, treat as not owner */
+  senderIsOwner?: boolean;
   /** Raw command arguments after the command name */
   args?: string;
   /** The full normalized command body */

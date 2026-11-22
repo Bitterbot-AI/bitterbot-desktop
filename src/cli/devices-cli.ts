@@ -1,4 +1,5 @@
 import type { Command } from "commander";
+import qrcode from "qrcode-terminal";
 import { callGateway } from "../gateway/call.js";
 import { formatTimeAgo } from "../infra/format-time/format-relative.ts";
 import { defaultRuntime } from "../runtime.js";
@@ -28,6 +29,8 @@ type PendingDevice = {
   requestId: string;
   deviceId: string;
   displayName?: string;
+  confirmCode?: string;
+  setupId?: string;
   role?: string;
   remoteIp?: string;
   isRepair?: boolean;
@@ -37,6 +40,7 @@ type PendingDevice = {
 type PairedDevice = {
   deviceId: string;
   displayName?: string;
+  label?: string;
   roles?: string[];
   scopes?: string[];
   remoteIp?: string;
@@ -96,6 +100,30 @@ function formatTokenSummary(tokens: DeviceTokenSummary[] | undefined) {
   return parts.join(", ");
 }
 
+function formatConfirmCode(code: string): string {
+  return code.length === 6 ? `${code.slice(0, 3)} ${code.slice(3)}` : code;
+}
+
+/**
+ * `approve` takes a request id or, for a phone, the six-digit code the phone
+ * shows (PLAN-62), so the owner can type what they see.
+ */
+async function resolveRequestId(input: string, opts: DevicesRpcOpts): Promise<string | null> {
+  const digits = input.replace(/[\s-]/g, "");
+  if (!/^\d{6}$/.test(digits)) {
+    return input;
+  }
+  const list = parseDevicePairingList(await callGatewayCli("device.pair.list", opts, {}));
+  return list.pending?.find((req) => req.confirmCode === digits)?.requestId ?? null;
+}
+
+type MobilePairCreateResult = {
+  code: string;
+  setupId: string;
+  expiresAtMs: number;
+  urls?: Array<{ url: string; label: string; secure: boolean; pairUrl: string }>;
+};
+
 export function registerDevicesCli(program: Command) {
   const devices = program.command("devices").description("Device pairing and auth tokens");
 
@@ -128,7 +156,9 @@ export function registerDevicesCli(program: Command) {
               ],
               rows: list.pending.map((req) => ({
                 Request: req.requestId,
-                Device: req.displayName || req.deviceId,
+                Device: req.confirmCode
+                  ? `${req.displayName || req.deviceId} (code ${formatConfirmCode(req.confirmCode)})`
+                  : req.displayName || req.deviceId,
                 Role: req.role ?? "",
                 IP: req.remoteIp ?? "",
                 Age: typeof req.ts === "number" ? formatTimeAgo(Date.now() - req.ts) : "",
@@ -153,7 +183,7 @@ export function registerDevicesCli(program: Command) {
                 { key: "IP", header: "IP", minWidth: 12 },
               ],
               rows: list.paired.map((device) => ({
-                Device: device.displayName || device.deviceId,
+                Device: `${device.label || device.displayName || "device"} ${theme.muted(device.deviceId)}`,
                 Roles: device.roles?.length ? device.roles.join(", ") : "",
                 Scopes: device.scopes?.length ? device.scopes.join(", ") : "",
                 Tokens: formatTokenSummary(device.tokens),
@@ -172,8 +202,14 @@ export function registerDevicesCli(program: Command) {
     devices
       .command("approve")
       .description("Approve a pending device pairing request")
-      .argument("<requestId>", "Pending request id")
-      .action(async (requestId: string, opts: DevicesRpcOpts) => {
+      .argument("<requestId>", "Pending request id, or the six-digit code a phone shows")
+      .action(async (input: string, opts: DevicesRpcOpts) => {
+        const requestId = await resolveRequestId(input, opts);
+        if (!requestId) {
+          defaultRuntime.error("No pending phone shows that code. Check the number on the phone.");
+          defaultRuntime.exit(1);
+          return;
+        }
         const result = await callGatewayCli("device.pair.approve", opts, { requestId });
         if (opts.json) {
           defaultRuntime.log(JSON.stringify(result, null, 2));
@@ -188,8 +224,14 @@ export function registerDevicesCli(program: Command) {
     devices
       .command("reject")
       .description("Reject a pending device pairing request")
-      .argument("<requestId>", "Pending request id")
-      .action(async (requestId: string, opts: DevicesRpcOpts) => {
+      .argument("<requestId>", "Pending request id, or the six-digit code a phone shows")
+      .action(async (input: string, opts: DevicesRpcOpts) => {
+        const requestId = await resolveRequestId(input, opts);
+        if (!requestId) {
+          defaultRuntime.error("No pending phone shows that code.");
+          defaultRuntime.exit(1);
+          return;
+        }
         const result = await callGatewayCli("device.pair.reject", opts, { requestId });
         if (opts.json) {
           defaultRuntime.log(JSON.stringify(result, null, 2));
@@ -243,6 +285,86 @@ export function registerDevicesCli(program: Command) {
           role,
         });
         defaultRuntime.log(JSON.stringify(result, null, 2));
+      }),
+  );
+
+  devicesCallOpts(
+    devices
+      .command("pair")
+      .description("Pair a phone: print a one-time QR code and link (five minutes, single use)")
+      .action(async (opts: DevicesRpcOpts) => {
+        const result = (await callGatewayCli(
+          "mobile.pair.create",
+          opts,
+          {},
+        )) as MobilePairCreateResult;
+        const urls = result.urls ?? [];
+        if (opts.json) {
+          // The setup code is a one-time secret: JSON output is for scripts that hand it on.
+          defaultRuntime.log(JSON.stringify(result, null, 2));
+          return;
+        }
+        if (urls.length === 0) {
+          defaultRuntime.error(
+            "This gateway only listens on this computer, so a phone cannot reach it. " +
+              "Turn on Tailscale Serve (gateway.tailscale.mode=serve), bind to your network " +
+              "(gateway.bind=lan), or set gateway.mobile.publicUrl.",
+          );
+          defaultRuntime.exit(1);
+          return;
+        }
+        const [first, ...rest] = urls;
+        defaultRuntime.log(theme.heading("Scan with your phone's camera"));
+        qrcode.generate(first.pairUrl, { small: true });
+        defaultRuntime.log(`${theme.muted(`${first.label}:`)} ${first.pairUrl}`);
+        for (const other of rest) {
+          defaultRuntime.log(`${theme.muted(`${other.label}:`)} ${other.pairUrl}`);
+        }
+        if (!first.secure) {
+          defaultRuntime.log(
+            theme.warn(
+              "Plain HTTP: chat works, but installing the app and notifications need HTTPS (Tailscale Serve).",
+            ),
+          );
+        }
+        defaultRuntime.log(
+          `\nThe phone will show a six-digit code. If it is your phone, run ${theme.command(
+            "bitterbot devices approve <code>",
+          )} or approve it in the Control UI.`,
+        );
+      }),
+  );
+
+  devicesCallOpts(
+    devices
+      .command("rename")
+      .description("Rename a paired device")
+      .argument("<deviceId>", "Device id (from devices list)")
+      .argument("<name>", "New name")
+      .action(async (deviceId: string, name: string, opts: DevicesRpcOpts) => {
+        const result = await callGatewayCli("device.rename", opts, { deviceId, name });
+        if (opts.json) {
+          defaultRuntime.log(JSON.stringify(result, null, 2));
+          return;
+        }
+        defaultRuntime.log(`${theme.success("Renamed")} ${theme.command(name)}`);
+      }),
+  );
+
+  devicesCallOpts(
+    devices
+      .command("remove")
+      .description(
+        "Unpair a device: delete its tokens and push subscription and disconnect it (the gateway token is untouched)",
+      )
+      .argument("<deviceId>", "Device id (from devices list)")
+      .action(async (deviceId: string, opts: DevicesRpcOpts) => {
+        const result = await callGatewayCli("device.remove", opts, { deviceId });
+        if (opts.json) {
+          defaultRuntime.log(JSON.stringify(result, null, 2));
+          return;
+        }
+        defaultRuntime.log(`${theme.warn("Removed")} ${theme.command(deviceId)}`);
       }),
   );
 }

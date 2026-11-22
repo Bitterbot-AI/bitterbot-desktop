@@ -70,7 +70,7 @@ function resolveTailscaleClientIp(req?: IncomingMessage): string | undefined {
   return forwardedFor ? parseForwardedForClientIp(forwardedFor) : undefined;
 }
 
-function resolveRequestClientIp(
+export function resolveRequestClientIp(
   req?: IncomingMessage,
   trustedProxies?: string[],
 ): string | undefined {

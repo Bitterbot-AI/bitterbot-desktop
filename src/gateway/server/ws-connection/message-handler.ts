@@ -37,6 +37,8 @@ import {
   markBootstrapPairingUsed,
 } from "../../bootstrap-pairing.js";
 import { buildDeviceAuthPayload } from "../../device-auth.js";
+import { redactSnapshotForPhone } from "../../mobile/phone-events.js";
+import { isMobileScopedConnection, PHONE_PRINCIPAL_SCOPE } from "../../mobile/scopes.js";
 import { isLoopbackAddress, isTrustedProxyAddress, resolveGatewayClientIp } from "../../net.js";
 import { resolveHostName } from "../../net.js";
 import { resolveNodeCommandAllowlist } from "../../node-command-policy.js";
@@ -307,11 +309,16 @@ export function attachGatewayWsMessageHandler(params: {
         // Note: If the client does not present a device identity, we can't bind scopes to a paired
         // device/token, so we will clear scopes after auth to avoid self-declared permissions.
         let scopes = Array.isArray(connectParams.scopes) ? connectParams.scopes : [];
+        // PLAN-62: set from the paired-device record below; never from the request.
+        let pairedAsPhone = false;
         connectParams.role = role;
         connectParams.scopes = scopes;
 
         const isControlUi = connectParams.client.id === GATEWAY_CLIENT_IDS.CONTROL_UI;
         const isWebchat = isWebchatConnect(connectParams);
+        // PLAN-62: the phone app is a browser client too; it gets the same
+        // origin check (a page on another site cannot drive it).
+        const isMobileApp = connectParams.client.id === GATEWAY_CLIENT_IDS.MOBILE_APP;
         // Trusted local UI family: Control UI, Webchat, and the native
         // desktop/macOS/iOS/Android apps. Any of these connecting over
         // loopback should keep its scopes and skip device pairing — the
@@ -319,7 +326,7 @@ export function attachGatewayWsMessageHandler(params: {
         // about. Prior behaviour only whitelisted Control UI, which
         // caused #4 (scope stripping) and surfaced as #6 (spinner).
         const isTrustedLocalUiClient = isTrustedLocalUiClientId(connectParams.client.id);
-        if (isControlUi || isWebchat) {
+        if (isControlUi || isWebchat || isMobileApp) {
           const originCheck = checkBrowserOrigin({
             requestHost,
             origin: requestOrigin,
@@ -415,6 +422,11 @@ export function attachGatewayWsMessageHandler(params: {
         const allowControlUiBypass =
           allowInsecureControlUi || disableControlUiDeviceAuth || localUiBypass;
         const device = disableControlUiDeviceAuth ? null : deviceRaw;
+        if (!device) {
+          // Never leave an unverified device id on the connection: later code
+          // (push, mobile.self.*) reads client.connect.device as authenticated.
+          connectParams.device = undefined;
+        }
 
         const hasDeviceTokenCandidate = Boolean(
           (connectParams.auth?.deviceToken || connectParams.auth?.token) && device,
@@ -803,6 +815,8 @@ export function attachGatewayWsMessageHandler(params: {
 
           const paired = await getPairedDevice(device.id);
           const isPaired = paired?.publicKey === devicePublicKey;
+          // PLAN-62: phone provenance comes from the gateway's record, never the request.
+          pairedAsPhone = isPaired && paired?.principal === "phone";
           if (!isPaired) {
             const ok = await requirePairing("not-paired");
             if (!ok) {
@@ -859,6 +873,13 @@ export function attachGatewayWsMessageHandler(params: {
           ? await ensureDeviceToken({ deviceId: device.id, role, scopes })
           : null;
 
+        // After the token is minted and the record is updated, so the marker is
+        // never persisted or handed back: it lives on this connection only.
+        if (pairedAsPhone) {
+          scopes = [...scopes.filter((s) => s !== PHONE_PRINCIPAL_SCOPE), PHONE_PRINCIPAL_SCOPE];
+          connectParams.scopes = scopes;
+        }
+
         if (role === "node") {
           const cfg = loadConfig();
           const allowlist = resolveNodeCommandAllowlist(cfg, {
@@ -912,8 +933,12 @@ export function attachGatewayWsMessageHandler(params: {
           incrementPresenceVersion();
         }
 
-        const snapshot = buildGatewaySnapshot();
-        const cachedHealth = getHealthCache();
+        // PLAN-62: a phone gets a redacted hello: no filesystem paths, no
+        // presence (hostnames and IPs of other devices), no health summary.
+        const phoneConnection = isMobileScopedConnection(scopes);
+        const fullSnapshot = buildGatewaySnapshot();
+        const snapshot = phoneConnection ? redactSnapshotForPhone(fullSnapshot) : fullSnapshot;
+        const cachedHealth = phoneConnection ? null : getHealthCache();
         if (cachedHealth) {
           snapshot.health = cachedHealth;
           snapshot.stateVersion.health = getHealthVersion();
@@ -924,12 +949,12 @@ export function attachGatewayWsMessageHandler(params: {
           server: {
             version: resolveGatewayVersion(),
             commit: process.env.GIT_COMMIT,
-            host: os.hostname(),
+            host: phoneConnection ? undefined : os.hostname(),
             connId,
           },
           features: { methods: gatewayMethods, events },
           snapshot,
-          canvasHostUrl,
+          canvasHostUrl: phoneConnection ? undefined : canvasHostUrl,
           auth: deviceToken
             ? {
                 deviceToken: deviceToken.token,

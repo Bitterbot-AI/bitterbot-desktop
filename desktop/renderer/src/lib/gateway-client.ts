@@ -1,8 +1,13 @@
 /**
- * Gateway WebSocket client for the Bitterbot Control UI.
+ * Gateway WebSocket client for the Bitterbot Control UI and the phone app.
  *
- * Authenticates with a shared token from the gateway config.
+ * Authenticates with the shared gateway token (Control UI) or a per-device
+ * token (phone), and, when a device identity is available, signs the
+ * handshake with the device key (PLAN-62) so the gateway can bind scopes to a
+ * paired device instead of stripping them.
  */
+
+import { buildDeviceAuthPayload, type BrowserDeviceIdentity } from "./device-identity";
 
 export type GatewayEventFrame = {
   type: "event";
@@ -93,6 +98,17 @@ export type GatewayClientOptions = {
   setupToken?: string;
   /** Scopes to request; the Control UI's operator scopes by default. */
   scopes?: string[];
+  /**
+   * PLAN-62: the browser's device key. When it resolves to an identity the
+   * connect frame carries a signed `device` field; null keeps the old
+   * deviceless handshake (insecure contexts, older gateways).
+   */
+  deviceIdentity?: () => Promise<BrowserDeviceIdentity | null>;
+  /** PLAN-62: a per-device token (the phone's), sent instead of the gateway token. */
+  deviceToken?: () => string | null;
+  /** Shown in the Control UI's device list. */
+  displayName?: string;
+  clientMode?: string;
   /** Default per-request timeout in ms. Override per-call via request() options. */
   defaultRequestTimeoutMs?: number;
   onHello?: (hello: GatewayHelloOk) => void;
@@ -240,26 +256,77 @@ export class GatewayClient {
       clearTimeout(this.connectTimer);
       this.connectTimer = null;
     }
+    void this.buildAndSendConnect();
+  }
+
+  private async buildAndSendConnect() {
+    const clientId = this.opts.clientName ?? "bitterbot-desktop";
+    const clientMode = this.opts.clientMode ?? "ui";
+    const role = "operator";
+    const scopes = this.opts.scopes ?? ["operator.admin", "operator.approvals", "operator.pairing"];
+    const deviceToken = this.opts.deviceToken?.() ?? null;
+    const auth = this.opts.setupToken
+      ? { setupToken: this.opts.setupToken }
+      : deviceToken
+        ? { deviceToken }
+        : this.opts.token || this.opts.password
+          ? { token: this.opts.token, password: this.opts.password }
+          : undefined;
+
+    // The setup page has no device; everyone else signs when it can.
+    let device:
+      | { id: string; publicKey: string; signature: string; signedAt: number; nonce?: string }
+      | undefined;
+    if (!this.opts.setupToken && this.opts.deviceIdentity) {
+      const identity = await this.opts.deviceIdentity().catch(() => null);
+      if (identity) {
+        const signedAt = Date.now();
+        const nonce = this.connectNonce ?? undefined;
+        const payload = buildDeviceAuthPayload({
+          deviceId: identity.deviceId,
+          clientId,
+          clientMode,
+          role,
+          scopes,
+          signedAtMs: signedAt,
+          token: (auth as { token?: string } | undefined)?.token ?? null,
+          nonce,
+        });
+        try {
+          device = {
+            id: identity.deviceId,
+            publicKey: identity.publicKey,
+            signature: await identity.sign(payload),
+            signedAt,
+            ...(nonce ? { nonce } : {}),
+          };
+        } catch (err) {
+          console.warn("[gateway] device signing failed; connecting without a device", err);
+        }
+      }
+    }
+    // The socket may have closed while we awaited the key.
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      return;
+    }
 
     const params = {
       minProtocol: 3,
       maxProtocol: 3,
       client: {
-        id: this.opts.clientName ?? "bitterbot-desktop",
+        id: clientId,
+        ...(this.opts.displayName ? { displayName: this.opts.displayName } : {}),
         // Injected at build time from the root package.json (vite define, D-A),
         // same source as the Sidebar version label.
         version: this.opts.clientVersion ?? import.meta.env.VITE_APP_VERSION ?? "dev",
-        platform: navigator.platform ?? "desktop",
-        mode: "ui",
+        platform: navigator.platform || "web",
+        mode: clientMode,
       },
-      role: "operator",
-      scopes: this.opts.scopes ?? ["operator.admin", "operator.approvals", "operator.pairing"],
+      role,
+      scopes,
       caps: ["tool-events"],
-      auth: this.opts.setupToken
-        ? { setupToken: this.opts.setupToken }
-        : this.opts.token || this.opts.password
-          ? { token: this.opts.token, password: this.opts.password }
-          : undefined,
+      ...(device ? { device } : {}),
+      auth,
       userAgent: navigator.userAgent,
       locale: navigator.language,
     };
@@ -272,6 +339,27 @@ export class GatewayClient {
       .catch(() => {
         this.ws?.close(4008, "connect failed");
       });
+  }
+
+  /** Stop reconnecting after the gateway said this device is gone. */
+  halt() {
+    this.closed = true;
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+  }
+
+  /** Reconnect now (the phone came back to the foreground), skipping the backoff wait. */
+  reconnectNow() {
+    if (this.closed || this.connected) return;
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+    if (this.ws && this.ws.readyState === WebSocket.CONNECTING) return;
+    this.backoffMs = 800;
+    this.doConnect();
   }
 
   private handleMessage(raw: string) {

@@ -21,20 +21,52 @@ bitterbot devices list
 bitterbot devices list --json
 ```
 
-### `bitterbot devices approve <requestId>`
+### `bitterbot devices pair`
 
-Approve a pending device pairing request.
+Pair a phone: prints a one-time QR code and link (five minutes, single use) for the
+[phone app](/web/mobile). The phone then shows a six-digit code; approve it with
+`bitterbot devices approve <code>` once it matches.
+
+```
+bitterbot devices pair
+```
+
+The link never contains the gateway token. If the gateway only listens on loopback, the
+command explains how to make it reachable (Tailscale Serve, `gateway.bind: "lan"`, or
+`gateway.mobile.publicUrl`).
+
+### `bitterbot devices approve <requestId|code>`
+
+Approve a pending device pairing request, by request id or by the six-digit code a phone shows.
 
 ```
 bitterbot devices approve <requestId>
+bitterbot devices approve 472913
 ```
 
-### `bitterbot devices reject <requestId>`
+### `bitterbot devices reject <requestId|code>`
 
 Reject a pending device pairing request.
 
 ```
 bitterbot devices reject <requestId>
+```
+
+### `bitterbot devices rename <deviceId> <name>`
+
+Give a paired device a name (shown in the Control UI and `devices list`).
+
+```
+bitterbot devices rename <deviceId> "Work phone"
+```
+
+### `bitterbot devices remove <deviceId>`
+
+Unpair a device: delete its tokens and push subscription and close its open connections. The
+gateway token and other devices are untouched.
+
+```
+bitterbot devices remove <deviceId>
 ```
 
 ### `bitterbot devices rotate --device <id> --role <role> [--scope <scope...>]`
@@ -47,7 +79,8 @@ bitterbot devices rotate --device <deviceId> --role operator --scope operator.re
 
 ### `bitterbot devices revoke --device <id> --role <role>`
 
-Revoke a device token for a specific role.
+Revoke a device token for a specific role. Open connections from that device are closed and its
+push subscription is deleted.
 
 ```
 bitterbot devices revoke --device <deviceId> --role node

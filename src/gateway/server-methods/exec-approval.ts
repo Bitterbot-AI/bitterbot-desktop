@@ -5,6 +5,7 @@ import {
 } from "../../infra/exec-approvals.js";
 import { mirrorCommandRequested, mirrorCommandSettled } from "../../review/command-mirror.js";
 import type { ExecApprovalManager } from "../exec-approval-manager.js";
+import { phoneApprovalRefusal } from "../mobile/phone-policy.js";
 import {
   ErrorCodes,
   errorShape,
@@ -188,6 +189,12 @@ export function createExecApprovalHandlers(
       const decision = p.decision as ExecApprovalDecision;
       if (decision !== "allow-once" && decision !== "allow-always" && decision !== "deny") {
         respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "invalid decision"));
+        return;
+      }
+      // PLAN-62: a paired phone may allow once, never always.
+      const phoneRefusal = phoneApprovalRefusal({ scopes: client?.connect?.scopes, decision });
+      if (phoneRefusal) {
+        respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, phoneRefusal));
         return;
       }
       const resolvedBy = client?.connect?.client?.displayName ?? client?.connect?.client?.id;
