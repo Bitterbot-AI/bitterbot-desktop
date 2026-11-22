@@ -1,6 +1,6 @@
 {
   "name": "@bitterbot/soapbox-compute",
-  "version": "1.14.2",
+  "version": "1.14.3",
   "type": "module",
   "bitterbot": {
     "extensions": [

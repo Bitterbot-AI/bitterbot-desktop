@@ -1,6 +1,6 @@
 {
   "name": "@bitterbot/discord",
-  "version": "1.14.2",
+  "version": "1.14.3",
   "description": "Bitterbot Discord channel plugin",
   "type": "module",
   "devDependencies": {

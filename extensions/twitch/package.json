@@ -1,6 +1,6 @@
 {
   "name": "@bitterbot/twitch",
-  "version": "1.14.2",
+  "version": "1.14.3",
   "private": true,
   "description": "Bitterbot Twitch channel plugin",
   "type": "module",
