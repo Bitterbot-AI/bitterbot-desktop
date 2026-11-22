@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.14.3](https://github.com/Bitterbot-AI/bitterbot-desktop/compare/v1.14.2...v1.14.3) (2026-11-22)
+
+
+### Bug Fixes
+
+* **agents:** retry one-shot completions with thinking between_tools when a model rejects disabled ([#389](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/389)) ([c1e9267](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/c1e92670e9f26c54aa2249724c10e376a6b5459b))
+* **deps:** ship tar 7.5.22 and undici 7.30.2 to pick up security fixes ([#393](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/393)) ([0ff923a](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/0ff923a7bf9aec27572fa9eccde3c3e768b04f9f))
+
 ## [1.14.2](https://github.com/Bitterbot-AI/bitterbot-desktop/compare/v1.14.1...v1.14.2) (2026-11-19)
 
 
