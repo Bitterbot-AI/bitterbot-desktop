@@ -312,14 +312,15 @@ const DeepRecallSchema = Type.Object({
 const CHEAP_SUB_MODELS: Record<string, { provider: string; model: string }> = {
   openai: { provider: "openai", model: "gpt-4o-mini" },
   anthropic: { provider: "anthropic", model: "claude-haiku-4-5-20251001" },
-  google: { provider: "google", model: "gemini-2.0-flash-lite" },
+  google: { provider: "google", model: "gemini-3.5-flash-lite" },
 };
 
 /**
  * Resolve the cheapest available sub-model for RLM recursive calls.
  * Checks what API keys are available and picks the cheapest model.
  */
-async function resolveSubModel(
+/** Exported for tests. */
+export async function resolveSubModel(
   cfg: BitterbotConfig | undefined,
   configuredSubModel: string,
 ): Promise<{ provider: string; model: string } | null> {
@@ -341,11 +342,7 @@ async function resolveSubModel(
     for (const [providerId, subModel] of Object.entries(CHEAP_SUB_MODELS)) {
       const providers = authStorage.list?.() ?? [];
       const hasProvider =
-        providers.includes(providerId) ||
-        process.env[`${providerId.toUpperCase()}_API_KEY`] ||
-        process.env.OPENAI_API_KEY ||
-        process.env.ANTHROPIC_API_KEY ||
-        process.env.GOOGLE_API_KEY;
+        providers.includes(providerId) || process.env[`${providerId.toUpperCase()}_API_KEY`];
       if (hasProvider) {
         return subModel;
       }
