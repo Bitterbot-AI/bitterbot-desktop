@@ -55,7 +55,7 @@ describe("transcribeOpenAiCompatibleAudio", () => {
       fetchFn,
     });
 
-    expect(result.model).toBe("gpt-4o-mini-transcribe");
+    expect(result.model).toBe("gpt-transcribe");
     expect(result.text).toBe("hello");
     expect(seenUrl).toBe("https://api.example.com/v1/audio/transcriptions");
     expect(seenInit?.method).toBe("POST");
@@ -67,7 +67,7 @@ describe("transcribeOpenAiCompatibleAudio", () => {
 
     const form = seenInit?.body as FormData;
     expect(form).toBeInstanceOf(FormData);
-    expect(form.get("model")).toBe("gpt-4o-mini-transcribe");
+    expect(form.get("model")).toBe("gpt-transcribe");
     expect(form.get("language")).toBe("en");
     expect(form.get("prompt")).toBe("hello");
     const file = form.get("file") as Blob | { type?: string; name?: string } | null;

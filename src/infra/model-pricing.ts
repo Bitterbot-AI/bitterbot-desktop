@@ -80,6 +80,16 @@ export const TTS_PRICES_PER_MILLION_CHARS: Readonly<Record<string, number>> = {
   "openai/tts-1-hd": 30,
 };
 
+/**
+ * USD per 1M SECONDS of audio for duration-billed transcription (`kind: "audio"` rows whose
+ * provider reported `usage.type: "duration"` store seconds in `input`). Source:
+ * https://developers.openai.com/api/docs/pricing (gpt-transcribe $0.0045 / minute = $75 per 1M
+ * seconds). Token-billed transcription models are priced from the model catalog instead.
+ */
+export const AUDIO_PRICES_PER_MILLION_SECONDS: Readonly<Record<string, number>> = {
+  "openai/gpt-transcribe": 75,
+};
+
 const ZERO_PRICE: ModelPrice = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
 const MEMO_TTL_MS = 5 * 60_000;
 const memo = new Map<string, { at: number; value: ResolvedPricing }>();
@@ -155,6 +165,15 @@ function lookupTtsCatalog(provider: string, model: string): ModelPrice | undefin
   return { input: perMillion, output: 0, cacheRead: 0, cacheWrite: 0 };
 }
 
+function lookupAudioDurationCatalog(provider: string, model: string): ModelPrice | undefined {
+  const key = `${provider.toLowerCase()}/${normalizeModelIdForPricing(provider, model)}`;
+  const perMillion = AUDIO_PRICES_PER_MILLION_SECONDS[key];
+  if (typeof perMillion !== "number") {
+    return undefined;
+  }
+  return { input: perMillion, output: 0, cacheRead: 0, cacheWrite: 0 };
+}
+
 async function lookupCatalog(
   provider: string,
   model: string,
@@ -214,6 +233,12 @@ export async function resolveModelPricing(params: {
     const tts = lookupTtsCatalog(provider, model);
     if (tts) {
       value = { price: tts, source: "embedding-catalog" };
+    }
+  }
+  if (!value && kind === "audio") {
+    const audio = lookupAudioDurationCatalog(provider, model);
+    if (audio) {
+      value = { price: audio, source: "embedding-catalog" };
     }
   }
   if (!value && isLocalModelProvider(provider)) {

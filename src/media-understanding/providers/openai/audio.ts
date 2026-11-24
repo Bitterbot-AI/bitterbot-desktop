@@ -5,7 +5,9 @@ import type { AudioTranscriptionRequest, AudioTranscriptionResult } from "../../
 import { assertOkOrThrowHttpError, fetchWithTimeoutGuarded, normalizeBaseUrl } from "../shared.js";
 
 export const DEFAULT_OPENAI_AUDIO_BASE_URL = "https://api.openai.com/v1";
-const DEFAULT_OPENAI_AUDIO_MODEL = "gpt-4o-mini-transcribe";
+// OpenAI retires whisper-1, gpt-4o-transcribe and gpt-4o-mini-transcribe on 2027-02-26;
+// gpt-transcribe is the documented replacement on this endpoint and takes the same fields.
+const DEFAULT_OPENAI_AUDIO_MODEL = "gpt-transcribe";
 
 function resolveModel(model?: string): string {
   const trimmed = model?.trim();
@@ -71,18 +73,30 @@ export async function transcribeOpenAiCompatibleAudio(
     if (!text) {
       throw new Error("Audio transcription response missing text");
     }
-    // PLAN-50 Phase 5: gpt-4o-transcribe reports token usage; whisper reports nothing (or
-    // seconds), in which case the call is recorded as one billable item and stays unpriced.
+    // PLAN-50 Phase 5: token-billed models report token usage. Duration-billed models
+    // (gpt-transcribe, whisper) report `{type: "duration", seconds}`; those rows store SECONDS
+    // in `input` and are priced per second (AUDIO_PRICES_PER_MILLION_SECONDS). No usage at all
+    // is recorded as one billable item and stays unpriced.
+    const seconds =
+      payload.usage?.type === "duration" &&
+      typeof payload.usage.seconds === "number" &&
+      Number.isFinite(payload.usage.seconds) &&
+      payload.usage.seconds >= 0
+        ? payload.usage.seconds
+        : undefined;
     recordUsage({
       kind: "audio",
       feature: USAGE_FEATURES.mediaAudio,
       provider: /groq/i.test(baseUrl) ? "groq" : "openai",
       model,
-      usage: {
-        input: payload.usage?.input_tokens,
-        output: payload.usage?.output_tokens,
-        total: payload.usage?.total_tokens,
-      },
+      usage:
+        seconds !== undefined
+          ? { input: seconds, total: seconds }
+          : {
+              input: payload.usage?.input_tokens,
+              output: payload.usage?.output_tokens,
+              total: payload.usage?.total_tokens,
+            },
       items: 1,
       durationMs: Date.now() - transcribeStartedAt,
     });

@@ -1414,7 +1414,7 @@ Configures inbound media understanding (image/audio/video):
           rules: [{ action: "allow", match: { chatType: "direct" } }],
         },
         models: [
-          { provider: "openai", model: "gpt-4o-mini-transcribe" },
+          { provider: "openai", model: "gpt-transcribe" },
           { type: "cli", command: "whisper", args: ["--model", "base", "{{MediaPath}}"] },
         ],
       },
