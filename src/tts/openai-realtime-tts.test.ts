@@ -56,7 +56,9 @@ function harness(scripts: Script[]) {
     sockets.push(socket);
     return socket as unknown as RealtimeSocket;
   };
-  return { sockets, urls, headers, createSocket };
+  const ensureEncoder = vi.fn(async () => {});
+  const onSession = vi.fn();
+  return { sockets, urls, headers, createSocket, ensureEncoder, onSession };
 }
 
 const TEXT = "The quarterly report is due on Friday. Please send the draft to Sylvia.";
@@ -94,8 +96,51 @@ describe("openaiRealtimeTTS", () => {
     const h = harness([speak(TEXT)]);
     const encode = vi.fn(async () => Buffer.from("ogg"));
     const result = await openaiRealtimeTTS({ ...base, responseFormat: "opus" }, { ...h, encode });
-    expect(encode).toHaveBeenCalledWith(Buffer.from([1, 2, 3, 4]), "opus");
+    expect(h.ensureEncoder).toHaveBeenCalledWith("opus");
+    expect(encode).toHaveBeenCalledWith(Buffer.from([1, 2, 3, 4]), "opus", expect.any(Number));
     expect(result.audio.toString()).toBe("ogg");
+  });
+
+  it("checks the encoder before opening a billed session", async () => {
+    const h = harness([speak(TEXT)]);
+    h.ensureEncoder.mockRejectedValue(new Error("needs ffmpeg"));
+    await expect(openaiRealtimeTTS({ ...base, responseFormat: "mp3" }, h)).rejects.toThrow(
+      /needs ffmpeg/,
+    );
+    expect(h.sockets).toHaveLength(0);
+    expect(h.onSession).not.toHaveBeenCalled();
+  });
+
+  it("needs no encoder for PCM", async () => {
+    const h = harness([speak(TEXT)]);
+    await openaiRealtimeTTS({ ...base, responseFormat: "pcm" }, h);
+    expect(h.ensureEncoder).not.toHaveBeenCalled();
+  });
+
+  it("reports every completed session, including a rejected one", async () => {
+    const h = harness([speak("Sure! Here is a summary instead."), speak(TEXT)]);
+    await openaiRealtimeTTS({ ...base, responseFormat: "pcm" }, h);
+    expect(h.onSession).toHaveBeenCalledTimes(2);
+    expect(h.onSession.mock.calls[0]![0]).toEqual({
+      inputTokens: 71,
+      outputTokens: 233,
+      totalTokens: 304,
+    });
+  });
+
+  it("substitutes a Realtime voice for a legacy-only one", async () => {
+    const h = harness([speak(TEXT)]);
+    const result = await openaiRealtimeTTS({ ...base, voice: "nova", responseFormat: "pcm" }, h);
+    expect(result.voice).toBe("marin");
+    const session = h.sockets[0]!.sent[0] as Record<string, any>;
+    expect(session.session.audio.output.voice).toBe("marin");
+  });
+
+  it("ignores messages that arrive after the session settled", async () => {
+    const h = harness([speak(TEXT)]);
+    const result = await openaiRealtimeTTS({ ...base, responseFormat: "pcm" }, h);
+    h.sockets[0]!.server({ type: "response.output_audio.delta", delta: "AAAA" });
+    expect(result.audio).toEqual(Buffer.from([1, 2, 3, 4]));
   });
 
   it("retries once when the model answers instead of reading", async () => {
@@ -112,11 +157,11 @@ describe("openaiRealtimeTTS", () => {
     );
   });
 
-  it("rejects voices the Realtime API does not offer before connecting", async () => {
+  it("rejects unknown voices before connecting", async () => {
     const h = harness([speak(TEXT)]);
     await expect(
-      openaiRealtimeTTS({ ...base, voice: "nova", responseFormat: "pcm" }, h),
-    ).rejects.toThrow(/Voice "nova" is not available/);
+      openaiRealtimeTTS({ ...base, voice: "zzz", responseFormat: "pcm" }, h),
+    ).rejects.toThrow(/Voice "zzz" is not available/);
     expect(h.sockets).toHaveLength(0);
   });
 
@@ -157,22 +202,70 @@ describe("openaiRealtimeTTS", () => {
 });
 
 describe("isFaithfulReadAloud", () => {
-  it("accepts the same words with different punctuation and case", () => {
+  const same = (text: string) => expect(isFaithfulReadAloud(text, text)).toBe(true);
+
+  it("accepts what the model actually returns for ordinary replies", () => {
+    // Transcripts measured against the live API echo the input text.
+    for (const text of [
+      "OK",
+      "Yes.",
+      "I have 3 apples",
+      "Meet at 3pm",
+      "That costs $4.50 total",
+      "It is state-of-the-art",
+      "Done—shipped",
+      "e.g. this works",
+      "Dr. Smith arrives at 10:30",
+      "v1.14.1 is live",
+      "你好，世界。今天天气很好",
+      "今天我们讨论 OpenAI 的 API 更新",
+      "Hola, ¿cómo estás? Nos vemos mañana.",
+    ]) {
+      same(text);
+    }
+  });
+
+  it("ignores punctuation, case, spacing and markdown markers", () => {
     expect(isFaithfulReadAloud("Hello, world! It's 2:30 p.m.", "hello world its 2:30 PM")).toBe(
+      true,
+    );
+    expect(isFaithfulReadAloud("It is state-of-the-art", "It is state of the art")).toBe(true);
+    expect(isFaithfulReadAloud("**Done.** Check `config.json`.", "Done. Check config.json.")).toBe(
+      true,
+    );
+    expect(isFaithfulReadAloud("你好，世界。今天天气很好", "你好， 世界。 今天天气很好")).toBe(
       true,
     );
   });
 
+  it("accepts a spelled-out URL", () => {
+    expect(
+      isFaithfulReadAloud(
+        "See https://example.com/docs for more",
+        "See example dot com slash docs for more",
+      ),
+    ).toBe(true);
+    expect(isFaithfulReadAloud("https://example.com", "example dot com")).toBe(true);
+  });
+
   it("rejects a dropped passage", () => {
     const sentence = "The relay in Frankfurt was updated overnight and the wallet is unchanged. ";
-    const source = sentence + "Second, Sylvia asked whether the installer works on Ubuntu.";
-    expect(isFaithfulReadAloud(source, sentence)).toBe(false);
+    const source = sentence.repeat(4) + "Second, Sylvia asked whether the installer works.";
+    expect(isFaithfulReadAloud(source, sentence.repeat(4))).toBe(false);
+    expect(
+      isFaithfulReadAloud(
+        source,
+        sentence.repeat(3) + "Second, Sylvia asked whether the installer works.",
+      ),
+    ).toBe(false);
   });
 
   it("rejects a conversational answer and added commentary", () => {
     expect(isFaithfulReadAloud("What is the capital of France?", "The capital is Paris.")).toBe(
       false,
     );
+    expect(isFaithfulReadAloud("Send it", "Do not send it")).toBe(false);
+    expect(isFaithfulReadAloud("Yes", "Yes I agree")).toBe(false);
     expect(
       isFaithfulReadAloud(
         "Send the draft today.",
@@ -181,15 +274,30 @@ describe("isFaithfulReadAloud", () => {
     ).toBe(false);
   });
 
-  it("rejects empty speech but accepts text with nothing speakable", () => {
-    expect(isFaithfulReadAloud("Hello there", "")).toBe(false);
-    expect(isFaithfulReadAloud("🎉 !!!", "")).toBe(true);
+  it("rejects the same words in a different order", () => {
+    expect(
+      isFaithfulReadAloud(
+        "Pay Alice first and then refund Bob afterwards",
+        "Refund Bob first and then pay Alice afterwards",
+      ),
+    ).toBe(false);
   });
 
-  it("handles scripts written without spaces", () => {
-    const zh = "今天的会议改到下午三点，请提前十分钟到达会议室。";
-    expect(isFaithfulReadAloud(zh, "今天的会议改到下午三点请提前十分钟到达会议室")).toBe(true);
-    expect(isFaithfulReadAloud(zh, "今天的会议改到下午三点")).toBe(false);
+  it("bounds what can be said for text with nothing speakable", () => {
+    expect(isFaithfulReadAloud("👍", "thumbs up")).toBe(true);
+    expect(isFaithfulReadAloud("👍", "")).toBe(true);
+    expect(
+      isFaithfulReadAloud("👍", "Great, glad that works for you! Anything else I can help with?"),
+    ).toBe(false);
+    expect(isFaithfulReadAloud("Hello there", "")).toBe(false);
+  });
+
+  it("stays fast on the longest text the caller sends", () => {
+    const a = "The quick brown fox jumps over the lazy dog. ".repeat(95).slice(0, 4096);
+    const b = a.replace(/quick/g, "slow");
+    const started = Date.now();
+    isFaithfulReadAloud(a, b);
+    expect(Date.now() - started).toBeLessThan(1500);
   });
 });
 
