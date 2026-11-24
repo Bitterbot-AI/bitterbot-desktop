@@ -10,6 +10,13 @@ import {
 import type { BitterbotConfig } from "../config/config.js";
 import { USAGE_FEATURES } from "../infra/usage-features.js";
 import { recordUsage } from "../infra/usage-ledger.js";
+import { createSubsystemLogger } from "../logging/subsystem.js";
+import {
+  OPENAI_REALTIME_TTS_MODELS,
+  isOpenAIRealtimeTtsModel,
+  isOpenAIRealtimeTtsVoice,
+  openaiRealtimeTTS,
+} from "./openai-realtime-tts.js";
 import type {
   ResolvedTtsConfig,
   ResolvedTtsModelOverrides,
@@ -325,7 +332,29 @@ export function parseTtsDirectives(
   };
 }
 
-export const OPENAI_TTS_MODELS = ["gpt-4o-mini-tts", "tts-1", "tts-1-hd"] as const;
+/**
+ * `gpt-realtime-2.1-mini` speaks through the Realtime API (see openai-realtime-tts.ts). The
+ * other three are the `/v1/audio/speech` models OpenAI shuts down on 2027-01-06; they stay
+ * selectable until then and are upgraded automatically once the API rejects them.
+ */
+export const OPENAI_LEGACY_TTS_MODELS = ["gpt-4o-mini-tts", "tts-1", "tts-1-hd"] as const;
+export const OPENAI_TTS_MODELS = [
+  ...OPENAI_REALTIME_TTS_MODELS,
+  ...OPENAI_LEGACY_TTS_MODELS,
+] as const;
+export const DEFAULT_OPENAI_TTS_MODEL = OPENAI_REALTIME_TTS_MODELS[0];
+
+const ttsLog = createSubsystemLogger("tts/openai");
+
+/** True for the API's "this model is gone" answer, as opposed to any other bad request. */
+export function isRetiredModelResponse(status: number, body: string): boolean {
+  if (status !== 400 && status !== 404 && status !== 410) {
+    return false;
+  }
+  return /model_not_found|deprecat|does not exist|no longer (available|supported)|shut ?down|retired/i.test(
+    body,
+  );
+}
 
 /**
  * Custom OpenAI-compatible TTS endpoint.
@@ -613,6 +642,35 @@ export async function openaiTTS(params: {
   }
 
   const synthStartedAt = Date.now();
+
+  const speakRealtime = async (realtimeModel: string, budgetMs: number): Promise<Buffer> => {
+    const { audio, usage } = await openaiRealtimeTTS({
+      text,
+      apiKey,
+      model: realtimeModel,
+      voice,
+      responseFormat,
+      timeoutMs: budgetMs,
+    });
+    // `tts` rows keep CHARACTERS in `input` so every speech provider compares on one unit;
+    // the session's token counts ride along in output/total for reference.
+    recordUsage({
+      kind: "tts",
+      feature: USAGE_FEATURES.ttsSynthesis,
+      provider: "openai",
+      model: realtimeModel,
+      usage: { input: text.length, output: usage.outputTokens, total: text.length },
+      items: text.length,
+      durationMs: Date.now() - synthStartedAt,
+    });
+    return audio;
+  };
+
+  // Custom endpoints (Kokoro, LocalAI) only speak the HTTP speech API.
+  if (!isCustomOpenAIEndpoint() && isOpenAIRealtimeTtsModel(model)) {
+    return await speakRealtime(model, timeoutMs);
+  }
+
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
@@ -633,6 +691,21 @@ export async function openaiTTS(params: {
     });
 
     if (!response.ok) {
+      const body = await response.text().catch(() => "");
+      const remainingMs = timeoutMs - (Date.now() - synthStartedAt);
+      if (
+        !isCustomOpenAIEndpoint() &&
+        isRetiredModelResponse(response.status, body) &&
+        isOpenAIRealtimeTtsVoice(voice) &&
+        remainingMs > 1000
+      ) {
+        // The configured model has been shut down. Keep speech working on its replacement
+        // instead of failing every reply until the operator edits config.
+        ttsLog.warn(
+          `OpenAI rejected TTS model ${model} as retired (${response.status}); using ${DEFAULT_OPENAI_TTS_MODEL}. Set messages.tts.openai.model to silence this.`,
+        );
+        return await speakRealtime(DEFAULT_OPENAI_TTS_MODEL, remainingMs);
+      }
       throw new Error(`OpenAI TTS API error (${response.status})`);
     }
 

@@ -1227,7 +1227,7 @@ Batches rapid text-only messages from the same sender into a single agent turn. 
       },
       openai: {
         apiKey: "openai_api_key",
-        model: "gpt-4o-mini-tts",
+        model: "gpt-realtime-2.1-mini",
         voice: "alloy",
       },
     },

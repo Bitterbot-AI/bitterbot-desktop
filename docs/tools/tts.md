@@ -79,6 +79,16 @@ Full schema is in [Gateway configuration](/gateway/configuration).
 }
 ```
 
+### OpenAI models and the January 2027 shutdown
+
+OpenAI shuts down `gpt-4o-mini-tts`, `tts-1` and `tts-1-hd` on 6 January 2027. Their replacement, `gpt-realtime-2.1-mini`, is the default OpenAI TTS model and speaks through the Realtime API instead of `/v1/audio/speech`. What that changes:
+
+- **ffmpeg is required for Opus and MP3.** The Realtime API returns raw PCM, so Bitterbot encodes voice notes and MP3 replies with `ffmpeg`. Without it, OpenAI speech fails with a clear error and the next provider (ElevenLabs, then Edge) is used. Telephony audio is PCM and needs no encoder.
+- **Voices.** The Realtime API offers `alloy`, `ash`, `ballad`, `cedar`, `coral`, `echo`, `marin`, `sage`, `shimmer` and `verse`. `fable`, `juniper`, `nova` and `onyx` only exist on the old models.
+- **Read-aloud check.** The new model is conversational, so Bitterbot instructs it to read the text verbatim and compares the transcript of what was spoken with the text. On a mismatch it retries once, then falls through to the next provider.
+- **Old model names keep working.** If your config still names one of the old models, it is used until OpenAI rejects it as retired; after that Bitterbot switches to `gpt-realtime-2.1-mini` automatically and logs a warning. This needs a voice from the list above.
+- **Custom endpoints** set with `OPENAI_TTS_BASE_URL` (Kokoro, LocalAI) are unchanged and always use `/audio/speech`.
+
 ### OpenAI primary with ElevenLabs fallback
 
 ```json5
@@ -93,7 +103,7 @@ Full schema is in [Gateway configuration](/gateway/configuration).
       },
       openai: {
         apiKey: "openai_api_key",
-        model: "gpt-4o-mini-tts",
+        model: "gpt-realtime-2.1-mini",
         voice: "alloy",
       },
       elevenlabs: {

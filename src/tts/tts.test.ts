@@ -140,7 +140,8 @@ describe("tts", () => {
       expect(OPENAI_TTS_MODELS).toContain("gpt-4o-mini-tts");
       expect(OPENAI_TTS_MODELS).toContain("tts-1");
       expect(OPENAI_TTS_MODELS).toContain("tts-1-hd");
-      expect(OPENAI_TTS_MODELS).toHaveLength(3);
+      expect(OPENAI_TTS_MODELS).toContain("gpt-realtime-2.1-mini");
+      expect(OPENAI_TTS_MODELS).toHaveLength(4);
     });
 
     it("is a non-empty array", () => {

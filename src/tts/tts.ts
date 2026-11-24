@@ -32,6 +32,7 @@ import {
   isValidOpenAIModel,
   isValidOpenAIVoice,
   isValidVoiceId,
+  DEFAULT_OPENAI_TTS_MODEL,
   OPENAI_TTS_MODELS,
   OPENAI_TTS_VOICES,
   openaiTTS,
@@ -49,7 +50,8 @@ const DEFAULT_MAX_TEXT_LENGTH = 4096;
 const DEFAULT_ELEVENLABS_BASE_URL = "https://api.elevenlabs.io";
 const DEFAULT_ELEVENLABS_VOICE_ID = "pMsXgVXv3BLzUgSXRplE";
 const DEFAULT_ELEVENLABS_MODEL_ID = "eleven_multilingual_v2";
-const DEFAULT_OPENAI_MODEL = "gpt-4o-mini-tts";
+// OpenAI shuts down the /v1/audio/speech models on 2027-01-06; the default is its replacement.
+const DEFAULT_OPENAI_MODEL = DEFAULT_OPENAI_TTS_MODEL;
 const DEFAULT_OPENAI_VOICE = "alloy";
 const DEFAULT_EDGE_VOICE = "en-US-MichelleNeural";
 const DEFAULT_EDGE_LANG = "en-US";
