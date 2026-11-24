@@ -79,6 +79,18 @@ Full schema is in [Gateway configuration](/gateway/configuration).
 }
 ```
 
+### OpenAI models and the January 2027 shutdown
+
+OpenAI shuts down `gpt-4o-mini-tts`, `tts-1` and `tts-1-hd` on 6 January 2027. Their replacement, `gpt-realtime-2.1-mini`, is the default OpenAI TTS model and speaks through the Realtime API instead of `/v1/audio/speech`. What that changes:
+
+- **ffmpeg is required for Opus and MP3.** The Realtime API returns raw PCM, so Bitterbot encodes voice notes and MP3 replies with `ffmpeg` (built with `libopus` and `libmp3lame`). This is checked before any request is sent: without it, OpenAI speech fails with a clear error at no cost and the next provider (ElevenLabs, then Edge) is used. The official Docker image does not include `ffmpeg`; add it with `BITTERBOT_DOCKER_APT_PACKAGES=ffmpeg`. Telephony audio is PCM and needs no encoder.
+- **Voices.** The Realtime API offers `alloy`, `ash`, `ballad`, `cedar`, `coral`, `echo`, `marin`, `sage`, `shimmer` and `verse`. `fable`, `juniper`, `nova` and `onyx` only exist on the old models. If one of those is configured, Bitterbot keeps using `gpt-4o-mini-tts` for it until OpenAI shuts that model down, then switches to the closest Realtime voice (`ballad`, `coral`, `marin`, `cedar`) and logs a warning once.
+- **Read-aloud check.** The new model is conversational, so Bitterbot instructs it to read the text verbatim and compares the transcript of what was spoken with the text, in order. On a mismatch it retries once, then falls through to the next provider. The check catches an answer in place of a reading, a dropped passage and added commentary; it cannot catch a change of a few characters in a long text.
+- **Timing.** Audio is generated at roughly 10 ms per character, so a 1,500 character reply takes about 15 seconds and the 4,096 character maximum about 40. For this model the effective timeout is the larger of `timeoutMs` and 8 seconds plus 15 ms per character.
+- **Cost.** Billing is per token; measured cost is about $29 per million characters, and a rejected first attempt is billed too. Each session is recorded in the usage ledger.
+- **Old model names keep working.** If your config still names one of the old models, it is used until OpenAI reports it retired; after that Bitterbot switches to `gpt-realtime-2.1-mini` for the rest of the process lifetime and logs a warning.
+- **Custom endpoints** set with `OPENAI_TTS_BASE_URL` (Kokoro, LocalAI) always use `/audio/speech`. With no model configured they are still sent `gpt-4o-mini-tts`, as before.
+
 ### OpenAI primary with ElevenLabs fallback
 
 ```json5
@@ -93,7 +105,7 @@ Full schema is in [Gateway configuration](/gateway/configuration).
       },
       openai: {
         apiKey: "openai_api_key",
-        model: "gpt-4o-mini-tts",
+        model: "gpt-realtime-2.1-mini",
         voice: "alloy",
       },
       elevenlabs: {

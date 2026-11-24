@@ -78,6 +78,10 @@ export const EMBEDDING_PRICES_PER_MILLION: Readonly<Record<string, number>> = {
 export const TTS_PRICES_PER_MILLION_CHARS: Readonly<Record<string, number>> = {
   "openai/tts-1": 15,
   "openai/tts-1-hd": 30,
+  // Realtime speech is billed in tokens (audio out $20/M, text out $2.40/M, text in $0.60/M).
+  // Measured 2026-11-23 on 118 and 948 character inputs: $28.6 to $30 per 1M characters.
+  // An estimate, kept per-character so it lines up with the other speech rows.
+  "openai/gpt-realtime-2.1-mini": 29,
 };
 
 /**
