@@ -316,10 +316,10 @@ const CHEAP_SUB_MODELS: Record<string, { provider: string; model: string }> = {
 };
 
 /**
- * Resolve the cheapest available sub-model for RLM recursive calls.
- * Checks what API keys are available and picks the cheapest model.
+ * Resolve the cheapest available sub-model for RLM recursive calls: the first
+ * provider, in cost order, that this install can actually authenticate to.
+ * Exported for tests.
  */
-/** Exported for tests. */
 export async function resolveSubModel(
   cfg: BitterbotConfig | undefined,
   configuredSubModel: string,
@@ -331,35 +331,22 @@ export async function resolveSubModel(
     }
   }
 
-  // Auto-detect: try providers in cost order
+  let stored: string[] = [];
   try {
     const { discoverAuthStorage } = await import("../runtime/models/index.js");
     const { resolveBitterbotAgentDir } = await import("../agent-paths.js");
-    const agentDir = resolveBitterbotAgentDir();
-    const authStorage = discoverAuthStorage(agentDir);
-
-    // Check available providers
-    for (const [providerId, subModel] of Object.entries(CHEAP_SUB_MODELS)) {
-      const providers = authStorage.list?.() ?? [];
-      const hasProvider =
-        providers.includes(providerId) || process.env[`${providerId.toUpperCase()}_API_KEY`];
-      if (hasProvider) {
-        return subModel;
-      }
-    }
+    stored = discoverAuthStorage(resolveBitterbotAgentDir()).list?.() ?? [];
   } catch {
-    // Fallback
+    // No readable auth store: environment keys still count.
   }
 
-  // Last resort: try OpenAI (most common)
-  if (process.env.OPENAI_API_KEY) {
-    return CHEAP_SUB_MODELS.openai!;
-  }
-  if (process.env.ANTHROPIC_API_KEY) {
-    return CHEAP_SUB_MODELS.anthropic!;
-  }
-  if (process.env.GOOGLE_API_KEY) {
-    return CHEAP_SUB_MODELS.google!;
+  // Ask model auth which environment variable each provider reads, so a provider
+  // is only picked when the sub-calls can use its key (Google reads GEMINI_API_KEY).
+  const { resolveEnvApiKey } = await import("../model-auth.js");
+  for (const [providerId, subModel] of Object.entries(CHEAP_SUB_MODELS)) {
+    if (stored.includes(providerId) || resolveEnvApiKey(providerId)) {
+      return subModel;
+    }
   }
 
   return null;
