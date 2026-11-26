@@ -54,6 +54,8 @@ export interface SemanticLintResult {
 interface LintFinding {
   type: "contradiction" | "stale" | "duplicate";
   pages: string[];
+  /** The one page to archive. Named on its own so the order of `pages` never decides it. */
+  retire?: string;
   action: "archive" | "flag";
   detail: string;
 }
@@ -85,12 +87,14 @@ Find only genuine problems across the pattern pages below:
 - "stale": a page's claim is superseded by a newer page or clearly dated evidence.
 - "duplicate": two pages cover the same pattern (semantic overlap, not byte-identical).
 
-Be conservative — only report clear problems. For duplicate/stale, name the
-page that should be RETIRED (action "archive"); keep the better/newer one.
-For contradictions, use action "flag" (a human/maintainer reconciles them).
+Be conservative — only report clear problems. For duplicate/stale use action
+"archive": list every page involved in "pages" (any order) and put the ONE page
+to retire in "retire". Only the "retire" page is archived; keep the better/newer
+one out of it. For contradictions, use action "flag" (a human/maintainer
+reconciles them) and leave "retire" out.
 
 Respond with ONLY a JSON array (empty if the wiki is healthy):
-[{"type":"stale","pages":["page-a"],"action":"archive","detail":"superseded by page-b"}]
+[{"type":"duplicate","pages":["page-a","page-b"],"retire":"page-a","action":"archive","detail":"page-b covers the same pattern with newer evidence"}]
 `;
 
 function parseFindings(raw: string): LintFinding[] | null {
@@ -124,6 +128,10 @@ function parseFindings(raw: string): LintFinding[] | null {
         type,
         action,
         pages: e.pages.filter((p): p is string => typeof p === "string").map(normalizePatternName),
+        retire:
+          typeof e.retire === "string" && e.retire.trim()
+            ? normalizePatternName(e.retire)
+            : undefined,
         detail: typeof e.detail === "string" ? e.detail : "",
       });
     }
@@ -184,10 +192,17 @@ export async function runSemanticLint(deps: {
     const flagged: string[] = [];
     for (const f of findings) {
       if (f.action === "archive" && (f.type === "stale" || f.type === "duplicate")) {
-        // Archive the LAST-named page (the one to retire), keeping the rest.
-        const target = f.pages.at(-1);
+        // Archive only the page the model named in "retire". A finding that lists a
+        // single page is unambiguous too. With several pages and no "retire" there
+        // is no telling which one the model meant, so nothing is archived.
+        const target = f.retire ?? (f.pages.length === 1 ? f.pages[0] : undefined);
+        if (!target) {
+          flagged.push(
+            `- [${f.type}] ${f.pages.join(", ")}: ${f.detail} (not archived: no page named to retire)`,
+          );
+          continue;
+        }
         if (
-          target &&
           isValidPatternName(target) &&
           result.archived.length < archiveBudget &&
           !result.archived.includes(target)
