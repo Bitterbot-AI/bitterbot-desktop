@@ -129,7 +129,7 @@ A keyword-only hit has no cosine and never counts toward the shortcut.
 | Root (writes REPL code) | User's configured model (e.g., Claude Opus) | Exploration strategy needs the strong model           |
 | Sub-LLM (`llm_query`)   | Cheap model (e.g., GPT-4o-mini, Haiku)      | Summarizing/extracting from chunks doesn't need power |
 
-Root resolved via `resolveAgentModelPrimary()`; sub-model auto-picked from available API keys (`memory.rlm.subModel` overrides).
+Root resolved via `resolveAgentModelPrimary()`; sub-model auto-picked from the first provider with usable credentials, in the order OpenAI (`gpt-4o-mini`), Anthropic (`claude-haiku-4-5`), Google (`gemini-3.5-flash-lite`, needs `GEMINI_API_KEY`); `memory.rlm.subModel` overrides.
 
 ---
 

@@ -312,14 +312,15 @@ const DeepRecallSchema = Type.Object({
 const CHEAP_SUB_MODELS: Record<string, { provider: string; model: string }> = {
   openai: { provider: "openai", model: "gpt-4o-mini" },
   anthropic: { provider: "anthropic", model: "claude-haiku-4-5-20251001" },
-  google: { provider: "google", model: "gemini-2.0-flash-lite" },
+  google: { provider: "google", model: "gemini-3.5-flash-lite" },
 };
 
 /**
- * Resolve the cheapest available sub-model for RLM recursive calls.
- * Checks what API keys are available and picks the cheapest model.
+ * Resolve the cheapest available sub-model for RLM recursive calls: the first
+ * provider, in cost order, that this install can actually authenticate to.
+ * Exported for tests.
  */
-async function resolveSubModel(
+export async function resolveSubModel(
   cfg: BitterbotConfig | undefined,
   configuredSubModel: string,
 ): Promise<{ provider: string; model: string } | null> {
@@ -330,39 +331,22 @@ async function resolveSubModel(
     }
   }
 
-  // Auto-detect: try providers in cost order
+  let stored: string[] = [];
   try {
     const { discoverAuthStorage } = await import("../runtime/models/index.js");
     const { resolveBitterbotAgentDir } = await import("../agent-paths.js");
-    const agentDir = resolveBitterbotAgentDir();
-    const authStorage = discoverAuthStorage(agentDir);
-
-    // Check available providers
-    for (const [providerId, subModel] of Object.entries(CHEAP_SUB_MODELS)) {
-      const providers = authStorage.list?.() ?? [];
-      const hasProvider =
-        providers.includes(providerId) ||
-        process.env[`${providerId.toUpperCase()}_API_KEY`] ||
-        process.env.OPENAI_API_KEY ||
-        process.env.ANTHROPIC_API_KEY ||
-        process.env.GOOGLE_API_KEY;
-      if (hasProvider) {
-        return subModel;
-      }
-    }
+    stored = discoverAuthStorage(resolveBitterbotAgentDir()).list?.() ?? [];
   } catch {
-    // Fallback
+    // No readable auth store: environment keys still count.
   }
 
-  // Last resort: try OpenAI (most common)
-  if (process.env.OPENAI_API_KEY) {
-    return CHEAP_SUB_MODELS.openai!;
-  }
-  if (process.env.ANTHROPIC_API_KEY) {
-    return CHEAP_SUB_MODELS.anthropic!;
-  }
-  if (process.env.GOOGLE_API_KEY) {
-    return CHEAP_SUB_MODELS.google!;
+  // Ask model auth which environment variable each provider reads, so a provider
+  // is only picked when the sub-calls can use its key (Google reads GEMINI_API_KEY).
+  const { resolveEnvApiKey } = await import("../model-auth.js");
+  for (const [providerId, subModel] of Object.entries(CHEAP_SUB_MODELS)) {
+    if (stored.includes(providerId) || resolveEnvApiKey(providerId)) {
+      return subModel;
+    }
   }
 
   return null;

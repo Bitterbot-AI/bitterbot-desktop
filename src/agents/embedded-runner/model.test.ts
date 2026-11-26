@@ -409,6 +409,42 @@ describe("resolveModel", () => {
     });
   });
 
+  it("builds a google forward-compat fallback for a newer stable flash-lite id", () => {
+    const templateModel = {
+      id: "gemini-2.5-flash-lite",
+      name: "Gemini 2.5 Flash Lite",
+      provider: "google",
+      api: "google-generative-ai",
+      baseUrl: "https://generativelanguage.googleapis.com/v1beta",
+      reasoning: true,
+      input: ["text", "image"] as const,
+      cost: { input: 0.1, output: 0.4, cacheRead: 0.025, cacheWrite: 0 },
+      contextWindow: 1048576,
+      maxTokens: 65536,
+    };
+    mockDiscoveredModel({
+      provider: "google",
+      modelId: "gemini-2.5-flash-lite",
+      templateModel,
+    });
+
+    const result = resolveModel("google", "gemini-3.5-flash-lite", "/tmp/agent");
+
+    expect(result.error).toBeUndefined();
+    expect(result.model).toMatchObject({
+      provider: "google",
+      id: "gemini-3.5-flash-lite",
+      api: "google-generative-ai",
+      baseUrl: "https://generativelanguage.googleapis.com/v1beta",
+    });
+    expect(borrowedPriceTemplate(result.model)).toBe("gemini-2.5-flash-lite");
+
+    // Speech, image and preview variants are different products and stay unknown.
+    for (const id of ["gemini-3.8-flash-lite-tts", "gemini-3.1-flash-lite-image", "gemini-9-pro"]) {
+      expect(resolveModel("google", id, "/tmp/agent").error).toBe(`Unknown model: google/${id}`);
+    }
+  });
+
   it("keeps unknown-model errors for non-gpt-5 openai-codex ids", () => {
     const result = resolveModel("openai-codex", "gpt-4.1-mini", "/tmp/agent");
     expect(result.model).toBeUndefined();

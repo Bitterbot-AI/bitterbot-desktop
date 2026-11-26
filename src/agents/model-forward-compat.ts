@@ -27,6 +27,13 @@ const ANTHROPIC_OPUS_NEXT_TEMPLATE_MODEL_IDS = ["claude-opus-4-6", "claude-opus-
 const ZAI_GLM5_MODEL_ID = "glm-5";
 const ZAI_GLM5_TEMPLATE_MODEL_IDS = ["glm-4.7"] as const;
 
+// Stable Gemini Flash-Lite ids only (gemini-3.5-flash-lite), not the -tts, -image or -preview ones.
+const GOOGLE_FLASH_LITE_MODEL_ID = /^gemini-\d+(?:\.\d+)?-flash-lite$/;
+const GOOGLE_FLASH_LITE_TEMPLATE_MODEL_IDS = [
+  "gemini-3.1-flash-lite-preview",
+  "gemini-2.5-flash-lite",
+] as const;
+
 /**
  * A model cloned from a catalogued template carries the template's `cost`, which is a guess,
  * not this model's price (claude-fable-5-1 cloned from Opus 4.7 was billed at $5/$25 per M while
@@ -294,6 +301,30 @@ function resolveZaiGlm5ForwardCompatModel(
   } as Model<Api>);
 }
 
+// Google ships Flash-Lite releases faster than the built-in catalog picks them up, and shuts the
+// old ones down (gemini-2.0-flash-lite went away on 2026-06-01). A newer stable Flash-Lite id is
+// cloned from the newest catalogued one; the provider picks the thinking settings from the id.
+function resolveGoogleFlashLiteForwardCompatModel(
+  provider: string,
+  modelId: string,
+  modelRegistry: ModelRegistry,
+): Model<Api> | undefined {
+  const normalizedProvider = normalizeProviderId(provider);
+  if (normalizedProvider !== "google") {
+    return undefined;
+  }
+  const trimmedModelId = modelId.trim();
+  if (!GOOGLE_FLASH_LITE_MODEL_ID.test(trimmedModelId.toLowerCase())) {
+    return undefined;
+  }
+  return cloneFirstTemplateModel({
+    normalizedProvider,
+    trimmedModelId,
+    templateIds: [...GOOGLE_FLASH_LITE_TEMPLATE_MODEL_IDS],
+    modelRegistry,
+  });
+}
+
 export function resolveForwardCompatModel(
   provider: string,
   modelId: string,
@@ -304,6 +335,7 @@ export function resolveForwardCompatModel(
     resolveAnthropicOpus46ForwardCompatModel(provider, modelId, modelRegistry) ??
     resolveAnthropicOpusNextForwardCompatModel(provider, modelId, modelRegistry) ??
     resolveAnthropicFamilyForwardCompatModel(provider, modelId, modelRegistry) ??
-    resolveZaiGlm5ForwardCompatModel(provider, modelId, modelRegistry)
+    resolveZaiGlm5ForwardCompatModel(provider, modelId, modelRegistry) ??
+    resolveGoogleFlashLiteForwardCompatModel(provider, modelId, modelRegistry)
   );
 }
