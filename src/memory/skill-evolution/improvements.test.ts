@@ -119,6 +119,7 @@ describe("#2 semantic lint", () => {
           {
             type: "stale",
             pages: ["p-new", "p-old"],
+            retire: "p-old",
             action: "archive",
             detail: "p-old superseded by p-new",
           },
@@ -133,6 +134,63 @@ describe("#2 semantic lint", () => {
     // logs.md records the lint pass.
     const logs = await fs.readFile(path.join(tmpDir, "skill-wiki", "logs.md"), "utf-8");
     expect(logs).toContain("semantic lint");
+  });
+
+  it("archives the page named in retire whatever the order of pages", async () => {
+    const res = await runSemanticLint({
+      llmCall: async () =>
+        JSON.stringify([
+          {
+            type: "duplicate",
+            pages: ["p-old", "p-new"],
+            retire: "p-old",
+            action: "archive",
+            detail: "p-old duplicates p-new",
+          },
+        ]),
+      storeOpts: opts(),
+    });
+    expect(res.archived).toEqual(["p-old"]);
+    expect(await listPatternNames(opts())).toContain("p-new");
+  });
+
+  it("archives nothing when several pages are listed and none is named to retire", async () => {
+    const res = await runSemanticLint({
+      llmCall: async () =>
+        JSON.stringify([
+          { type: "duplicate", pages: ["p-old", "p-new"], action: "archive", detail: "dupes" },
+        ]),
+      storeOpts: opts(),
+    });
+    expect(res.ran).toBe(true);
+    expect(res.archived).toHaveLength(0);
+    expect(await listPatternNames(opts())).toHaveLength(5);
+    const logs = await fs.readFile(path.join(tmpDir, "skill-wiki", "logs.md"), "utf-8");
+    expect(logs).toContain("no page named to retire");
+  });
+
+  it("still archives a finding that lists a single page", async () => {
+    const res = await runSemanticLint({
+      llmCall: async () =>
+        JSON.stringify([
+          { type: "stale", pages: ["p-old"], action: "archive", detail: "superseded by p-new" },
+        ]),
+      storeOpts: opts(),
+    });
+    expect(res.archived).toEqual(["p-old"]);
+  });
+
+  it("tells the model which field decides the archived page", async () => {
+    let prompt = "";
+    await runSemanticLint({
+      llmCall: async (p) => {
+        prompt = p;
+        return "[]";
+      },
+      storeOpts: opts(),
+    });
+    expect(prompt).toContain('"retire"');
+    expect(prompt).toContain('Only the "retire" page is archived');
   });
 
   it("only flags contradictions (never archives them)", async () => {
