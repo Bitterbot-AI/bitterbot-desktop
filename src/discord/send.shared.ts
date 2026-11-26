@@ -8,7 +8,7 @@ import {
 } from "@buape/carbon";
 import { PollLayoutType } from "discord-api-types/payloads/v10";
 import type { RESTAPIPoll } from "discord-api-types/rest/v10";
-import { Routes, type APIEmbed } from "discord-api-types/v10";
+import { Routes } from "discord-api-types/v10";
 import type { ChunkMode } from "../auto-reply/chunk.js";
 import { loadConfig } from "../config/config.js";
 import type { RetryRunner } from "../infra/retry-policy.js";
@@ -32,7 +32,10 @@ type DiscordRequest = RetryRunner;
 
 export type DiscordSendComponentFactory = (text: string) => TopLevelComponents[];
 export type DiscordSendComponents = TopLevelComponents[] | DiscordSendComponentFactory;
-export type DiscordSendEmbeds = Array<APIEmbed | Embed>;
+// The raw embed shape comes from carbon's own constructor, not from our copy of
+// discord-api-types: carbon pins its own version and the two drift apart.
+export type DiscordRawEmbed = NonNullable<ConstructorParameters<typeof Embed>[0]>;
+export type DiscordSendEmbeds = Array<DiscordRawEmbed | Embed>;
 
 type DiscordRecipient =
   | {
