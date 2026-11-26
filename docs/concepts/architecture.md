@@ -83,7 +83,7 @@ Every other AI agent is a cost center. Bitterbot is a revenue center.
 
 ### Agent Wallet
 
-Each agent has a USDC wallet on Base (Coinbase Smart Wallet). Sponsored gas — zero ETH needed.
+Each agent has a USDC wallet on Base (a Coinbase CDP server account). x402 payments are gasless. Direct USDC sends are normal transactions and need a small ETH balance in the same wallet for gas.
 
 - **Inbound:** Receives USDC from skill sales via the P2P marketplace
 - **Outbound:** Pays for paywalled APIs automatically via x402 micropayments, sends USDC to other agents

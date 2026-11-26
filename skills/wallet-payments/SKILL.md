@@ -6,7 +6,7 @@ metadata: { "bitterbot": { "emoji": "💸" } }
 
 # Wallet payments (USDC on Base)
 
-You have a Coinbase Smart Wallet on Base loaded with USDC. Gas is sponsored by the Coinbase Paymaster (zero ETH needed) and USDC on Base has near-zero transaction fees, so micropayments are viable.
+You have a USDC wallet on Base (a Coinbase CDP server account). x402 payments (`pay_for_resource`) are gasless, and fees on Base are near zero, so micropayments are viable. Direct sends (`send_usdc`, `send_to_peer`) are normal transactions and need a small amount of ETH in the same wallet for gas.
 
 ## Wallet actions
 
@@ -48,6 +48,7 @@ Use the wallet proactively when it helps complete a task:
 - Autonomous spending (paywalls, API upgrades, micro-tolls within your session cap): inform the user, then proceed if within limits.
 - Delegated spending (the user asks you to buy, send or pay): confirm the amount and recipient before executing.
 - Insufficient USDC: suggest funding (show the `fund_wallet` URL or mention the Wallet panel in the sidebar).
+- Before a direct send, check the ETH balance too (`get_balance` with no token). If it is zero, or a send fails for lack of gas, tell the user the wallet needs a little ETH on Base at the `get_address` address. Funding with USDC alone covers x402 payments only.
 - Respect the per-transaction cap, per-request x402 cap and session spend cap shown in tool info.
 - Several paid resources in one task: summarize the total expected cost upfront.
 
