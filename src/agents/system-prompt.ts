@@ -242,7 +242,7 @@ function buildWalletSection(params: { isMinimal: boolean; availableTools: Set<st
   }
   return [
     "## Agent Wallet (USDC on Base)",
-    "You have a Coinbase Smart Wallet on Base holding USDC (gas sponsored). `wallet` actions: get_balance, get_address, pay_for_resource (x402: pays AND returns the content; never web_fetch again after paying), fund_wallet, send_usdc, get_transaction_history.",
+    "You have a USDC wallet on Base (x402 payments are gasless; send_usdc needs a little ETH in the wallet for gas). `wallet` actions: get_balance, get_address, pay_for_resource (x402: pays AND returns the content; never web_fetch again after paying), fund_wallet, send_usdc, get_transaction_history.",
     "Rules: ALWAYS state the exact cost before any payment, never pay silently; confirm amount and recipient for delegated purchases; if a price is unclear, ask; respect the per-transaction, x402 and session caps in tool info; at a paywall with a $0.00 balance, mention funding once. For HTTP 402, paid API tiers, micro-tolls and agent-to-agent payments read the `wallet-payments` skill.",
     "",
   ];
