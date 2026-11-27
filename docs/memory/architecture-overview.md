@@ -372,6 +372,12 @@ See [Working Memory](./working-memory.md) for full documentation.
 | `src/memory/canonical-supersede-*.ts` | The individual followers that mark, close or flag what repeated an old value      |
 | `src/memory/correction-capture.ts`    | Per-turn correction capture into the canonical ledger (12 s model-call cap)       |
 | `src/memory/owner-controls.ts`        | Memory page operations: list, get, edit, forget, export writer (0600 file)        |
+| `src/memory/practices.ts`             | Standing practices store: scopes, statuses, events, counters                      |
+| `src/memory/task-types.ts`            | Recurring task types by word overlap, naming and merging                          |
+| `src/memory/practice-followups.ts`    | Follow-up gap check, candidates, the yes/no offer and its answer                  |
+| `src/memory/practice-jobs.ts`         | Scheduled-job link, canary line, rollback, `EXPERIENCE.md`                        |
+| `src/memory/practice-attribution.ts`  | The "Applied" note and the not-followed counter                                   |
+| `src/agents/practices-block.ts`       | The Standing Practices prompt block, below the cache boundary                     |
 | `src/memory/forget-cascade.ts`        | Forget/edit cascade planning and batched apply (`planHash`)                       |
 | `src/memory/memory-suppressions.ts`   | `memory_suppressions` table: what the owner removed stays removed                 |
 | `src/memory/memory-export.ts`         | Export version 2 (paged, redacted)                                                |
@@ -492,6 +498,7 @@ cfg.memory?.rlm            → RLMConfig (deep recall iterations, model routing)
 cfg.memory?.canonicalLedger → canonical facts ledger (enabled, maxFacts 48, budgetTokens)
 cfg.memory?.extraction     → session fact extraction (model, minSessionDelta, maxFactsPerSession)
 cfg.memory?.correction     → per-turn correction capture (enabled, confirm)
+cfg.memory?.practices      → standing practices (enabled, followUps, offers, attribution, jobs)
 cfg.memory?.batch          → Message Batches lanes (enabled, lanes, maxWaitMinutes)
 cfg.memory?.provenance     → evidence pointers on extracted facts
 cfg.memory?.architectEvolution → learned construction rules (opt-in)

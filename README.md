@@ -165,6 +165,7 @@ Projects change. Preferences become clearer. Yesterday's plan becomes today's de
 - **Remember the essentials.** A compact canonical-facts ledger keeps key identities, preferences, and project facts in context without a separate search. Re-stating a fact strengthens it; contradicting it supersedes the old belief while keeping its history.
 - **Find the connections.** Semantic search and a typed knowledge graph connect conversations with the people, projects, and relationships they describe. [Deep Recall](docs/memory/deep-recall.md) can search histories larger than a single context window.
 - **Weigh what it knows.** Facts mentioned once count for less than facts confirmed across separate sessions. Recent facts win for "what are you working on?"; older ones for "when did we discuss X?".
+- **Learn how you like things done.** When you keep asking for something an answer left out (the npm numbers after the repo stats, say), Bitterbot notices, asks once whether to include it every time, and from then on does. The same holds for a scheduled report you correct. Each of these [standing practices](docs/memory/practices.md) is scoped to the kind of request it came from, shown when it is applied, and yours to edit or remove.
 - **Consolidate between conversations.** Dream cycles organize accumulated memory, distill verified workflows, and prepare briefs grounded in recent activity. New-input, idle-time, and budget gates limit background work.
 
 The architecture takes inspiration from biological memory: reinforcement, forgetting, curiosity, and changing internal state. Numerical signals named dopamine, cortisol, and oxytocin modulate memory processing and response style. These are inspectable software mechanisms; their effectiveness is something to measure.
@@ -194,7 +195,7 @@ A few more modes stay held until a node has enough data to feed them; `bitterbot
 
 Your agent also has a persistent identity. `GENOME.md` defines values and constraints; `MEMORY.md` holds its evolving self-concept, understanding of you, and active context. Tool guards protect the Genome, with their boundaries documented in [known limitations](LIMITATIONS.md).
 
-[Memory architecture](docs/memory/architecture-overview.md) · [Dream Engine](docs/memory/dream-engine.md)
+[Memory architecture](docs/memory/architecture-overview.md) · [Standing practices](docs/memory/practices.md) · [Dream Engine](docs/memory/dream-engine.md)
 
 ## Learned skills have to earn their place
 

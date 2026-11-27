@@ -473,6 +473,16 @@ and settings.
 
 ---
 
+## Standing Practices: Learning How You Like Things Done
+
+Facts are what is true. Practices are how you want a kind of task done: "include npm downloads with the repo stats", "give me the unique counts in the traffic report". They are kept apart from facts because they are sentences, not values, and because they only make sense for the kind of request they came from.
+
+The agent learns them two ways. If you give an instruction ("always include the views too"), it is saved at once. More often you do not give an instruction at all: you ask for the stats, get an answer, and then ask for the part it left out. When the same thing has been missing twice from a request you make regularly, the reply ends with one line asking whether to include it every time. A yes makes it a standing practice. A no means it is never asked again.
+
+From then on the practice is added to the prompt for that kind of request, and the first couple of times it shapes an answer the reply says so. Scheduled reports work the same way: correct a report in your next message and the next run carries the change, with a line saying what changed and why.
+
+Nothing is learned from silence, and nothing is applied everywhere unless you say "everywhere". Every practice is listed on the Memory page with where it applies, the message it came from and how often it was used, and you can edit, narrow, widen or remove it. The full rules and limits are in [Standing practices](/memory/practices).
+
 ## What Makes This Different
 
 Every serious competitor (Mem0, Zep, Letta, Hindsight, Cognee) has some combination of knowledge graphs, vector search, and memory consolidation. Those are table stakes now.

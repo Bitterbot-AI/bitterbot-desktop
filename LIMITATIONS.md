@@ -100,6 +100,22 @@ open an issue.
   you or it pinned, the change is held and you are told, but there is no
   one-tap confirm or revert yet: restate the value, or answer the "which is
   current?" question, to settle it.
+- **Standing practices are learned in direct owner chats, from what you
+  say next.** A practice (how to do a kind of task, as opposed to a fact) is
+  saved from an explicit instruction, or offered after you have twice asked
+  for something a recurring answer left out. Only your next message in the
+  same conversation is looked at, within six hours, and only for requests
+  the agent has seen on three separate days. Requests are grouped by the
+  words they share, so a short or unusual phrasing can be missed or filed
+  under the wrong kind of request; you can merge kinds by hand. "Applied"
+  means the practice was in the prompt and its content was in the answer,
+  nothing more: nothing checks that the answer was right, and a vaguely
+  worded practice is followed less reliably than a specific one. Nothing
+  repairs a practice that is not followed; it is counted. The command-line
+  `bitterbot agent` path shows none of the generated notes and makes no
+  offers. Scheduled jobs learn only from your next message after an
+  announced report, and there is no trial run of a change before it is
+  used. Details in `docs/memory/practices.md`.
 - **A correction propagates by text match, after the fact.** When a fact
   changes, older memories, the matching learned preference, graph links,
   unused prepared answers, open tasks and dream insights that state the old
