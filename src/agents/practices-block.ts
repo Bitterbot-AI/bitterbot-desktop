@@ -170,6 +170,16 @@ export type PracticesBlockManager = {
       ids: string[],
       opts?: { turnKey?: string; sessionRef?: string | null },
     ) => number;
+    /** Every practice with these statuses (the conditional fallback reads the active ones). */
+    list?: (opts: { statuses: Array<"active"> }) => Practice[];
+  };
+  /** The owner's task types (the conditional fallback ranks by how often each recurs). */
+  taskTypes?: () => {
+    list: (opts?: { recurringOnly?: boolean }) => Array<{
+      slug: string;
+      label: string;
+      occurrences: number;
+    }>;
   };
   observeOwnerTurnTaskType?: (params: {
     text: string;
@@ -185,6 +195,53 @@ export type PracticesBlockManager = {
 };
 
 const JOB_ONLY: ReadonlySet<string> = new Set(["job"]);
+
+/** Conditional lines shown when a turn matched no task type. */
+export const PRACTICES_CONDITIONAL_MAX = 4;
+
+/**
+ * PLAN-64 conditional fallback. Word overlap misses short or vague phrasings
+ * ("can you check the latest stats?"), and a practice that is not in the
+ * prompt cannot be followed. So when the turn matched no task type, the
+ * owner's task-scoped practices for their most frequent recurring task types
+ * are still shown, each worded as a condition, and the answering model
+ * decides whether the request is that kind of task. These lines are NOT
+ * counted as applied: nothing established that the practice fits this turn.
+ */
+export function renderConditionalPracticeLines(
+  manager: PracticesBlockManager,
+  budgetChars: number,
+): string[] {
+  const all = manager.practices().list?.({ statuses: ["active"] }) ?? [];
+  const taskPractices = all.filter((p) => p.scope.startsWith("task:"));
+  if (taskPractices.length === 0) {
+    return [];
+  }
+  const types = new Map(
+    (manager.taskTypes?.().list({ recurringOnly: true }) ?? []).map((t) => [t.slug, t]),
+  );
+  const ranked = taskPractices
+    .map((practice) => ({ practice, type: types.get(practice.scope.slice("task:".length)) }))
+    // A practice whose task type is gone or not recurring has no label to
+    // condition on; it waits for a real match.
+    .filter((entry) => entry.type !== undefined)
+    .toSorted((a, b) => (b.type?.occurrences ?? 0) - (a.type?.occurrences ?? 0));
+  const lines: string[] = [];
+  let chars = 0;
+  for (const { practice, type } of ranked) {
+    if (lines.length >= PRACTICES_CONDITIONAL_MAX) {
+      break;
+    }
+    const label = type?.label.trim() || practice.scope.slice("task:".length).replace(/-/g, " ");
+    const line = `- When the request is about ${label}: ${practice.statement.replace(/\s+/g, " ").trim()}`;
+    if (chars + line.length + 1 > budgetChars) {
+      break;
+    }
+    chars += line.length + 1;
+    lines.push(line);
+  }
+  return lines;
+}
 
 /** The synchronous core: type the turn, select, render, count. */
 export function buildPracticesBlock(
@@ -226,7 +283,18 @@ export function buildPracticesBlock(
       taskSlug: task?.slug ?? null,
     });
   }
-  const { block, rendered } = renderPracticesBlock(visible, { taskLabels });
+  const { block: matchedBlock, rendered } = renderPracticesBlock(visible, { taskLabels });
+  let block = matchedBlock;
+  if (policy.kind === "owner" && taskLabels.size === 0) {
+    const used = matchedBlock?.length ?? PRACTICES_BLOCK_HEADER.join("\n").length;
+    const conditional = renderConditionalPracticeLines(
+      manager,
+      PRACTICES_BLOCK_BUDGET_CHARS - used,
+    );
+    if (conditional.length > 0) {
+      block = [matchedBlock ?? PRACTICES_BLOCK_HEADER.join("\n"), ...conditional].join("\n");
+    }
+  }
   if (rendered.length > 0) {
     // Prompt inclusion, not proof the answer followed the practice.
     store.recordApplied(

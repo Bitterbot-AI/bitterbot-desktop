@@ -124,6 +124,16 @@ The block is not rendered for guests, group or channel chats, subagents, remote 
 
 **"Applied" means included in the prompt.** Each rendered practice gets an `applied` event and its `appliedCount` goes up by one per run. Nothing checks whether the answer followed the practice.
 
+### When a turn matches no task type
+
+Task typing compares words, so a short or vague request ("can you check the latest stats?") can match nothing even though it is one of your recurring tasks. A practice that is not in the prompt cannot be followed, so on a turn that matched no task type the block also carries up to four of your task practices, taken from your most frequent recurring task types and worded as conditions:
+
+```text
+- When the request is about repo stats: Include npm downloads.
+```
+
+The answering model decides whether the request is that kind of task. These conditional lines share the block's size budget, are never shown in a cron job's session, and are not counted as applied, because nothing established that the practice fits the turn. The model can misjudge in either direction: it may skip a practice that did apply, or apply one to a loosely related request.
+
 ## What sticks
 
 Retiring a practice is your decision and it holds: capture, or any other writer below your tier, cannot store a nearly identical practice again, at any scope. The same goes for a practice with status `suppressed`. Stating the instruction again yourself, or un-retiring it, brings it back.

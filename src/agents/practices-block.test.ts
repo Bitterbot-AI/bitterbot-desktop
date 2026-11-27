@@ -19,7 +19,9 @@ import {
   PRACTICES_BLOCK_BUDGET_TOKENS,
   PRACTICES_BLOCK_HEADER,
   PRACTICES_BLOCK_MAX,
+  PRACTICES_CONDITIONAL_MAX,
   type PracticesBlockManager,
+  renderConditionalPracticeLines,
   renderPracticesBlock,
   resolvePracticesTurnPolicy,
 } from "./practices-block.js";
@@ -52,6 +54,7 @@ beforeEach(async () => {
   taskTypes = new TaskTypesStore(db);
   manager = {
     practices: () => practices,
+    taskTypes: () => taskTypes,
     // What MemoryIndexManager.observeOwnerTurnTaskType does, without a model.
     observeOwnerTurnTaskType: (params) => observeOwnerTurn(taskTypes, params, null),
   };
@@ -180,14 +183,91 @@ describe("buildPracticesBlock", () => {
     expect(block).not.toContain("digest");
   });
 
-  it("a turn of another kind does not get the task practice", () => {
+  it("a turn that matched no task type gets the task practice as a condition, uncounted", () => {
     const block = buildPracticesBlock(
       manager,
       ownerTurn({ prompt: "Can you make me a cool fireworks display", runId: "run-2" }),
     );
-    expect(block).not.toContain(NPM);
+    // Not as a matched practice: no [repo stats] tag.
+    expect(block).not.toContain(`- [repo stats] ${NPM}`);
+    // As a condition the answering model can judge.
+    expect(block).toContain(`- When the request is about repo stats: ${NPM}`);
     expect(block).toContain("- Keep answers short.");
     expect(block).not.toContain("Use British spelling.");
+    // The candidate is never shown, conditionally or otherwise.
+    expect(block).not.toContain("pull requests");
+    // Inclusion as a condition is not "applied".
+    const npm = practices.list({ statuses: ["active"] }).find((p) => p.statement === NPM);
+    expect(npm?.appliedCount).toBe(0);
+  });
+
+  it("the real miss: a vague stats request still carries the stats practice", () => {
+    const block = buildPracticesBlock(
+      manager,
+      ownerTurn({
+        prompt: "[Fri 2026-11-27 11:36 EST] Can you check the latest stats?",
+        runId: "run-3",
+      }),
+    );
+    expect(block).toContain(`- When the request is about repo stats: ${NPM}`);
+  });
+
+  it("a matched turn gets no conditional lines", () => {
+    const block = buildPracticesBlock(manager, ownerTurn({ runId: "run-4" }));
+    expect(block).not.toContain("When the request is about");
+  });
+
+  it("caps conditional lines and renders them even when nothing else is visible", () => {
+    const db = makeDb();
+    const onlyTask = new PracticesStore(db);
+    const types = new TaskTypesStore(db);
+    for (let i = 0; i < PRACTICES_CONDITIONAL_MAX + 2; i++) {
+      onlyTask.upsert({
+        statement: `Distinct instruction number ${i} about zebras${"!".repeat(i)}`,
+        scope: "task:repo-stats",
+        source: "owner",
+        now: i + 1,
+      });
+    }
+    const lines = renderConditionalPracticeLines(
+      {
+        practices: () => onlyTask,
+        taskTypes: () => ({
+          list: () => [{ slug: "repo-stats", label: "repo stats", occurrences: 9 }],
+        }),
+      },
+      10_000,
+    );
+    expect(lines.length).toBeLessThanOrEqual(PRACTICES_CONDITIONAL_MAX);
+    expect(lines.length).toBeGreaterThan(0);
+    void types;
+    // A task type that is not recurring gives no label to condition on.
+    expect(
+      renderConditionalPracticeLines(
+        { practices: () => onlyTask, taskTypes: () => ({ list: () => [] }) },
+        10_000,
+      ),
+    ).toEqual([]);
+    // No room, no lines.
+    expect(
+      renderConditionalPracticeLines(
+        {
+          practices: () => onlyTask,
+          taskTypes: () => ({
+            list: () => [{ slug: "repo-stats", label: "repo stats", occurrences: 9 }],
+          }),
+        },
+        10,
+      ),
+    ).toEqual([]);
+  });
+
+  it("a cron job session gets no conditional lines", () => {
+    const block = buildPracticesBlock(manager, {
+      ...ownerTurn({ prompt: "[cron] daily digest", runId: "run-5" }),
+      sessionKey: "cron:job-7",
+    });
+    expect(block ?? "").not.toContain("When the request is about");
   });
 
   it("a cron job's own session gets its job practices only, and never types the prompt", () => {
