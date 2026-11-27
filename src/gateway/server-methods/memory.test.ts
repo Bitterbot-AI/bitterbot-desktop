@@ -439,6 +439,7 @@ describe("practice counters and memory.mergeTaskTypes (PLAN-64 Phase 1b)", () =>
     expect(payload.counters).toEqual({
       applied: 2,
       repeats: 1,
+      notFollowed: 0,
       offers: 1,
       confirmed: 0,
       declined: 1,
@@ -446,6 +447,7 @@ describe("practice counters and memory.mergeTaskTypes (PLAN-64 Phase 1b)", () =>
     expect(payload.practices.find((p) => p.id === active.practice.id)?.counts).toEqual({
       applied: 2,
       repeats: 1,
+      notFollowed: 0,
       offers: 0,
       confirmed: 0,
       declined: 0,
@@ -529,19 +531,50 @@ describe("memory.practices: what the Memory tab shows (PLAN-64 Phase 3)", () => 
       ["task:unnamed-thing", "Give the numbers first."],
       ["project:acme", "Answer in British English."],
       ["job:job-7", "Skip the weather section."],
+      ["job:job-gone", "Include the unique counts."],
       ["global", "Keep answers under ten lines."],
     ];
     for (const [scope, statement] of statements) {
       expect(practices.upsert({ statement, scope, source: "owner" }).ok).toBe(true);
     }
-    const payload = (await call(list, {})).payload as Payload;
-    expect(Object.fromEntries(payload.practices.map((p) => [p.scope, p.scopeLabel]))).toEqual({
-      "task:repo-stats": "repo stats",
-      "task:unnamed-thing": "unnamed thing",
-      "project:acme": "project acme",
-      "job:job-7": "this scheduled job",
-      global: "everything",
-    });
+    // PLAN-64 Phase 5: a job practice carries the job's name, or the job's
+    // id when the job no longer exists.
+    const { setActiveCronEngine } = await import("../../cron/active.js");
+    setActiveCronEngine({
+      listJobs: () => [
+        {
+          jobId: "Job-7",
+          name: "Morning digest",
+          sessionTarget: "isolated",
+          payload: { kind: "agentTurn", message: "digest" },
+        },
+        {
+          jobId: "ping",
+          name: "Ping",
+          sessionTarget: "main",
+          payload: { kind: "systemEvent", text: "tick" },
+        },
+      ],
+    } as unknown as Parameters<typeof setActiveCronEngine>[0]);
+    try {
+      const payload = (await call(list, {})).payload as Payload & {
+        jobs: Array<{ scope: string; name: string }>;
+        practices: Array<Row & { counts: { notFollowed: number } }>;
+      };
+      expect(Object.fromEntries(payload.practices.map((p) => [p.scope, p.scopeLabel]))).toEqual({
+        "task:repo-stats": "repo stats",
+        "task:unnamed-thing": "unnamed thing",
+        "project:acme": "project acme",
+        "job:job-7": "Morning digest",
+        "job:job-gone": "job-gone",
+        global: "everything",
+      });
+      // The scopes the Memory tab can offer: isolated jobs only.
+      expect(payload.jobs).toEqual([{ scope: "job:job-7", name: "Morning digest" }]);
+      expect(payload.practices[0]?.counts.notFollowed).toBe(0);
+    } finally {
+      setActiveCronEngine(null);
+    }
   });
 
   it("returns savedAt: the creation of an owner practice, or the day a candidate was confirmed", async () => {

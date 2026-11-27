@@ -14,12 +14,23 @@ const mocks = vi.hoisted(() => ({
   enqueueSystemEvent: vi.fn(),
   requestHeartbeatNow: vi.fn(),
   store: {} as Record<string, unknown>,
+  // PLAN-64 Phase 5: the practices side of an announcement (job-practices.ts).
+  canaryLine: null as string | null,
+  announced: vi.fn(),
+  beginJobAnnouncement: vi.fn(),
 }));
 
 vi.mock("../gateway/call.js", () => ({ callGateway: mocks.callGateway }));
 vi.mock("../infra/outbound/deliver.js", () => ({ deliverOutboundPayloads: mocks.deliver }));
 vi.mock("../infra/system-events.js", () => ({ enqueueSystemEvent: mocks.enqueueSystemEvent }));
 vi.mock("../infra/heartbeat-wake.js", () => ({ requestHeartbeatNow: mocks.requestHeartbeatNow }));
+vi.mock("./job-practices.js", () => ({
+  beginJobAnnouncement: async (params: unknown) => {
+    mocks.beginJobAnnouncement(params);
+    return { canaryLine: mocks.canaryLine, announced: mocks.announced };
+  },
+  forgetJobPractices: async () => {},
+}));
 vi.mock("../agents/tools/agent-step.js", () => ({
   readLatestAssistantReply: vi.fn(async () => "Three new issues were opened overnight."),
 }));
@@ -64,6 +75,9 @@ beforeEach(() => {
   mocks.enqueueSystemEvent.mockClear();
   mocks.requestHeartbeatNow.mockClear();
   mocks.store = {};
+  mocks.canaryLine = null;
+  mocks.announced.mockClear();
+  mocks.beginJobAnnouncement.mockClear();
 });
 
 describe("isolated cron run delivery", () => {
@@ -128,5 +142,70 @@ describe("isolated cron run delivery", () => {
     expect(agentCall?.params.message).toContain("Resume task t1.");
     expect(agentCall?.params.message).toContain("running 3 hours late");
     expect(agentCall?.params.senderIsOwner).toBe(false);
+  });
+
+  // ── PLAN-64 Phase 5: the canary line and the announcement record ──────────
+
+  const CANARY = 'Changed since last time: "Include unique counts" (from your message on 27 Nov).';
+
+  it("adds the generated line to a delivered report and records the announcement after the send", async () => {
+    mocks.store = {
+      "agent:main:main": {
+        sessionId: "s1",
+        updatedAt: 0,
+        lastChannel: "telegram",
+        lastTo: "12345",
+      } as unknown as SessionEntry,
+    };
+    mocks.canaryLine = CANARY;
+    await runIsolatedJob(job());
+    expect(mocks.beginJobAnnouncement).toHaveBeenCalledTimes(1);
+    expect(mocks.beginJobAnnouncement.mock.calls[0]![0]).toMatchObject({
+      agentId: "main",
+      reply: "Three new issues were opened overnight.",
+      runStartedAt: expect.any(Number),
+    });
+    expect(mocks.deliver.mock.calls[0]![0]).toMatchObject({
+      payloads: [{ text: `Three new issues were opened overnight.\n\n${CANARY}` }],
+    });
+    expect(mocks.announced).toHaveBeenCalledTimes(1);
+    expect(mocks.announced).toHaveBeenCalledWith("telegram:12345");
+    // The main-session summary of a delivered report is unchanged.
+    expect(mocks.enqueueSystemEvent.mock.calls[0]![0]).not.toContain("Changed since last time");
+  });
+
+  it("puts the line, whole, after the truncated summary of a report kept in the main session", async () => {
+    mocks.canaryLine = CANARY;
+    const { readLatestAssistantReply } = await import("../agents/tools/agent-step.js");
+    vi.mocked(readLatestAssistantReply).mockResolvedValueOnce("A long report. ".repeat(60));
+    await runIsolatedJob(job());
+    const text = mocks.enqueueSystemEvent.mock.calls[0]![0] as string;
+    expect(text.endsWith(`\n${CANARY}`)).toBe(true);
+    expect(mocks.announced).toHaveBeenCalledWith("main");
+  });
+
+  it("records nothing when the send fails, when nothing is announced and when there is no reply", async () => {
+    mocks.store = {
+      "agent:main:main": {
+        sessionId: "s1",
+        updatedAt: 0,
+        lastChannel: "telegram",
+        lastTo: "12345",
+      } as unknown as SessionEntry,
+    };
+    mocks.deliver.mockRejectedValueOnce(new Error("telegram is down"));
+    await expect(runIsolatedJob(job())).rejects.toThrow("telegram is down");
+    expect(mocks.announced).not.toHaveBeenCalled();
+
+    mocks.store = {};
+    mocks.beginJobAnnouncement.mockClear();
+    await runIsolatedJob(job({ delivery: { mode: "none" } }));
+    expect(mocks.beginJobAnnouncement).not.toHaveBeenCalled();
+
+    const { readLatestAssistantReply } = await import("../agents/tools/agent-step.js");
+    vi.mocked(readLatestAssistantReply).mockResolvedValueOnce("  ");
+    await runIsolatedJob(job());
+    expect(mocks.beginJobAnnouncement).not.toHaveBeenCalled();
+    expect(mocks.announced).not.toHaveBeenCalled();
   });
 });

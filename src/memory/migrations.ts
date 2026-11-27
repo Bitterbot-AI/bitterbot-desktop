@@ -2946,6 +2946,40 @@ export const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    version: 83,
+    description:
+      "PLAN-64 Phase 5 (2026-11-27): scheduled jobs that learn. One row per announced " +
+      "report of an isolated cron job: the job, the conversation it was announced in, " +
+      "when, an excerpt of the job's instruction and of its report, and the practices " +
+      "whose 'Changed since last time' line that run consumed. The owner's next message " +
+      "in that conversation is linked to the job through this row, so the link survives " +
+      "a gateway restart. Rows are consumed by that message and dropped after 30 days.",
+    up: (db) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS practice_job_announcements (
+          id TEXT PRIMARY KEY,
+          job_id TEXT NOT NULL,
+          job_name TEXT,
+          session_key TEXT NOT NULL,
+          destination TEXT,
+          request_text TEXT,
+          output_text TEXT,
+          canary_practice_ids TEXT NOT NULL DEFAULT '[]',
+          announced_at INTEGER NOT NULL,
+          consumed_at INTEGER
+        );
+      `);
+      db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_practice_job_announcements_session
+           ON practice_job_announcements(session_key, announced_at)`,
+      );
+      db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_practice_job_announcements_job
+           ON practice_job_announcements(job_id, announced_at)`,
+      );
+    },
+  },
 ];
 
 /**

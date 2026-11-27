@@ -89,7 +89,12 @@ const taskTypes: TaskTypeRow[] = [
   },
 ];
 
-let listed: { practices: PracticeRow[]; taskTypes: TaskTypeRow[]; activeProject: string | null };
+let listed: {
+  practices: PracticeRow[];
+  taskTypes: TaskTypeRow[];
+  activeProject: string | null;
+  jobs?: Array<{ scope: string; name: string }>;
+};
 let failing: Record<string, Error>;
 
 beforeEach(() => {
@@ -131,6 +136,10 @@ describe("describePracticeScope / describePracticeStatus", () => {
     expect(describePracticeScope({ scope: "task:repo-stats" })).toBe("For repo stats");
     expect(describePracticeScope({ scope: "project:acme" })).toBe("For project acme");
     expect(describePracticeScope({ scope: "job:abc-123" })).toBe("For one scheduled job");
+    // PLAN-64 Phase 5: the gateway sends the job's name (its id when the job is gone).
+    expect(describePracticeScope({ scope: "job:abc-123", scopeLabel: "Repo traffic" })).toBe(
+      "For the scheduled job Repo traffic",
+    );
     expect(describePracticeStatus("candidate")).toBe("Waiting for your answer");
     expect(describePracticeStatus("suppressed")).toBe("Declined");
   });
@@ -250,6 +259,64 @@ describe("PracticesSection", () => {
     );
     await waitFor(() =>
       expect(card("p-npm").getByText("Everywhere", { selector: "span" })).toBeTruthy(),
+    );
+  });
+
+  it("PLAN-64 Phase 5: shows a job practice by its job, offers the scheduled jobs as scopes, and shows the not-followed count", async () => {
+    const user = userEvent.setup();
+    const jobPractice: PracticeRow = {
+      id: "p-job",
+      statement: "Include the unique counts",
+      scope: "job:cron_traffic1",
+      scopeLabel: "Repo traffic",
+      status: "active",
+      createdAt: SAVED_AT,
+      savedAt: SAVED_AT,
+      counts: { applied: 3, repeats: 0, notFollowed: 2 },
+      evidence: [],
+    };
+    const orphan: PracticeRow = {
+      ...jobPractice,
+      id: "p-orphan",
+      statement: "Include the top referrers",
+      scope: "job:cron_deleted",
+      scopeLabel: "cron_deleted",
+      counts: { applied: 0, repeats: 0, notFollowed: 0 },
+    };
+    listed = {
+      ...listed,
+      practices: [npm, jobPractice, orphan],
+      jobs: [{ scope: "job:cron_traffic1", name: "Repo traffic" }],
+    };
+    render(<PracticesSection />);
+    await screen.findByText("Include the unique counts");
+    expect(
+      card("p-job").getByText("For the scheduled job Repo traffic", { selector: "span" }),
+    ).toBeTruthy();
+    expect(card("p-job").getByText(/not in the answer/).textContent).toContain("2");
+    expect(card("p-npm").queryByText(/not in the answer/)).toBeNull();
+    // A practice of a deleted job keeps its scope in the list, named by the id.
+    const orphanSelect = card("p-orphan").getByLabelText(
+      'Where "Include the top referrers" applies',
+    ) as HTMLSelectElement;
+    expect(Array.from(orphanSelect.options).map((o) => [o.value, o.textContent])).toEqual([
+      ["global", "Everywhere"],
+      ["task:repo-stats", "For repo stats"],
+      ["task:npm-numbers", "For npm numbers"],
+      ["project:acme", "For project acme"],
+      ["job:cron_traffic1", "For the scheduled job Repo traffic"],
+      ["job:cron_deleted", "For the scheduled job cron_deleted"],
+    ]);
+    // A task practice can be moved to a scheduled job.
+    const select = card("p-npm").getByLabelText(
+      'Where "Include npm downloads" applies',
+    ) as HTMLSelectElement;
+    await user.selectOptions(select, "job:cron_traffic1");
+    await waitFor(() =>
+      expect(requestMock).toHaveBeenCalledWith("memory.setPracticeScope", {
+        id: "p-npm",
+        scope: "job:cron_traffic1",
+      }),
     );
   });
 

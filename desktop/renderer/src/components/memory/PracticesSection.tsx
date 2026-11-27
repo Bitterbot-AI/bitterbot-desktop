@@ -21,8 +21,11 @@ export type PracticeRow = {
   scopeLabel?: string;
   savedAt?: number;
   evidence?: Array<{ ref: string; text: string | null }>;
-  counts?: { applied: number; repeats: number };
+  counts?: { applied: number; repeats: number; notFollowed?: number };
 };
+
+/** A scheduled job a practice can be scoped to. */
+export type PracticeJobRow = { scope: string; name: string };
 
 export type TaskTypeRow = {
   slug: string;
@@ -36,6 +39,7 @@ type PracticesResult = {
   practices?: PracticeRow[];
   taskTypes?: TaskTypeRow[];
   activeProject?: string | null;
+  jobs?: PracticeJobRow[];
 };
 
 const STATUS_WORDS: Record<PracticeStatus, string> = {
@@ -60,6 +64,8 @@ export function describePracticeStatus(status: PracticeStatus): string {
 /** Where a practice applies, in words. The gateway's label wins when it sent one. */
 export function describePracticeScope(p: Pick<PracticeRow, "scope" | "scopeLabel">): string {
   if (p.scope === "global") return "Everywhere";
+  // The gateway sends the job's name (its id when the job was deleted).
+  if (p.scope.startsWith("job:") && p.scopeLabel) return `For the scheduled job ${p.scopeLabel}`;
   if (p.scopeLabel) return `For ${p.scopeLabel}`;
   const name = p.scope.slice(p.scope.indexOf(":") + 1).replace(/-/g, " ");
   if (p.scope.startsWith("project:")) return `For project ${name}`;
@@ -107,6 +113,7 @@ export function PracticesSection() {
   const [practices, setPractices] = useState<PracticeRow[]>([]);
   const [taskTypes, setTaskTypes] = useState<TaskTypeRow[]>([]);
   const [activeProject, setActiveProject] = useState<string | null>(null);
+  const [jobs, setJobs] = useState<PracticeJobRow[]>([]);
   const [editing, setEditing] = useState<{ id: string; draft: string } | null>(null);
   const [newStatement, setNewStatement] = useState("");
   const [newScope, setNewScope] = useState("global");
@@ -123,6 +130,7 @@ export function PracticesSection() {
       setPractices(res.practices ?? []);
       setTaskTypes(res.taskTypes ?? []);
       setActiveProject(res.activeProject ?? null);
+      setJobs(res.jobs ?? []);
       setState("ready");
     } catch (err) {
       const raw = err instanceof Error ? err.message : String(err ?? "");
@@ -218,7 +226,12 @@ export function PracticesSection() {
     if (
       await change(
         // The label comes back from the gateway on the reload below.
-        (list) => list.map((x) => (x.id === p.id ? { ...x, scope, scopeLabel: undefined } : x)),
+        (list) =>
+          list.map((x) =>
+            x.id === p.id
+              ? { ...x, scope, scopeLabel: jobs.find((j) => j.scope === scope)?.name }
+              : x,
+          ),
         "memory.setPracticeScope",
         { id: p.id, scope },
         "Could not change where it applies",
@@ -267,6 +280,7 @@ export function PracticesSection() {
       ...(activeProject
         ? [{ value: `project:${activeProject}`, label: `For project ${activeProject}` }]
         : []),
+      ...jobs.map((j) => ({ value: j.scope, label: `For the scheduled job ${j.name}` })),
     ];
     if (current && !options.some((o) => o.value === current.scope)) {
       options.push({ value: current.scope, label: describePracticeScope(current) });
@@ -339,6 +353,7 @@ export function PracticesSection() {
                 const live = p.status === "active" || p.status === "candidate";
                 const applied = p.counts?.applied ?? p.appliedCount ?? 0;
                 const repeats = p.counts?.repeats ?? 0;
+                const notFollowed = p.counts?.notFollowed ?? 0;
                 const evidence = (p.evidence ?? []).filter((e) => e.text);
                 return (
                   <li
@@ -406,6 +421,14 @@ export function PracticesSection() {
                           <span title="Times you had to say it again">
                             repeated by you {times(repeats)}
                           </span>
+                          {notFollowed > 0 && (
+                            <>
+                              {" · "}
+                              <span title="Times it was given to your agent and its words were not in the answer (a word match, not a judgement)">
+                                not in the answer {times(notFollowed)}
+                              </span>
+                            </>
+                          )}
                         </>
                       )}
                     </p>

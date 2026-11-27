@@ -55,6 +55,7 @@ export const FIELD_LABELS: Record<string, string> = {
   "memory.practices.followUps.enabled": "Learn Practices From Follow-ups",
   "memory.practices.offers.enabled": "Offer Practices In Replies",
   "memory.practices.attribution.enabled": "Name Applied Practices In Replies",
+  "memory.practices.jobs.enabled": "Scheduled Jobs Learn From Your Corrections",
   "session.memory": "Learn From Conversations",
   "tools.wallet.enabled": "Wallet Tool",
   "tools.wallet.network": "Wallet Network",

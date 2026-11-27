@@ -980,11 +980,25 @@ function registerPracticesCommands(memory: Command) {
           return;
         }
         const counters = m.practiceCounters();
-        const zero = { applied: 0, repeats: 0, offers: 0, confirmed: 0, declined: 0 };
+        const zero = {
+          applied: 0,
+          repeats: 0,
+          notFollowed: 0,
+          offers: 0,
+          confirmed: 0,
+          declined: 0,
+        };
+        // PLAN-64 Phase 5: a `job:` practice is listed with its job's name.
+        const { jobScopeLabel, readJobsByScopeName } = await import("../cron/job-practices.js");
+        const jobs = await readJobsByScopeName(loadConfig());
         const rows = m
           .practices()
           .list(status ? { statuses: [status] } : {})
-          .map((p) => ({ ...p, counts: counters.byPractice.get(p.id) ?? zero }));
+          .map((p) => ({
+            ...p,
+            counts: counters.byPractice.get(p.id) ?? zero,
+            ...(p.scope.startsWith("job:") ? { jobName: jobScopeLabel(p.scope, jobs) } : {}),
+          }));
         const taskTypes = m.taskTypes().list({ recurringOnly: true });
         if (opts.json) {
           defaultRuntime.log(
@@ -998,12 +1012,15 @@ function registerPracticesCommands(memory: Command) {
         for (const p of rows) {
           defaultRuntime.log(
             `${p.status.padEnd(10)} ${p.scope.padEnd(24)} ${p.statement}\n` +
-              `${" ".repeat(11)}id ${p.id}; applied ${p.counts.applied}, repeats ${p.counts.repeats}, offers ${p.counts.offers}`,
+              ("jobName" in p && p.jobName
+                ? `${" ".repeat(11)}scheduled job: ${p.jobName}\n`
+                : "") +
+              `${" ".repeat(11)}id ${p.id}; applied ${p.counts.applied}, repeats ${p.counts.repeats}, not followed ${p.counts.notFollowed}, offers ${p.counts.offers}`,
           );
         }
         const c = counters.overall;
         defaultRuntime.log(
-          `Totals: applied ${c.applied}, repeats ${c.repeats}, offers ${c.offers} (${c.confirmed} confirmed, ${c.declined} declined).`,
+          `Totals: applied ${c.applied}, repeats ${c.repeats}, not followed ${c.notFollowed}, offers ${c.offers} (${c.confirmed} confirmed, ${c.declined} declined).`,
         );
         if (taskTypes.length > 0) {
           defaultRuntime.log(

@@ -131,6 +131,12 @@ export type CronJobWire = {
   retryUntilMs?: number;
   consecutiveErrors?: number;
   lastRunStatus?: CronRunStatus;
+  /**
+   * PLAN-64 Phase 5: the standing practices active for this job (what the
+   * owner taught it), added by `cron.list`. Absent when there are none or
+   * the agent's memory could not be read.
+   */
+  practices?: Array<{ id: string; statement: string; savedAt: number }>;
 };
 
 export type CronStoreFile = {

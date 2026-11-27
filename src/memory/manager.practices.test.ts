@@ -310,6 +310,7 @@ describe("MemoryIndexManager practices glue", () => {
     expect(m.practiceCounters().overall).toEqual({
       applied: 0,
       repeats: 0,
+      notFollowed: 0,
       offers: 2,
       confirmed: 1,
       declined: 1,

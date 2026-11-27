@@ -181,6 +181,39 @@ describe("memory practices backfill", () => {
 });
 
 describe("memory practices list and merge-types", () => {
+  it("PLAN-64 Phase 5: lists a job practice with the job's name, and with its id when the job is gone", async () => {
+    const { setActiveCronEngine } = await import("../cron/active.js");
+    setActiveCronEngine({
+      listJobs: () => [{ jobId: "cron_traffic1", name: "Repo traffic", sessionTarget: "isolated" }],
+    } as unknown as Parameters<typeof setActiveCronEngine>[0]);
+    try {
+      practices.upsert({
+        statement: "Include the unique counts",
+        scope: "job:cron_traffic1",
+        source: "owner",
+      });
+      practices.upsert({
+        statement: "Include the top referrers",
+        scope: "job:cron_deleted",
+        source: "owner",
+      });
+      const { out } = await run(["list"]);
+      expect(out).toContain("job:cron_traffic1");
+      expect(out).toContain("scheduled job: Repo traffic");
+      expect(out).toContain("scheduled job: cron_deleted");
+      const json = await run(["list", "--json"]);
+      const parsed = JSON.parse(json.lines[0]!) as {
+        practices: Array<{ scope: string; jobName?: string; counts: { notFollowed: number } }>;
+      };
+      expect(parsed.practices.find((p) => p.scope === "job:cron_traffic1")).toMatchObject({
+        jobName: "Repo traffic",
+        counts: { notFollowed: 0 },
+      });
+    } finally {
+      setActiveCronEngine(null);
+    }
+  });
+
   it("lists practices with status, scope and counters", async () => {
     const saved = practices.upsert({
       statement: "Give the numbers first.",
@@ -197,7 +230,9 @@ describe("memory practices list and merge-types", () => {
     expect(out).toContain("task:repo-stats");
     expect(out).toContain("Give the numbers first.");
     expect(out).toContain("candidate");
-    expect(out).toContain("Totals: applied 1, repeats 0, offers 0 (0 confirmed, 0 declined).");
+    expect(out).toContain(
+      "Totals: applied 1, repeats 0, not followed 0, offers 0 (0 confirmed, 0 declined).",
+    );
     expect(out).toContain("Recurring task types: repo-stats (3)");
     const onlyCandidates = await run(["list", "--status", "candidate"]);
     expect(onlyCandidates.out).not.toContain("Give the numbers first.");

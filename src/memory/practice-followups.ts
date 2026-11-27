@@ -41,7 +41,7 @@
 
 import type { DatabaseSync } from "node:sqlite";
 import { createSubsystemLogger } from "../logging/subsystem.js";
-import type { ScopeContext } from "./canonical-facts.js";
+import { normalizeScopeName, type ScopeContext } from "./canonical-facts.js";
 import { extractFirstJsonObject, hasRetraction } from "./model-json.js";
 import {
   arePracticesNearDuplicate,
@@ -450,9 +450,20 @@ export type FollowUpContext = {
    * What made this message a possible follow-up. `answer` (the default): the
    * previous owner turn was typed as the recurring task. `message`: that turn
    * matched no type and the follow-up itself matches the recurring type.
+   * `job` (PLAN-64 Phase 5): the message follows a scheduled job's announced
+   * report; `previousOwnerMessage` is the job's own instruction,
+   * `previousAnswer` the report, `taskLabel` the job's name, and a gap is
+   * stored at `scope` (`job:<id>`) instead of `task:<taskSlug>`.
    */
-  typedBy?: "answer" | "message";
+  typedBy?: "answer" | "message" | "job";
+  /** Where a gap is stored when it is not `task:<taskSlug>`. */
+  scope?: string;
 };
+
+/** The scope a gap of this context is stored at. */
+export function followUpScope(ctx: Pick<FollowUpContext, "taskSlug" | "scope">): string {
+  return ctx.scope ?? `task:${ctx.taskSlug}`;
+}
 
 export type FollowUpGap =
   | { kind: "gap"; statement: string }
@@ -473,6 +484,11 @@ function exchangeBlock(ctx: FollowUpContext, ownerMessage: string): string {
   const previous = ctx.previousOwnerMessage.slice(0, MAX_STATE_OWNER_CHARS);
   const answer = ctx.previousAnswer.slice(0, MAX_STATE_ANSWER_CHARS);
   const followUp = ownerMessage.slice(0, 1_000);
+  if (ctx.typedBy === "job") {
+    return `Scheduled job "${label}" (what it is asked to do on every run): ${previous}
+Assistant (the report of the latest run, as sent to the owner): ${answer}
+Owner (next message): ${followUp}`;
+  }
   return ctx.typedBy === "message"
     ? `Owner (request): ${previous}
 Assistant (the answer): ${answer}
@@ -484,7 +500,11 @@ Owner (follow-up): ${followUp}`;
 
 /** The stand-alone prompt, used when the correction pre-filter did not fire on this turn. */
 export function buildFollowUpGapPrompt(ctx: FollowUpContext, ownerMessage: string): string {
-  return `The owner of an assistant made a request${ctx.typedBy === "message" ? "" : " they make regularly"}, the assistant answered, and the owner then sent a follow-up. Decide whether the follow-up asks for something the answer should have contained.
+  const opening =
+    ctx.typedBy === "job"
+      ? "A scheduled job of an assistant sent its report to the owner, and the owner then sent a message. Treat the report as the answer and the message as the follow-up. Decide whether the follow-up asks for something the report should have contained."
+      : `The owner of an assistant made a request${ctx.typedBy === "message" ? "" : " they make regularly"}, the assistant answered, and the owner then sent a follow-up. Decide whether the follow-up asks for something the answer should have contained.`;
+  return `${opening}
 
 ## Rules
 ${FOLLOW_UP_RULES}
@@ -507,7 +527,7 @@ export function buildFollowUpPromptSection(ctx: FollowUpContext, ownerMessage: s
   return `
 
 ## Follow-up check
-The user message above was the user's next message after the assistant answered ${ctx.typedBy === "message" ? "an earlier request" : "a request the user makes regularly"}. Decide whether it asks for something that earlier answer should have contained, and add one more top-level key to the JSON object you output:
+The user message above was the user's next message after ${ctx.typedBy === "job" ? "a scheduled job of the assistant sent its report (treat the report as the earlier answer)" : `the assistant answered ${ctx.typedBy === "message" ? "an earlier request" : "a request the user makes regularly"}`}. Decide whether it asks for something that earlier answer should have contained, and add one more top-level key to the JSON object you output:
 "follow_up":{"kind":"gap","missing":"Include npm downloads"} or "follow_up":{"kind":"other"}
 ${FOLLOW_UP_RULES}
 
@@ -517,6 +537,15 @@ ${exchangeBlock(ctx, ownerMessage)}`;
 
 const GAP_VERB_RX =
   /^(?:please\s+)?(?:always\s+)?(?:include|add|show|give|report|mention|provide|list)\s+(?:me\s+)?/i;
+
+/**
+ * Does the statement name content to put into an answer ("Include npm
+ * downloads", "Show the unique counts")? Only such a statement can be
+ * checked against an answer by its words; "Keep answers short" cannot.
+ */
+export function namesAnswerContent(statement: string): boolean {
+  return GAP_VERB_RX.test(cleanPracticeStatement(statement));
+}
 
 /** "Include npm downloads." -> "npm downloads": the missing element without the verb. */
 export function gapElement(statement: string): string {
@@ -641,13 +670,27 @@ function ownerSaid(prose: ReadonlySet<string>, word: string): boolean {
  * asked of the owner. A longer word one typo away from the owner's counts.
  */
 export function isGapGrounded(ownerProse: string, statement: string): boolean {
+  const { present, wanted } = countElementWordsIn(ownerProse, statement);
+  return wanted > 0 && present / wanted > 0.5;
+}
+
+/**
+ * How many of a statement's element words (the statement without its
+ * leading instruction verb) are in a text, with the same typo tolerance.
+ */
+export function countElementWordsIn(
+  text: string,
+  statement: string,
+): { present: number; wanted: number } {
   const wanted = gapElementWords(statement);
   if (wanted.length === 0) {
-    return false;
+    return { present: 0, wanted: 0 };
   }
-  const prose = new Set(contentWords(ownerProse));
-  const present = wanted.filter((word) => ownerSaid(prose, word)).length;
-  return present / wanted.length > 0.5;
+  const words = new Set(contentWords(text));
+  return {
+    present: wanted.filter((word) => ownerSaid(words, word)).length,
+    wanted: wanted.length,
+  };
 }
 
 /**
@@ -677,9 +720,17 @@ export function areGapStatementsMatching(a: string, b: string): boolean {
 
 // ── Candidates ──────────────────────────────────────────────────────────────
 
+const JOB_KINDS: ReadonlySet<string> = new Set(["job"]);
+
 export type GapSightingInput = {
   store: PracticesStore;
   taskSlug: string;
+  /**
+   * PLAN-64 Phase 5: the gap belongs to a scheduled job. The candidate is
+   * stored at `job:<id>` and only that job's own practices count as "already
+   * active" (nothing else is rendered in the job's session).
+   */
+  jobId?: string | null;
   statement: string;
   /** The owner's follow-up, prose only. */
   ownerProse: string;
@@ -714,7 +765,11 @@ export type GapSightingResult =
 export function recordGapSighting(input: GapSightingInput): GapSightingResult {
   const { store } = input;
   const now = input.now ?? Date.now();
-  const scope = `task:${input.taskSlug}`;
+  const jobName = input.jobId ? normalizeScopeName(input.jobId) : null;
+  if (input.jobId && !jobName) {
+    return { kind: "rejected", reason: "the job id cannot be a scope" };
+  }
+  const scope = jobName ? `job:${jobName}` : `task:${input.taskSlug}`;
   const grounded = isGapGrounded(input.ownerProse, input.statement);
   const prose = new Set(contentWords(input.ownerProse));
   // An existing row counts as "this gap again" when the statements match and
@@ -724,8 +779,10 @@ export function recordGapSighting(input: GapSightingInput): GapSightingResult {
     areGapStatementsMatching(p.statement, input.statement) &&
     (grounded || gapElementWords(p.statement).some((word) => prose.has(word)));
 
-  const visible: ScopeContext = { taskSlug: input.taskSlug, activeProject: input.activeProject };
-  const active = store.listVisible(visible).find(sameGap);
+  const visible: ScopeContext = jobName
+    ? { cronJobId: jobName }
+    : { taskSlug: input.taskSlug, activeProject: input.activeProject };
+  const active = store.listVisible(visible, jobName ? { kinds: JOB_KINDS } : {}).find(sameGap);
   if (active) {
     store.recordRepeat(active.id, { sessionRef: input.evidenceRef, via: "follow_up", now });
     return { kind: "repeat", practice: active };
@@ -787,7 +844,8 @@ export function countIndependentSightings(
 }
 
 /**
- * The one candidate at `task:<slug>` this reply may offer, or null: two
+ * The one candidate at `task:<slug>` (or at `scope`, for a scheduled job)
+ * this reply may offer, or null: two
  * independent sightings or one explicit one, fewer than
  * MAX_OFFERS_PER_PRACTICE offers so far, and not yet offered in this
  * session. `preferId` (the candidate sighted on this turn) goes first, then
@@ -795,13 +853,14 @@ export function countIndependentSightings(
  */
 export function pickOffer(
   store: PracticesStore,
-  params: { taskSlug: string; sessionId: string; preferId?: string | null },
+  params: { taskSlug?: string; scope?: string; sessionId: string; preferId?: string | null },
 ): { practice: Practice; sightings: number } | null {
+  const scope = params.scope ?? (params.taskSlug ? `task:${params.taskSlug}` : null);
+  if (!scope) {
+    return null;
+  }
   const eligible: Array<{ practice: Practice; sightings: number }> = [];
-  for (const practice of store.list({
-    statuses: ["candidate"],
-    scope: `task:${params.taskSlug}`,
-  })) {
+  for (const practice of store.list({ statuses: ["candidate"], scope })) {
     if (
       practice.offerCount >= MAX_OFFERS_PER_PRACTICE ||
       store.offeredInSession(practice.id, params.sessionId)

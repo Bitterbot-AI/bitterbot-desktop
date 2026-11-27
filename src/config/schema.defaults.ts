@@ -73,6 +73,10 @@ export const FIELD_DEFAULTS: Record<string, unknown> = {
   // src/config/feature-switches.ts practiceAttributionEnabled() — only `=== false` turns off the
   // "Applied: ..." line (src/auto-reply/reply/agent-runner-memory.ts resolvePracticeAttribution).
   "memory.practices.attribution.enabled": true,
+  // src/config/feature-switches.ts practiceJobsEnabled() — only `=== false` turns off the
+  // announcement record and the canary line (src/cron/job-practices.ts) and the job link of the
+  // owner's next message (src/auto-reply/reply/agent-runner-memory.ts).
+  "memory.practices.jobs.enabled": true,
   // src/memory/correction-capture.ts, src/memory/manager.ts runSessionExtraction,
   // src/memory/manager-sync-ops.ts syncSessionFiles — only `=== "off"` keeps conversations out.
   "session.memory": "on",

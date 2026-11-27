@@ -69,13 +69,17 @@ import {
   normalizeScopeName,
 } from "./canonical-facts.js";
 import type { OwnerPinInput, OwnerPinResult, SavePracticeInput } from "./owner-controls.js";
+import { isProhibition } from "./practice-attribution.js";
 import {
   buildFollowUpGapPrompt,
   buildFollowUpPromptSection,
   type FollowUpContext,
   type FollowUpGap,
+  areGapStatementsMatching,
+  isGapGrounded,
   parseFollowUpGap,
 } from "./practice-followups.js";
+import type { JobLink } from "./practice-jobs.js";
 import {
   arePracticesNearDuplicate,
   type Practice,
@@ -362,8 +366,13 @@ export type PracticeWrite = {
   statement: string;
   scope: string;
   status: Practice["status"];
-  /** `widen`: an existing practice was made global by the owner's "everywhere". */
-  op: "add" | "strengthen" | "promote" | "widen";
+  /**
+   * `widen`: an existing practice was made global by the owner's "everywhere".
+   * `rollback` (PLAN-64 Phase 5): an existing job practice was retired because
+   * the owner repeated or contradicted it right after the first run with it;
+   * `statement` is that practice's and `status` is `retired`.
+   */
+  op: "add" | "strengthen" | "promote" | "widen" | "rollback";
   tier: CorrectionTier;
   /** The task type's plain label, for the confirmation line. */
   taskLabel?: string;
@@ -380,8 +389,22 @@ export type PracticeCaptureDeps = {
   setScope?: ((id: string, scope: string) => Promise<PracticeUpsertResult>) | null;
   /** The recurring task type of this turn or of the owner turn just before it. */
   taskType?: { slug: string; label: string } | null;
-  /** The cron job this turn is about, when the turn carries a cron context for one. */
+  /**
+   * The cron job this turn is about: the job whose announced report this
+   * message follows (PLAN-64 Phase 5, with `CorrectionCaptureInput.job`). A
+   * practice is scoped to it only when the model marks it as about the report.
+   */
   cronJobId?: string | null;
+  /**
+   * PLAN-64 Phase 5: retire a job practice with reason `rolled_back`
+   * (audited, serialised). Absent: nothing is ever rolled back.
+   */
+  rollback?:
+    | ((
+        practiceId: string,
+        opts: { via: "correction" | "follow_up"; because: "repeated" | "contradicted" },
+      ) => Promise<boolean>)
+    | null;
 };
 
 export type CorrectionCaptureInput = {
@@ -409,6 +432,12 @@ export type CorrectionCaptureInput = {
    * turn's single model call. Ignored without `practices`.
    */
   followUp?: FollowUpContext | null;
+  /**
+   * PLAN-64 Phase 5: this turn is the owner's next message after a scheduled
+   * job announced its report. The model is asked, in the same call, which
+   * practices are about that report. Ignored without `practices`.
+   */
+  job?: JobLink | null;
   /** The owner tier's writer (manager.ownerPinFact, which serialises on the maintenance mutex). */
   pinAsOwner: ((input: OwnerPinInput) => Promise<OwnerPinResult>) | null | undefined;
   /** The cheap-model lane (manager.correctionLlmCall); null disables the model call. */
@@ -655,7 +684,8 @@ export function describePracticeScope(scope: string, taskLabel?: string): string
     return taskLabel?.trim() || name;
   }
   if (normalized.startsWith("job:")) {
-    return "this scheduled job";
+    // A caller that knows the job passes its name ("the Repo stats report").
+    return taskLabel?.trim() || "this scheduled job";
   }
   if (normalized.startsWith("project:")) {
     return `project ${name}`;
@@ -896,7 +926,9 @@ async function extractWithOneCall(
       assistantReply: input.assistantReply,
       project: input.activeProject ?? null,
       practices: withPractices,
-    }) + (followUp ? buildFollowUpPromptSection(followUp, followUpOwnerText(prose)) : "");
+    }) +
+    (withPractices && input.job ? buildJobPromptSection(input.job, !followUp) : "") +
+    (followUp ? buildFollowUpPromptSection(followUp, followUpOwnerText(prose)) : "");
   result.llmCalls += 1;
   result.followUpChecked = Boolean(followUp);
   let raw: string;
@@ -913,6 +945,36 @@ async function extractWithOneCall(
     facts: parseCorrectionResponse(raw),
     practices: withPractices ? parseCorrectionPractices(raw) : [],
   };
+}
+
+/**
+ * PLAN-64 Phase 5: one more section of the correction prompt when the
+ * message follows a scheduled job's report. It asks for two flags per
+ * practice and changes nothing else about the output. `withReport` is false
+ * when the follow-up section of the same prompt already carries the report.
+ */
+export function buildJobPromptSection(job: JobLink, withReport: boolean): string {
+  const name = job.jobName?.trim() || "scheduled job";
+  const canaries = job.canaries
+    .slice(0, 3)
+    .map((p) => `"${p.statement.replace(/\s+/g, " ").trim()}"`)
+    .join("; ");
+  const correction = canaries
+    ? `
+- Since its previous run that job follows this standing instruction: ${canaries}. For every entry in "practices" also add "correction": true when the user is rejecting or undoing that instruction ("no, drop that", "I did not want X", "stop including X"), false otherwise. When unsure, false.`
+    : "";
+  const report = withReport
+    ? `
+
+The job is asked to do this on every run: ${job.requestText.slice(0, 600)}
+The report it sent: ${job.outputText.slice(0, 2_000)}`
+    : "";
+  return `
+
+## Scheduled job report
+The user message above was the user's next message after the scheduled job "${name}" sent its report.
+- For every entry in "practices" add "about_job": true when the instruction is about that job's report (what it should contain or leave out, or how it should look), false when it is about anything else. When unsure, false.
+- When "about_job" is true, the "statement" says only what the report should contain or how it should look, in the user's words ("Include the unique counts"). Do not name the job, the report or its subject in it: the practice is stored for that job alone.${correction}${report}`;
 }
 
 /** The owner's follow-up as the check sees it: prose, no channel envelope, one line. */
@@ -1031,16 +1093,81 @@ async function saveCapturedPractice(params: {
     log.debug("practice dropped: nothing left besides scope words");
     return null;
   }
+  // PLAN-64 Phase 5: the job scope needs the job link AND the model's word
+  // that this instruction is about the report. Anything else is scoped as
+  // on any other turn, so an unrelated instruction sent after a report does
+  // not vanish into the job.
+  const job = input.job ?? null;
+  const jobId = job && deps.cronJobId && practice.aboutJob ? deps.cronJobId : null;
   const scope = resolvePracticeScope({
     modelScope: practice.scope,
     activeProject: input.activeProject,
     userMessage: input.userMessage,
     taskSlug: deps.taskType?.slug,
-    cronJobId: deps.cronJobId,
+    cronJobId: jobId,
   });
   const ownerAuthored =
     practice.explicit && ownerProseSupportsStatement(input.userMessage, practice.statement);
   const tier: CorrectionTier = ownerAuthored ? "owner" : "extraction";
+  // PLAN-64 Phase 5: the run this message follows was the first with a
+  // changed practice (its canary). The owner saying that practice again, or
+  // rejecting it, rolls the change back. A rejection needs an
+  // owner-authored statement, the model's `correction` flag, its `about_job`
+  // flag and the practice's own words in the new statement. A repeat needs
+  // an instruction the model marked as stated directly whose element (the
+  // statement without its generated leading verb) is in the owner's own
+  // prose: the grounding rule of follow-up gaps. Found on a real run: the
+  // model restates "give me the unique counts too every time" as "Include
+  // unique counts every time you report repo traffic", which the stricter
+  // owner-tier rule (the verb counted against the owner) puts at exactly
+  // half. Nothing is activated here, a practice is only taken out.
+  const ownerNamedIt =
+    ownerAuthored ||
+    (practice.explicit &&
+      isGapGrounded(stripMessageEnvelope(stripNonProse(input.userMessage)), practice.statement));
+  let jobRepeatCountedId: string | null = null;
+  if (job && ownerNamedIt && deps.rollback && job.canaries.length > 0) {
+    // The same instruction again: the near-duplicate rule, or one
+    // statement's element contained in the other's ("Include the unique
+    // counts" and "Include unique counts in the traffic report"). The
+    // containment is safe here: the only candidates are the one or two
+    // practices this job's last run was changed by.
+    const same = job.canaries.find((c) =>
+      areGapStatementsMatching(c.statement, practice.statement),
+    );
+    // A contradiction is the owner's own correction about this job whose
+    // polarity is the opposite of the practice ("stop including X" against
+    // "Include X"). The same instruction said again is not one, whatever
+    // the model's `correction` flag says.
+    const opposes = (c: { statement: string }) =>
+      isProhibition(c.statement) !== isProhibition(practice.statement);
+    const candidate =
+      ownerAuthored && practice.correction && practice.aboutJob
+        ? (same ?? job.canaries.find((c) => isGapGrounded(practice.statement, c.statement)))
+        : undefined;
+    const rejected = candidate && opposes(candidate) ? candidate : undefined;
+    const target = rejected ?? same;
+    if (target) {
+      // Only a contradiction takes the practice out. The owner asking for
+      // the same thing again means the change did not do its work, which is
+      // a reason to count it (a repeat), never a reason to remove what they
+      // just asked for a second time.
+      if (!rejected) {
+        deps.store?.recordRepeat(target.id, { sessionRef: params.evidenceRef, via: "correction" });
+        jobRepeatCountedId = target.id;
+      } else if (await deps.rollback(target.id, { via: "correction", because: "contradicted" })) {
+        log.info(`job practice rolled back (contradicted after its first run): ${target.id}`);
+        return {
+          id: target.id,
+          statement: target.statement,
+          scope: target.scope,
+          status: "retired",
+          op: "rollback",
+          tier: "owner",
+        };
+      }
+    }
+  }
   // PLAN-64 Phase 1b: the owner stating, again, something already active for
   // this turn is a repeat (they had to say it twice). A counter only.
   const repeated =
@@ -1049,11 +1176,11 @@ async function saveCapturedPractice(params: {
           .listVisible({
             activeProject: input.activeProject,
             taskSlug: deps.taskType?.slug,
-            cronJobId: deps.cronJobId,
+            cronJobId: jobId,
           })
           .find((p) => arePracticesNearDuplicate(p.statement, practice.statement))
       : undefined;
-  if (repeated) {
+  if (repeated && repeated.id !== jobRepeatCountedId) {
     deps.store!.recordRepeat(repeated.id, { sessionRef: params.evidenceRef, via: "correction" });
   }
   const res = await deps.save({
@@ -1078,6 +1205,8 @@ async function saveCapturedPractice(params: {
     ...(deps.taskType && res.practice.scope === `task:${deps.taskType.slug}`
       ? { taskLabel: deps.taskType.label }
       : {}),
+    // "Practice saved for the Repo stats report: ...".
+    ...(job && res.practice.scope.startsWith("job:") ? { taskLabel: job.label } : {}),
     ...(repeated ? { repeatOf: repeated.id } : {}),
   };
 }

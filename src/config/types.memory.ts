@@ -158,6 +158,16 @@ export type MemoryConfig = {
        */
       enabled?: boolean;
     };
+    /** PLAN-64 Phase 5: scheduled jobs that learn from the owner's corrections. */
+    jobs?: {
+      /**
+       * Record which job was announced where, read the owner's next message
+       * as possibly being about that report, and add the "Changed since last
+       * time" line to the first run after a job practice changed (default:
+       * true). False: none of the three; stored `job:` practices still render.
+       */
+      enabled?: boolean;
+    };
   };
   /** PLAN-24 HORMA Phase 0: provenance pointers from synthesized memories to raw sources. */
   provenance?: {

@@ -336,6 +336,14 @@ export type CorrectionPractice = {
   statement: string;
   scope: string | undefined;
   explicit: boolean;
+  /**
+   * PLAN-64 Phase 5, asked for only when the message follows a scheduled
+   * job's report: the instruction is about that report (`aboutJob`), and it
+   * rejects or undoes a change the job was just given (`correction`). Both
+   * default to false: a missing flag never scopes or rolls back anything.
+   */
+  aboutJob: boolean;
+  correction: boolean;
 };
 
 /**
@@ -368,7 +376,13 @@ export function parseCorrectionPractices(raw: string): CorrectionPractice[] {
     const hint = typeof entry.scope === "string" ? entry.scope.trim().toLowerCase() : "";
     const scope =
       hint === "task" ? "task" : hint ? (normalizeCanonicalScope(hint) ?? undefined) : undefined;
-    out.push({ statement, scope, explicit: entry.explicit === true });
+    out.push({
+      statement,
+      scope,
+      explicit: entry.explicit === true,
+      aboutJob: entry.about_job === true,
+      correction: entry.correction === true,
+    });
     if (out.length >= CORRECTION_MAX_PRACTICES) {
       break;
     }

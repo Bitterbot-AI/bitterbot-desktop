@@ -53,6 +53,9 @@ function makeDb(): DatabaseSync {
   return db;
 }
 
+/** PLAN-64 Phase 5: the two job flags default to false when the model sends none. */
+const NO_JOB_FLAGS = { aboutJob: false, correction: false };
+
 const SESSION_KEY = "agent:plan64bot:main";
 /** The owner's real message of 2026-11-27 (Phase 0 review). */
 const DAY_BY_DAY = "Give me day by day clones and the npm downloads too";
@@ -162,9 +165,19 @@ describe("parseCorrectionPractices", () => {
       }),
     );
     expect(out).toEqual([
-      { statement: DAY_BY_DAY_PRACTICE, scope: "task", explicit: true },
-      { statement: "Use British spelling for Acme.", scope: "project:acme", explicit: false },
-      { statement: "Answer briefly on weekends.", scope: undefined, explicit: false },
+      { statement: DAY_BY_DAY_PRACTICE, scope: "task", explicit: true, ...NO_JOB_FLAGS },
+      {
+        statement: "Use British spelling for Acme.",
+        scope: "project:acme",
+        explicit: false,
+        ...NO_JOB_FLAGS,
+      },
+      {
+        statement: "Answer briefly on weekends.",
+        scope: undefined,
+        explicit: false,
+        ...NO_JOB_FLAGS,
+      },
     ]);
   });
 
@@ -204,7 +217,7 @@ The user states an endpoint and one standing instruction. The follow-up is a new
       },
     ]);
     expect(parseCorrectionPractices(raw)).toEqual([
-      { statement: DAY_BY_DAY_PRACTICE, scope: "task", explicit: true },
+      { statement: DAY_BY_DAY_PRACTICE, scope: "task", explicit: true, ...NO_JOB_FLAGS },
     ]);
     // Prose before the object, no fence.
     expect(
@@ -417,10 +430,10 @@ describe("runCorrectionCapture with practices", () => {
     expect(res.practices).toMatchObject([{ status: "candidate", tier: "extraction" }]);
   });
 
-  it("scope defaults: job with a cron context, global with neither task nor job", async () => {
+  it("scope defaults: a job id alone does not scope to the job (PLAN-64 Phase 5 needs the job link and the model's about_job); global with neither task nor job", async () => {
+    // The job cases are in practice-jobs.test.ts.
     const job = await runCorrectionCapture(input({ practices: deps({ cronJobId: "job-7" }) }));
-    expect(job.practices[0]).toMatchObject({ scope: "job:job-7" });
-    expect(job.line).toBe(`Practice saved for this scheduled job: "${DAY_BY_DAY_PRACTICE}"`);
+    expect(job.practices[0]).toMatchObject({ scope: "task:repo-stats" });
 
     const db2 = makeDb();
     const p2 = new PracticesStore(db2);

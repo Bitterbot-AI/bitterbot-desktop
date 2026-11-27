@@ -652,6 +652,31 @@ export function retirePractice(db: DatabaseSync, store: PracticesStore, id: stri
   });
 }
 
+/**
+ * PLAN-64 Phase 5: roll a scheduled job's practice back. The owner repeated
+ * or contradicted it in their next message after the first run that used
+ * it, so it is retired (sticky, like any retire) with reason `rolled_back`
+ * on the event and in the audit log. Only an active `job:` practice.
+ */
+export function rollbackPractice(
+  db: DatabaseSync,
+  store: PracticesStore,
+  id: string,
+  detail: { via: "correction" | "follow_up"; because: "repeated" | "contradicted" },
+): boolean {
+  return inSavepoint(db, "owner_rollback_practice", () => {
+    const current = store.get(id);
+    if (!current || current.status !== "active" || !current.scope.startsWith("job:")) {
+      return false;
+    }
+    const ok = store.retire(id, Date.now(), { reason: "rolled_back", ...detail });
+    if (ok) {
+      writeAudit(db, `practice:${id}`, "practice_rolled_back", { scope: current.scope, ...detail });
+    }
+    return ok;
+  });
+}
+
 /** Bring a retired or declined practice back, or activate a candidate, as the owner. */
 export function unretirePractice(db: DatabaseSync, store: PracticesStore, id: string): boolean {
   return inSavepoint(db, "owner_unretire_practice", () => {

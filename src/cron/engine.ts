@@ -1,6 +1,8 @@
+import { loadConfig } from "../config/config.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { applyBackoff, backoffDelayMs } from "./backoff.js";
 import { runIsolatedJob } from "./isolated-agent.js";
+import { forgetJobPractices } from "./job-practices.js";
 import { runMainSessionJob } from "./main-session.js";
 import { computeNextRunAt, oneShotTime } from "./schedule.js";
 import {
@@ -14,6 +16,19 @@ import type { CronEngineStatus, CronJob, CronRun, CronRunStatus } from "./types.
 import { postFinishedRunWebhook, type CronWebhookConfig } from "./webhook.js";
 
 const log = createSubsystemLogger("gateway/cron");
+
+/**
+ * PLAN-64 Phase 5: a deleted isolated job loses its generated EXPERIENCE.md
+ * and its announcement records. In the background; never fails the delete.
+ */
+function forgetPracticesOf(job: CronJob): void {
+  if (job.sessionTarget !== "isolated") {
+    return;
+  }
+  void (async () => {
+    await forgetJobPractices(loadConfig(), job);
+  })().catch((err) => log.debug(`cron ${job.jobId}: practice cleanup failed: ${String(err)}`));
+}
 const DEFAULT_TICK_MS = 5_000;
 const STARTUP_GRACE_MS = 1_500;
 
@@ -163,12 +178,13 @@ export class CronEngine {
   }
 
   async removeJob(jobId: string): Promise<boolean> {
-    const before = this.jobs.length;
+    const removed = this.jobs.find((job) => job.jobId === jobId);
     this.jobs = this.jobs.filter((job) => job.jobId !== jobId);
-    if (this.jobs.length === before) {
+    if (!removed) {
       return false;
     }
     await this.flush();
+    forgetPracticesOf(removed);
     return true;
   }
 
@@ -312,6 +328,7 @@ export class CronEngine {
       if (shouldDelete) {
         this.jobs = this.jobs.filter((entry) => entry.jobId !== job.jobId);
         deleted = true;
+        forgetPracticesOf(job);
       } else if (
         retryAt !== null &&
         typeof job.retryUntilMs === "number" &&

@@ -148,6 +148,8 @@ const MemorySchema = z
             offers: z.object({ enabled: z.boolean().optional() }).passthrough().optional(),
             // PLAN-64 Phase 3: the use-time attribution line.
             attribution: z.object({ enabled: z.boolean().optional() }).passthrough().optional(),
+            // PLAN-64 Phase 5: scheduled jobs that learn from the owner's corrections.
+            jobs: z.object({ enabled: z.boolean().optional() }).passthrough().optional(),
           })
           .passthrough(),
         z.unknown(),

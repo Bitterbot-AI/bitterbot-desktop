@@ -151,6 +151,8 @@ function formatJobLine(job: CronJobWire): string {
     `   schedule: ${theme.muted(job.schedule)}  target: ${target}`,
     `   next: ${next}   last: ${last}`,
     `   text: ${truncate(job.text, 100)}`,
+    // PLAN-64 Phase 5: what the owner taught this job.
+    ...(job.practices ?? []).map((p) => `   practice: ${truncate(p.statement, 100)}`),
   ].join("\n");
 }
 

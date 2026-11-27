@@ -10,6 +10,7 @@ import type { BitterbotConfig } from "../../config/config.js";
 import {
   practiceAttributionEnabled,
   practiceFollowUpsEnabled,
+  practiceJobsEnabled,
   practiceOffersEnabled,
   practicesEnabled,
 } from "../../config/feature-switches.js";
@@ -300,6 +301,7 @@ export async function resolvePracticeAttribution(params: {
     const { resolveAttributionLine } = await import("../../memory/practice-attribution.js");
     return resolveAttributionLine(store, {
       sessionFile: run.sessionFile,
+      replyText: params.replyText,
       since: params.runStartedAt,
       taskLabel: (slug) => manager?.taskTypes?.().get(slug)?.label,
       timeZone: resolveUserTimezone(params.cfg.agents?.defaults?.userTimezone),
@@ -450,6 +452,14 @@ export async function runCorrectionCaptureAfterTurn(params: {
           ) => { slug: string; label: string } | null;
           // PLAN-64 Phase 1b: follow-up learning.
           practiceFollowUpDeps?: () => import("../../memory/practice-followup-turn.js").FollowUpTurnDeps;
+          // PLAN-64 Phase 5: the scheduled job this message follows.
+          takePracticeJobLink?: (
+            sessionKey: string | undefined,
+          ) => import("../../memory/practice-jobs.js").JobLink | null;
+          ownerRollbackPractice?: (
+            id: string,
+            detail: { via: "correction" | "follow_up"; because: "repeated" | "contradicted" },
+          ) => Promise<boolean>;
         }
       | null
       | undefined;
@@ -463,6 +473,14 @@ export async function runCorrectionCaptureAfterTurn(params: {
     // PLAN-64 Phase 1b: follow-up learning, for the turn's own message (a
     // steered message is not "the owner's next message" after an answer).
     const practicesCfg = params.cfg.memory?.practices;
+    // PLAN-64 Phase 5: when this is the owner's next message after a
+    // scheduled job announced its report in this conversation, the turn is
+    // "about that job" (the model still decides what in it is). Taken once:
+    // every owner turn consumes the pending announcement.
+    const jobLink =
+      practicesOn && practiceJobsEnabled(practicesCfg)
+        ? (m?.takePracticeJobLink?.(params.sessionKey ?? run.sessionKey) ?? null)
+        : null;
     const followDeps =
       practicesOn && (practiceFollowUpsEnabled(practicesCfg) || practiceOffersEnabled(practicesCfg))
         ? (m?.practiceFollowUpDeps?.() ?? null)
@@ -475,6 +493,7 @@ export async function runCorrectionCaptureAfterTurn(params: {
             sessionKey: params.sessionKey ?? run.sessionKey,
             sessionId: run.sessionId,
             userMessage: primary,
+            jobLink,
           })
         : null;
     let primaryCapture: Awaited<ReturnType<typeof runCorrectionCapture>> | null = null;
@@ -497,10 +516,19 @@ export async function runCorrectionCaptureAfterTurn(params: {
         chatType: params.chatType,
         runStartedAt: since,
         store,
-        // No cron job id here: linking a main-session correction to the job
-        // whose announcement it answers is a later phase (PLAN-64 §4.5).
+        // The job link belongs to the turn's own message, not to a
+        // message steered into it.
+        job: userMessage === primary && !primaryCapture ? jobLink : null,
         practices: practicesOn
           ? {
+              ...(jobLink && userMessage === primary && !primaryCapture
+                ? {
+                    cronJobId: jobLink.jobId,
+                    rollback: m.ownerRollbackPractice
+                      ? (id, detail) => m.ownerRollbackPractice!(id, detail)
+                      : null,
+                  }
+                : {}),
               save: (input) => m.ownerSavePractice!(input),
               store: m.practices?.() ?? null,
               setScope: m.ownerSetPracticeScope
@@ -523,6 +551,13 @@ export async function runCorrectionCaptureAfterTurn(params: {
       if (result.line) {
         lines.push(result.line);
       }
+      // PLAN-64 Phase 5: a job practice the owner repeated or rejected
+      // right after its first run was retired; say so in a generated line.
+      const direct = !params.chatType || params.chatType.toLowerCase() === "direct";
+      for (const rolled of direct ? result.practices.filter((p) => p.op === "rollback") : []) {
+        const { formatRollbackLine } = await import("../../memory/practice-jobs.js");
+        lines.push(formatRollbackLine(rolled.statement));
+      }
     }
     if (followDeps && followUps && followTurn && !abort.signal.aborted) {
       if (followTurn.answerLine) {
@@ -539,7 +574,11 @@ export async function runCorrectionCaptureAfterTurn(params: {
         activeProject: resolveActiveProjectName(run.workspaceDir),
         followUp: primaryCapture?.followUp ?? null,
         captured: primaryCapture?.practices ?? [],
+        jobLink,
       });
+      if (finished.rollbackLine) {
+        lines.push(finished.rollbackLine);
+      }
       if (finished.offerLine) {
         lines.push(finished.offerLine);
         confirmOffer = finished.confirmOffer;

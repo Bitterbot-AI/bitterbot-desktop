@@ -98,7 +98,13 @@ export function practicesEnabled(practices: Toggle): boolean {
 }
 
 type PracticesToggles =
-  | { enabled?: boolean; followUps?: Toggle; offers?: Toggle; attribution?: Toggle }
+  | {
+      enabled?: boolean;
+      followUps?: Toggle;
+      offers?: Toggle;
+      attribution?: Toggle;
+      jobs?: Toggle;
+    }
   | undefined
   | null;
 
@@ -126,6 +132,16 @@ export function practiceOffersEnabled(practices: PracticesToggles): boolean {
  */
 export function practiceAttributionEnabled(practices: PracticesToggles): boolean {
   return practices?.enabled !== false && practices?.attribution?.enabled !== false;
+}
+
+/**
+ * Scheduled jobs that learn from the owner's corrections (PLAN-64 Phase 5):
+ * the announcement record, the job link of the owner's next message and the
+ * canary line. On unless `memory.practices.enabled` or
+ * `memory.practices.jobs.enabled` is false.
+ */
+export function practiceJobsEnabled(practices: PracticesToggles): boolean {
+  return practices?.enabled !== false && practices?.jobs?.enabled !== false;
 }
 
 /** Conversation memory: on unless `session.memory` is "off". */

@@ -9,6 +9,7 @@ import {
   resolveAgentWorkspaceDir,
   resolveDefaultAgentId,
 } from "../agents/agent-scope.js";
+import { resolveUserTimezone } from "../agents/date-time.js";
 import { resolveHarnessPolicy } from "../agents/embedded-runner/harness-policy.js";
 import type { ResolvedMemorySearchConfig } from "../agents/memory-search.js";
 import { resolveMemorySearchConfig } from "../agents/memory-search.js";
@@ -42,10 +43,12 @@ import {
   harnessEvolveEnabled,
   marketabilityPredictorEnabled,
   practiceFollowUpsEnabled,
+  practiceJobsEnabled,
   practicesEnabled,
   skillEvolutionEnabled,
   skillSeekersEnabled,
 } from "../config/feature-switches.js";
+import { getCronEngine } from "../cron/active.js";
 import { isBackgroundUsagePaused } from "../infra/usage-budgets.js";
 import { USAGE_FEATURES } from "../infra/usage-features.js";
 import { getUsageLedger } from "../infra/usage-ledger.js";
@@ -57,7 +60,7 @@ import {
   findExternalUntrustedLineRanges,
 } from "../security/external-content.js";
 import { registerTaskRewardHook } from "../tasks/judge.js";
-import { CanonicalFactsStore } from "./canonical-facts.js";
+import { CanonicalFactsStore, normalizeScopeName } from "./canonical-facts.js";
 import {
   applySupersededMarks,
   CANONICAL_CHANGED_EVENT,
@@ -178,6 +181,7 @@ import {
   mergeTaskTypes as ownerMergeTaskTypes,
   listPractices as ownerListPractices,
   retirePractice as ownerRetirePractice,
+  rollbackPractice as ownerRollbackPractice,
   savePractice as ownerSavePractice,
   type SavePracticeInput,
   setPracticeScope as ownerSetPracticeScope,
@@ -186,6 +190,16 @@ import {
 import { PeerReputationManager } from "./peer-reputation.js";
 import { type FollowUpTurnDeps, resolveOfferAnswerBeforeRun } from "./practice-followup-turn.js";
 import { FollowUpStateStore } from "./practice-followups.js";
+import { syncJobExperienceFiles } from "./practice-job-experience.js";
+import {
+  commitJobAnnouncement,
+  type JobAnnouncement,
+  JobAnnouncementStore,
+  type JobLink,
+  type JobRunCanary,
+  prepareJobRun,
+  takeJobLink,
+} from "./practice-jobs.js";
 import { type PracticeListOptions, PracticesStore } from "./practices.js";
 import { truncateAtSentence } from "./proactive-recall.js";
 import { resolveLearningConfig } from "./procedural-learning-contract.js";
@@ -6942,14 +6956,142 @@ export class MemoryIndexManager implements MemorySearchManager {
       state: this.followUpState(),
       change: (label, fn) => this.ownerChange(label, fn),
       answerOffer: (id, answer) => this.answerPracticeOffer(id, answer),
+      jobName: (jobId) => this.cronJobOf(jobId)?.name,
+      rollback: (id, opts) => this.ownerRollbackPractice(id, opts),
     };
   }
 
   /** The owner's bare yes or no to a practice offer (audited, serialised). */
   async answerPracticeOffer(id: string, answer: "yes" | "no"): Promise<boolean> {
-    return await this.ownerChange("answer-practice-offer", () =>
+    const ok = await this.ownerChange("answer-practice-offer", () =>
       ownerAnswerPracticeOffer(this.db, this.practices(), id, answer),
     );
+    void this.queueJobExperienceSync();
+    return ok;
+  }
+
+  // ── PLAN-64 Phase 5: scheduled jobs that learn ──────────────────────────
+
+  private jobAnnouncementStore: { db: DatabaseSync; store: JobAnnouncementStore } | null = null;
+  private jobExperienceSync: Promise<unknown> = Promise.resolve();
+
+  /** Which scheduled job was announced where and when (persisted). */
+  jobAnnouncements(): JobAnnouncementStore {
+    if (!this.jobAnnouncementStore || this.jobAnnouncementStore.db !== this.db) {
+      this.jobAnnouncementStore = { db: this.db, store: new JobAnnouncementStore(this.db) };
+    }
+    return this.jobAnnouncementStore.store;
+  }
+
+  /** The cron job behind a `job:` scope name, when the cron engine runs here and has it. */
+  private cronJobOf(jobScopeName: string): { jobId: string; name?: string } | null | undefined {
+    const engine = getCronEngine();
+    if (!engine) {
+      // Unknown (a CLI process, or cron is off): not the same as deleted.
+      return undefined;
+    }
+    return engine.listJobs().find((job) => normalizeScopeName(job.jobId) === jobScopeName) ?? null;
+  }
+
+  /**
+   * The reply path: the scheduled job this owner message follows, or null.
+   * Consumes the pending announcement of the conversation. Null (and
+   * nothing consumed) when `memory.practices.jobs.enabled` is off.
+   */
+  takePracticeJobLink(sessionKey: string | undefined): JobLink | null {
+    if (!sessionKey || !practiceJobsEnabled(this.cfg.memory?.practices)) {
+      return null;
+    }
+    return takeJobLink(
+      { announcements: this.jobAnnouncements(), practices: this.practices() },
+      { sessionKey, lastAnswerAt: this.followUpState().get(sessionKey)?.answeredAt ?? null },
+    );
+  }
+
+  /**
+   * A run of a scheduled job finished with a report: the canary line for it
+   * (or none) and the `not_followed` events. No-op when the switch is off.
+   */
+  practiceJobRunCanary(params: {
+    jobId: string;
+    reply: string;
+    runStartedAt: number;
+  }): JobRunCanary {
+    if (!practiceJobsEnabled(this.cfg.memory?.practices)) {
+      return { line: null, practiceIds: [] };
+    }
+    return prepareJobRun(this.practices(), {
+      ...params,
+      timeZone: resolveUserTimezone(this.cfg.agents?.defaults?.userTimezone),
+    });
+  }
+
+  /** The report was announced: record it and consume the run's canary. */
+  recordPracticeJobAnnouncement(params: {
+    jobId: string;
+    jobName?: string | null;
+    sessionKey: string;
+    destination: string;
+    requestText: string;
+    outputText: string;
+    canary: JobRunCanary;
+  }): JobAnnouncement | null {
+    if (!practiceJobsEnabled(this.cfg.memory?.practices)) {
+      return null;
+    }
+    if (!conversationMemoryEnabled(this.cfg.session)) {
+      // Incognito (`session.memory: "off"`): the run still uses up its
+      // canary, but no excerpt of the report is kept and nothing is linked
+      // (the correction pass does not run on the owner's reply either).
+      this.practices().recordCanary(params.canary.practiceIds);
+      return null;
+    }
+    return commitJobAnnouncement(
+      { announcements: this.jobAnnouncements(), practices: this.practices() },
+      params,
+    );
+  }
+
+  /** Roll a job practice back (retired, reason `rolled_back`; audited, serialised). */
+  async ownerRollbackPractice(
+    id: string,
+    detail: { via: "correction" | "follow_up"; because: "repeated" | "contradicted" },
+  ): Promise<boolean> {
+    const ok = await this.ownerChange("rollback-practice", () =>
+      ownerRollbackPractice(this.db, this.practices(), id, detail),
+    );
+    void this.queueJobExperienceSync();
+    return ok;
+  }
+
+  /**
+   * Rewrite the jobs' EXPERIENCE.md files from the store, after a practice
+   * changed. In the background, one at a time; resolves when this pass is
+   * done. A job the cron engine no longer has loses its file.
+   */
+  queueJobExperienceSync(): Promise<unknown> {
+    this.jobExperienceSync = (this.jobExperienceSync ?? Promise.resolve())
+      .catch(() => undefined)
+      .then(() =>
+        syncJobExperienceFiles({
+          store: this.practices(),
+          agentDir: resolveAgentDir(this.cfg, this.agentId),
+          jobName: (jobId) => this.cronJobOf(jobId)?.name,
+          jobExists: (jobId) => {
+            const job = this.cronJobOf(jobId);
+            return job === undefined ? undefined : job !== null;
+          },
+          timeZone: resolveUserTimezone(this.cfg.agents?.defaults?.userTimezone),
+        }),
+      )
+      .catch((err) => log.debug(`job experience sync failed: ${String(err)}`));
+    return this.jobExperienceSync;
+  }
+
+  /** A scheduled job was deleted: its announcements and its experience file go. */
+  async forgetPracticeJob(jobId: string): Promise<void> {
+    this.jobAnnouncements().deleteForJob(jobId);
+    await this.queueJobExperienceSync();
   }
 
   /**
@@ -7057,33 +7199,43 @@ export class MemoryIndexManager implements MemorySearchManager {
 
   /** The practices writer (owner tier by default; serialised like every owner change). */
   async ownerSavePractice(input: SavePracticeInput) {
-    return await this.ownerChange("save-practice", () =>
+    const result = await this.ownerChange("save-practice", () =>
       ownerSavePractice(this.db, this.practices(), input),
     );
+    void this.queueJobExperienceSync();
+    return result;
   }
 
   async ownerEditPractice(id: string, statement: string) {
-    return await this.ownerChange("edit-practice", () =>
+    const result = await this.ownerChange("edit-practice", () =>
       ownerEditPractice(this.db, this.practices(), id, statement),
     );
+    void this.queueJobExperienceSync();
+    return result;
   }
 
   async ownerSetPracticeScope(id: string, scope: string) {
-    return await this.ownerChange("scope-practice", () =>
+    const result = await this.ownerChange("scope-practice", () =>
       ownerSetPracticeScope(this.db, this.practices(), id, scope),
     );
+    void this.queueJobExperienceSync();
+    return result;
   }
 
   async ownerRetirePractice(id: string): Promise<boolean> {
-    return await this.ownerChange("retire-practice", () =>
+    const result = await this.ownerChange("retire-practice", () =>
       ownerRetirePractice(this.db, this.practices(), id),
     );
+    void this.queueJobExperienceSync();
+    return result;
   }
 
   async ownerUnretirePractice(id: string): Promise<boolean> {
-    return await this.ownerChange("unretire-practice", () =>
+    const result = await this.ownerChange("unretire-practice", () =>
       ownerUnretirePractice(this.db, this.practices(), id),
     );
+    void this.queueJobExperienceSync();
+    return result;
   }
 
   /**

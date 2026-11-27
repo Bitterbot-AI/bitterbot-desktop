@@ -1,5 +1,6 @@
 import { loadConfig } from "../../config/config.js";
 import { CronEngine } from "../../cron/engine.js";
+import { readActiveJobPractices } from "../../cron/job-practices.js";
 import { applyJobPatch, buildJobFromParams, jobToWire } from "../../cron/normalize.js";
 import { getCronEngine, startCronEngine } from "../../cron/runtime.js";
 import { assertScheduleValid } from "../../cron/schedule.js";
@@ -45,10 +46,13 @@ export const cronHandlers: GatewayRequestHandlers = {
     try {
       const engine = await ensureEngine();
       const includeDisabled = params.includeDisabled !== false;
-      const jobs = engine
-        .listJobs()
-        .filter((job) => (includeDisabled ? true : job.enabled))
-        .map(jobToWire);
+      const listed = engine.listJobs().filter((job) => (includeDisabled ? true : job.enabled));
+      // PLAN-64 Phase 5: what the owner taught each job, next to the job.
+      const practices = await readActiveJobPractices(loadConfig(), listed);
+      const jobs = listed.map((job) => {
+        const taught = practices.get(job.jobId);
+        return taught?.length ? { ...jobToWire(job), practices: taught } : jobToWire(job);
+      });
       respond(true, { jobs });
     } catch (err) {
       respond(false, undefined, unavailable(formatErr(err)));

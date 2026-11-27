@@ -30,6 +30,7 @@ import {
 } from "./correction-capture.js";
 import {
   areGapStatementsMatching,
+  followUpScope,
   type FollowUpContext,
   type FollowUpGap,
   type FollowUpState,
@@ -43,6 +44,7 @@ import {
   pickOffer,
   recordGapSighting,
 } from "./practice-followups.js";
+import { type JobLink, jobReportLabel } from "./practice-jobs.js";
 import type { Practice, PracticesStore } from "./practices.js";
 import { stripMessageEnvelope, type TaskTypesStore } from "./task-types.js";
 
@@ -57,12 +59,26 @@ export type FollowUpTurnDeps = {
   change: <T>(label: string, fn: () => T) => Promise<T>;
   /** The owner's yes or no to an offer, audited (owner-controls.answerPracticeOffer). */
   answerOffer: (practiceId: string, answer: "yes" | "no") => Promise<boolean>;
+  /** PLAN-64 Phase 5: the name of a scheduled job, by the id in its `job:` scope. */
+  jobName?: (jobId: string) => string | null | undefined;
+  /**
+   * PLAN-64 Phase 5: retire a practice with reason `rolled_back` (audited,
+   * serialised). Absent: a repeat right after a canary run is only counted.
+   */
+  rollback?: (
+    practiceId: string,
+    opts: { via: "correction" | "follow_up"; because: "repeated" | "contradicted" },
+  ) => Promise<boolean>;
 };
 
 const prose = (text: string) =>
   stripMessageEnvelope(stripNonProse(text)).replace(/\s+/g, " ").trim();
 
 function taskLabelOf(deps: FollowUpTurnDeps, practice: Pick<Practice, "scope">): string {
+  if (practice.scope.startsWith("job:")) {
+    // "the Repo stats report": the offer reads "after the Repo stats report".
+    return jobReportLabel(deps.jobName?.(practice.scope.slice("job:".length)));
+  }
   if (!practice.scope.startsWith("task:")) {
     return "";
   }
@@ -200,6 +216,12 @@ export async function beginFollowUpTurn(
     sessionKey?: string;
     sessionId?: string;
     userMessage: string;
+    /**
+     * PLAN-64 Phase 5: the scheduled job this message follows (already
+     * decided to be more recent than any answered owner turn). Its report
+     * plays the previous answer and the regular follow-up check is skipped.
+     */
+    jobLink?: JobLink | null;
     now?: number;
   },
 ): Promise<FollowUpTurn> {
@@ -233,7 +255,27 @@ export async function beginFollowUpTurn(
         });
       }
     }
-    if (!turn.isOfferAnswer && practiceFollowUpsEnabled(params.cfg.memory?.practices)) {
+    const job = params.jobLink;
+    if (job) {
+      if (
+        !turn.isOfferAnswer &&
+        job.scope &&
+        job.outputText.trim() &&
+        practiceFollowUpsEnabled(params.cfg.memory?.practices)
+      ) {
+        // The report was announced after the last answered owner turn: the
+        // older answer's check lapses with it.
+        deps.state.markGapChecked(sessionKey, now);
+        turn.gapContext = {
+          taskSlug: job.scope.slice("job:".length),
+          taskLabel: job.jobName?.trim() || "scheduled job",
+          previousOwnerMessage: job.requestText,
+          previousAnswer: job.outputText,
+          typedBy: "job",
+          scope: job.scope,
+        };
+      }
+    } else if (!turn.isOfferAnswer && practiceFollowUpsEnabled(params.cfg.memory?.practices)) {
       const pending = deps.state.pendingAnswer(sessionKey, now);
       const sameSession =
         !state?.sessionId || !params.sessionId || state.sessionId === params.sessionId;
@@ -290,6 +332,8 @@ export type FollowUpTurnResult = {
   confirmOffer: ((at?: number) => Promise<boolean>) | null;
   /** What became of a detected gap, when there was one. */
   sighting: GapSightingResult | null;
+  /** PLAN-64 Phase 5: the generated line for a practice rolled back on this turn. */
+  rollbackLine: string | null;
 };
 
 /**
@@ -325,10 +369,17 @@ export async function finishFollowUpTurn(
     followUp: FollowUpGap | null;
     /** Practices the correction pass stored on this turn. */
     captured: PracticeWrite[];
+    /** PLAN-64 Phase 5: the scheduled job this message follows, when it does. */
+    jobLink?: JobLink | null;
     now?: number;
   },
 ): Promise<FollowUpTurnResult> {
-  const out: FollowUpTurnResult = { offerLine: null, confirmOffer: null, sighting: null };
+  const out: FollowUpTurnResult = {
+    offerLine: null,
+    confirmOffer: null,
+    sighting: null,
+    rollbackLine: null,
+  };
   const sessionKey = params.sessionKey;
   if (!sessionKey) {
     return out;
@@ -348,8 +399,11 @@ export async function finishFollowUpTurn(
       const statement = params.followUp.statement;
       // The owner said it as an instruction and the correction pass already
       // saved it as an active practice: nothing left to offer.
+      // Or it repeated a practice the correction pass just rolled back.
       const savedExplicitly = params.captured.some(
-        (p) => p.status === "active" && areGapStatementsMatching(p.statement, statement),
+        (p) =>
+          (p.status === "active" || p.op === "rollback") &&
+          areGapStatementsMatching(p.statement, statement),
       );
       if (!savedExplicitly) {
         const evidenceRef = await resolveUserMessageEvidenceRef(
@@ -360,6 +414,7 @@ export async function finishFollowUpTurn(
           recordGapSighting({
             store: deps.practices,
             taskSlug: ctx.taskSlug,
+            jobId: ctx.typedBy === "job" ? ctx.taskSlug : null,
             statement,
             ownerProse: text,
             evidenceRef,
@@ -370,7 +425,10 @@ export async function finishFollowUpTurn(
             now,
           }),
         );
-        log.info(`follow-up gap on ${ctx.taskSlug}: ${out.sighting.kind}`);
+        log.info(`follow-up gap on ${followUpScope(ctx)}: ${out.sighting.kind}`);
+        // PLAN-64 Phase 5: the owner asking again for what the job was
+        // changed to include is counted as a repeat by the sighting above.
+        // It is not rolled back: only a contradiction removes a practice.
       }
     } else {
       // Not a follow-up after all (or nobody could say): a turn that was
@@ -380,20 +438,27 @@ export async function finishFollowUpTurn(
 
     const type = text ? deps.taskTypes.classify(text) : null;
     const direct = !params.chatType || params.chatType.toLowerCase() === "direct";
-    const offerSlug = out.sighting?.kind === "candidate" ? ctx?.taskSlug : type?.slug;
+    // The candidate sighted on this turn, else the candidates of this
+    // message's task type, else those of the job the message follows.
+    const offerScope =
+      out.sighting?.kind === "candidate" && ctx
+        ? followUpScope(ctx)
+        : type
+          ? `task:${type.slug}`
+          : (params.jobLink?.scope ?? null);
     if (turn.hadOffer) {
       // The owner's next message has come and gone: the offer lapses (a new
       // one is armed only when its line is confirmed as handed to delivery).
       deps.state.clearOffer(sessionKey, now);
     }
     if (
-      offerSlug &&
+      offerScope &&
       direct &&
       !turn.isOfferAnswer &&
       practiceOffersEnabled(params.cfg.memory?.practices)
     ) {
       const pick = pickOffer(deps.practices, {
-        taskSlug: offerSlug,
+        scope: offerScope,
         sessionId,
         preferId: out.sighting?.kind === "candidate" ? out.sighting.practice.id : null,
       });

@@ -21,6 +21,7 @@ import { resolveAgentWorkspaceDir, resolveDefaultAgentId } from "../../agents/ag
 import { resolveActiveProjectName } from "../../agents/canonical-facts-block.js";
 import { loadConfig } from "../../config/config.js";
 import { resolveSessionTranscriptsDirForAgent } from "../../config/sessions/paths.js";
+import { jobScopeLabel, readJobsByScopeName } from "../../cron/job-practices.js";
 import { describePracticeScope } from "../../memory/correction-capture.js";
 import { getMemorySearchManager } from "../../memory/index.js";
 import type { MemoryIndexManager } from "../../memory/manager.js";
@@ -303,7 +304,17 @@ export const memoryHandlers: GatewayRequestHandlers = {
       // PLAN-64 Phase 1b: event counts (prompt inclusions, repeats, offers
       // and the owner's answers), per practice and overall.
       const counters = m.practiceCounters();
-      const zero = { applied: 0, repeats: 0, offers: 0, confirmed: 0, declined: 0 };
+      const zero = {
+        applied: 0,
+        repeats: 0,
+        notFollowed: 0,
+        offers: 0,
+        confirmed: 0,
+        declined: 0,
+      };
+      // PLAN-64 Phase 5: a `job:` practice is shown by its job's name (the
+      // id when the job no longer exists).
+      const jobs = await readJobsByScopeName(cfg);
       // PLAN-64 Phase 3: what the Memory tab shows without deriving it. The
       // task types that are not recurring yet are listed only on request
       // (`includePendingTaskTypes`), for the merge action.
@@ -321,8 +332,8 @@ export const memoryHandlers: GatewayRequestHandlers = {
         practices.push({
           ...p,
           counts: counters.byPractice.get(p.id) ?? zero,
-          // "repo stats", "project acme", "this scheduled job", "everything".
-          scopeLabel: describePracticeScope(p.scope, taskLabel),
+          // "repo stats", "project acme", the scheduled job's name, "everything".
+          scopeLabel: jobScopeLabel(p.scope, jobs) ?? describePracticeScope(p.scope, taskLabel),
           // When it became a standing instruction (saved, or confirmed by the owner).
           savedAt: store.savedAt(p.id) ?? p.createdAt,
           // The owner's own lines behind it, newest last; text is null when
@@ -336,6 +347,11 @@ export const memoryHandlers: GatewayRequestHandlers = {
         // The project a `project:<name>` scope would match for this agent
         // (its workspace folder), or null in the default workspace.
         activeProject: resolveActiveProjectName(resolveAgentWorkspaceDir(cfg, agentId)),
+        // The scheduled jobs a practice can be scoped to (isolated jobs only:
+        // a `job:` practice is given to the job's own session).
+        jobs: [...jobs.entries()]
+          .filter(([, job]) => job.isolated)
+          .map(([scopeName, job]) => ({ scope: `job:${scopeName}`, name: job.name ?? job.jobId })),
         taskTypes: allTypes
           .filter((t) => t.recurring || params.includePendingTaskTypes === true)
           .map((t) => ({

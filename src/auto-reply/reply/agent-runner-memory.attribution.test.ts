@@ -166,12 +166,17 @@ async function turn(body: string, opts: TurnOptions = {}) {
     followupRun: followupRun(opts.run),
     sessionKey: SESSION_KEY,
     commandBody: body,
-    replyText: opts.replyText ?? "Yesterday the repo had 68 unique clones.",
+    replyText:
+      opts.replyText ??
+      "Yesterday the repo had 68 unique clones, 1,204 npm downloads per day and 3 open issues.",
     isHeartbeat: opts.isHeartbeat ?? false,
     chatType: opts.chatType ?? "direct",
     runStartedAt,
   });
-  return { block, line };
+  // The hook returns the line with its delivery callback. As a surface that
+  // shows the line does, confirm the hand-off; these tests read the text.
+  await line?.markDelivered();
+  return { block, line: line?.text ?? null };
 }
 
 const attributed = (id: string) => practices.events(id).filter((e) => e.kind === "attributed");
@@ -356,7 +361,7 @@ describe("practice attribution line (PLAN-64 Phase 3)", () => {
   it("names the most specific practice and counts the rest, which stay unshown", async () => {
     const task = saveNpm();
     const project = practices.upsert({
-      statement: "Keep answers under ten lines",
+      statement: "Include open issues",
       scope: "project:acme",
       source: "owner",
       now: SAVED_AT,
@@ -372,7 +377,7 @@ describe("practice attribution line (PLAN-64 Phase 3)", () => {
     await turn(STATS);
     // The task practice is spent; the project practice is named now.
     expect((await turn(STATS)).line).toBe(
-      'Applied: "Keep answers under ten lines" for project acme, from 12 Nov.',
+      'Applied: "Include open issues" for project acme, from 12 Nov.',
     );
   });
 
@@ -407,5 +412,73 @@ describe("practice attribution line (PLAN-64 Phase 3)", () => {
     expect((await turn(STATS, { cfg })).line).toBe(
       `Applied: "${NPM}" for repo stats, from 15 Nov.`,
     );
+  });
+  // ── PLAN-64 Phase 5: the line is shown only when the answer shows the practice ──
+
+  const notFollowed = (id: string) => practices.events(id).filter((e) => e.kind === "not_followed");
+
+  it("a practice in the prompt whose words are not in the answer: no line, a not_followed event, the showing kept", async () => {
+    const practice = saveNpm();
+    const ignored = await turn(STATS, { replyText: "Yesterday the repo had 68 unique clones." });
+    expect(ignored.block).toContain(NPM);
+    expect(ignored.line).toBeNull();
+    expect(attributed(practice.id)).toHaveLength(0);
+    expect(notFollowed(practice.id)).toHaveLength(1);
+    expect(notFollowed(practice.id)[0]?.detail).toEqual({ via: "reply" });
+    expect(practices.counters().byPractice.get(practice.id)).toMatchObject({
+      applied: 1,
+      notFollowed: 1,
+      repeats: 0,
+    });
+    expect(practices.counters().overall.notFollowed).toBe(1);
+    // Both showings are still there for answers that do show it.
+    expect((await turn(STATS)).line).toBe(LINE);
+    expect((await turn(STATS)).line).toBe(LINE);
+    expect((await turn(STATS)).line).toBeNull();
+    expect(notFollowed(practice.id)).toHaveLength(1);
+  });
+
+  it("some of the words but not most: no line and no not_followed event", async () => {
+    const res = practices.upsert({
+      statement: "Include unique counts every time you report repo traffic.",
+      scope: "task:repo-stats",
+      source: "owner",
+      now: SAVED_AT,
+    });
+    if (!res.ok) {
+      throw new Error(res.reason);
+    }
+    const out = await turn(STATS, { replyText: "Clones: 379 (45 unique)\nViews: 107 (74 unique)" });
+    expect(out.line).toBeNull();
+    expect(attributed(res.practice.id)).toHaveLength(0);
+    expect(notFollowed(res.practice.id)).toHaveLength(0);
+  });
+
+  it("a typo in the answer still counts as followed; a manner or a leave-out practice is never counted as not followed", async () => {
+    const practice = saveNpm();
+    expect((await turn(STATS, { replyText: "npm downlaods were 1,204." })).line).toBe(LINE);
+    expect(notFollowed(practice.id)).toHaveLength(0);
+    const manner = practices.upsert({
+      statement: "Keep answers under ten lines",
+      scope: "task:repo-stats",
+      source: "owner",
+      now: SAVED_AT,
+    });
+    const leaveOut = practices.upsert({
+      statement: "Do not include the reputation score",
+      scope: "task:repo-stats",
+      source: "owner",
+      now: SAVED_AT,
+    });
+    if (!manner.ok || !leaveOut.ok) {
+      throw new Error("setup");
+    }
+    await turn(STATS, { replyText: "68 unique clones." });
+    expect(notFollowed(manner.practice.id)).toHaveLength(0);
+    expect(notFollowed(leaveOut.practice.id)).toHaveLength(0);
+    expect(attributed(manner.practice.id)).toHaveLength(0);
+    expect(attributed(leaveOut.practice.id)).toHaveLength(0);
+    // The npm practice was in that prompt and is not in that answer.
+    expect(notFollowed(practice.id)).toHaveLength(1);
   });
 });

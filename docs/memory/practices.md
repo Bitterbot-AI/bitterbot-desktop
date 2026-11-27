@@ -8,6 +8,8 @@ read_when:
   - One task shows up as two task types and you want to merge them
   - A reply ended with "Applied: ..." and you want to know what that means or how to turn it off
   - You want to see or change practices on the Memory page
+  - You want a scheduled job to change its report after you comment on it
+  - A scheduled report ended with "Changed since last time: ..." or your reply got "Rolled back: ..."
 title: "Standing practices"
 ---
 
@@ -60,7 +62,7 @@ Capture rides on the [correction pass](/memory/controls#teach-it-once-correction
 1. **Pre-filter.** In addition to the corrective shapes, these behavioural phrasings earn the call: "stop asking", "don't worry about X", "no need to include X", "give me X too" (also "as well", "every time", "each time"), and "you should check X". Each is guarded so that narration ("I had to stop working") and questions ("should I stop using npm?") do not. A phrasing outside the list is not captured.
 2. **The model call** may return up to three practices next to the facts, each with a scope hint and a flag saying whether you stated it directly. A malformed entry, a statement that is too short or too long, or credential-shaped text is dropped.
 3. **Tier.** A practice is stored `active` at your tier only when the model marked it as stated directly **and** more than half of the statement's content words appear in your own prose. Code, quoted lines, and forwarded or pasted text do not count. Anything else is stored as a `candidate` at the `extraction` tier. Candidates are never rendered and never announced.
-4. **Scope.** The narrowest the turn supports: the scheduled job when the turn carries a job context, else the recurring task type of this message or of your message just before it (remembered in process for 30 minutes), else the active project when you named it, else `global`. Saying "everywhere" or "globally" forces `global`.
+4. **Scope.** The narrowest the turn supports: the scheduled job when your message is the next one after that job's report and the instruction is about the report (see [Scheduled jobs](#scheduled-jobs)), else the recurring task type of this message or of your message just before it (remembered in process for 30 minutes), else the active project when you named it, else `global`. Saying "everywhere" or "globally" forces `global`.
 5. **The confirmation line.** The reply ends with a system-generated line, for example `Practice saved for repo stats: "Include the npm downloads."`. Outside a direct chat it carries a count only, never the statement. Replying "everywhere" (or "apply that everywhere") within 30 minutes in the same conversation widens that practice to `global`.
 
 A statement nearly identical to an existing practice at the same scope (80% of content words in common) adds evidence to that row. It does not create a second one.
@@ -130,15 +132,16 @@ Without `--apply` nothing is written. With `--apply` the candidates are stored w
 
 Every practice keeps an event history, and the counts are reported by `memory.practices` (per practice under `counts`, overall under `counters`), by `bitterbot memory practices list`, and by `bitterbot doctor`:
 
-| Counter     | Counts                                                                                                                                 |
-| ----------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| `applied`   | Runs whose prompt included the practice.                                                                                               |
-| `repeats`   | Times you had to say it again: an explicit instruction or a follow-up gap that nearly matches a practice already active for that turn. |
-| `offers`    | Offer lines sent.                                                                                                                      |
-| `confirmed` | Offers you answered with yes.                                                                                                          |
-| `declined`  | Offers you answered with no.                                                                                                           |
+| Counter       | Counts                                                                                                                                    |
+| ------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `applied`     | Runs whose prompt included the practice.                                                                                                  |
+| `repeats`     | Times you had to say it again: an explicit instruction or a follow-up gap that nearly matches a practice already active for that turn.    |
+| `notFollowed` | Runs whose prompt included the practice and whose answer did not show it (see ["Applied" and "not followed"](#applied-and-not-followed)). |
+| `offers`      | Offer lines sent.                                                                                                                         |
+| `confirmed`   | Offers you answered with yes.                                                                                                             |
+| `declined`    | Offers you answered with no.                                                                                                              |
 
-A repeat is a counter and nothing more. Nothing diagnoses why the practice was not followed and nothing repairs it. `bitterbot doctor` shows a warning when the repeat count is above zero.
+A repeat is a counter and nothing more. Nothing else diagnoses why a practice was not followed and nothing repairs it. `bitterbot doctor` shows a warning when the repeat count is above zero.
 
 ## What reaches the prompt
 
@@ -146,7 +149,18 @@ Before each of your turns the agent types the turn, selects the `active` practic
 
 The block is not rendered for guests, group or channel chats, subagents, remote tasks or heartbeats. A scheduled job's own session gets that job's `job:` practices and nothing else.
 
-**"Applied" means included in the prompt.** Each rendered practice gets an `applied` event and its `appliedCount` goes up by one per run. Nothing checks whether the answer followed the practice.
+### "Applied" and "not followed"
+
+**The `applied` counter means included in the prompt.** Each rendered practice gets an `applied` event and its `appliedCount` goes up by one per run.
+
+Whether the answer shows the practice is checked by a word match, with no model call, in two places: when the ["Applied" line](#the-applied-line) is decided for a reply in a direct chat, and when a scheduled job's report is about to be announced. The practice's content words are its statement without the leading instruction verb ("Include npm downloads" gives "npm downloads"), lowercased, without common words. The answer **shows** the practice when more than half of those words are in the answer text; a word of five letters or more that is one typo away counts.
+
+- When more than half are there, the reply can carry the "Applied" line.
+- When **none** of them is there, and the practice names something to put in the answer (it starts with include, add, show, give, report, mention, provide or list), a `not_followed` event is written and counted under `notFollowed`. No line is shown.
+- In between (some of the words, not most), nothing is counted and no line is shown. Example from a real run: the practice "Include unique counts every time you report repo traffic" and the report "Clones: 379 (45 unique)". The report did what was asked, and only one of the practice's seven content words is in it.
+- A practice about manner ("Keep answers under ten lines") or one that says what to leave out ("Do not include the score") is never counted as not followed, because a word match cannot tell. Such a practice gets no "Applied" line unless its words happen to be in the answer.
+
+This is a word match and not a judgement. An answer that says "no npm downloads data today" counts as showing the practice, and an answer that gives the numbers under another name ("package installs") counts as not followed.
 
 ### When a turn matches no task type
 
@@ -168,16 +182,95 @@ Applied: "Include npm downloads" for repo stats, from 12 Nov.
 
 The gateway writes this line from its own records. The model does not write it. On the desktop app and the browser Control UI it is a short message of its own after the answer; on a channel it is the last line of the reply (see [Where the generated lines appear](#where-the-generated-lines-appear)).
 
-- **What it says.** The practice was included in the prompt of this run, as defined above. It does not say the answer followed the practice, and nothing checked that.
+- **What it says.** The practice was included in the prompt of this run and more than half of its content words are in the answer, as defined under ["Applied" and "not followed"](#applied-and-not-followed). It is a word match: it does not prove the answer did what the practice asks.
+- **When it is not shown.** A practice that was in the prompt and whose words are not, for the most part, in the answer gets no line. That does not use up one of its showings. If it names something to put in the answer and none of its words is there, a `not_followed` event is recorded.
 - **Which practices.** Only a practice scoped to a task type or a project, rendered because that scope matched. Never a practice that applies everywhere, never a person-scoped one (person scopes show on every turn, so the credit would be wrong), and never the conditional "When the request is about ..." lines, because nothing established that those fit the turn.
 - **How often.** The first two times a practice is applied this way, then it stays silent. After you reword a practice or change where it applies, it is named once more. The count is stored as `attributed` events on the practice, so it survives a gateway restart.
-- **One line per reply.** When several practices qualify, the most specific is named and the others are counted ("and 2 more"). Only the named one uses up one of its showings.
+- **One line per reply.** When several practices qualify (each of them shown by the answer), the most specific is named and the others are counted ("and 2 more"). Only the named one uses up one of its showings.
 - **Other lines win.** A reply that already ends with a "Memory updated", "Practice saved" or offer line, or with the answer to an offer, gets no "Applied" line, and the showing is not used up.
-- **Where.** Direct chats with you only. Never in a group or channel, for a guest, a subagent or a heartbeat, and not in a scheduled job's announcement. A turn that produced no final text (for example a fully block-streamed answer) gets none either.
+- **Where.** Direct chats with you only. Never in a group or channel, for a guest, a subagent or a heartbeat, and not in a scheduled job's announcement (a job's report has its own line, see [Scheduled jobs](#scheduled-jobs)). A turn that produced no final text (for example a fully block-streamed answer) gets none either.
 - **The date** is the day the practice was saved, or the day you said yes to it, in your timezone (`agents.defaults.userTimezone`, else the gateway host's). The year is added when it is not the current one.
 - **Off switch.** `memory.practices.attribution.enabled: false`.
 
 The line is built from the `applied` events of the run, which are matched by the conversation's transcript file and the time the run started. A run with no transcript file gets no line.
+
+## Scheduled jobs
+
+An isolated [scheduled job](/automation/cron-jobs) runs the same instruction every time. When you comment on its report, the comment can become a practice for that job, so the next run does it your way. The job's own instruction (`payload.message`) is never rewritten: what you taught the job is kept as `job:<cronJobId>` practices, which are given to the job's own session in its prompt and to nothing else.
+
+### Which message counts
+
+When an isolated job's report is announced to you (sent to a channel, or kept in the main session), the gateway records which job was announced, when, and an excerpt of the job's instruction (600 characters) and of the report (2,000 characters). The record is in the memory database, so it survives a gateway restart. It is used up by your next message and deleted after 30 days, or when the job is deleted.
+
+Your message is treated as possibly being about that report when all of these hold:
+
+- it is in the agent's main conversation (the desktop app, the Control UI, or a direct chat that shares the main session);
+- it is your **next** message after the announcement, with no other message of yours in between;
+- it arrives within 6 hours of the announcement;
+- no answer to a later message of yours exists. When both a report and an answer to one of your recurring requests come before your message, the more recent of the two is the one your message is checked against.
+
+Every message of yours uses up the pending announcement, whatever the message was about. All the usual rules apply: only your own first-party turns, never a group, a guest, a subagent or a heartbeat.
+
+### What can be learned from it
+
+- **An explicit instruction** ("give me the unique counts too every time"). The [correction pass](#how-a-practice-is-captured) runs as on any turn, with one more section in its single model call that names the job and asks, for each instruction it extracts, whether it is about that report. An instruction marked as about the report is saved at `job:<jobId>`, active at once under the same rule as any other practice (stated directly, and more than half of its content words in your own prose). The reply ends with `Practice saved for the <job name> report: "..."`. An instruction that is not about the report ("stop asking where I live") is scoped as on any other turn. Saying "everywhere" still makes it global.
+- **A request for something the report left out** ("what about the unique visitors?"). The [follow-up check](#learning-from-follow-ups) runs with the report in the place of the previous answer and the job's instruction in the place of your previous request. A gap becomes a `candidate` at `job:<jobId>`, grounded in your words as usual, and is offered with the same rules: after two sightings on different days, or after one when your message was itself an explicit instruction. The line reads `You have asked for unique visitors after the <job name> report twice. Include it every time? (yes / no)`. Yes makes it an active practice of that job; no suppresses it for good.
+- **A new topic.** The model answers `other` and nothing is stored.
+
+A message that fires the correction pre-filter costs one model call, as before. A message that does not costs one call for the follow-up check, once per announced report that you reply to within 6 hours.
+
+### The "Changed since last time" line
+
+The first run of a job after one of its practices was saved, confirmed, reworded or moved to it ends its report with one generated line:
+
+```text
+Changed since last time: "Include the unique counts" (from your message on 27 Nov).
+```
+
+- The gateway writes the line; the model does not. On a channel it is the last paragraph of the report. For a report kept in the main session it follows the summary.
+- One line per report. When several practices changed, the most recent is named and the others are counted ("and 1 more").
+- It is shown once per change. The first run after the change uses it up whether or not you reply. A run whose prompt did not carry the practice (for example one that started before you saved it) does not.
+- The line says what changed in the job's instructions. It does not say the report followed the practice. If the practice names something to include and none of its content words is in the report, a `not_followed` event is recorded for it.
+- A practice added on the Memory page reads "(saved on 27 Nov)".
+
+### Rollback
+
+If your next message after a report that carried the "Changed since last time" line **rejects** that practice ("no, stop including the unique counts"), the practice is retired with reason `rolled_back`, and the reply ends with:
+
+```text
+Rolled back: "Include the unique counts". The job runs as before.
+```
+
+Only a rejection rolls a practice back. If you ask for the same thing again after that run, the change did not do its work: that is counted as a repeat and the practice stays, because removing what you just asked for a second time would leave you with nothing.
+
+The rules are conservative. A rejection needs all of: an instruction of the opposite kind (you say to stop or leave out what the practice says to include, or the reverse), the model's flag that you are undoing that instruction, its flag that your message is about the report, a statement in your own words, and the practice's own content words in that statement. A bare "no, drop that" is not enough and changes nothing; use the Memory page or name the thing. Only the run right before your message can be rolled back.
+
+### The experience file
+
+Each job with practices has a generated file:
+
+```text
+<agent dir>/cron/<jobId>/EXPERIENCE.md
+```
+
+By default that is `~/.bitterbot/agents/<agentId>/agent/cron/<jobId>/EXPERIENCE.md` (the state directory follows `BITTERBOT_STATE_DIR`). The folder name is the job id in lowercase.
+
+It lists the practices active for the job, each with the day it took effect and the days you said it, and a dated list of changes: saved, reworded, moved, retired, rolled back, declined, each with the reason. It is written from the practices store and rewritten whole whenever a practice of the job changes. No model writes to it and nothing is appended. The job does not read it: the practices reach the job through its prompt. Edits to the file are lost at the next change.
+
+The file is removed when the job is deleted. The job's practices are kept: they show with the job's id on the Memory page, where you can retire them or move them to another scope.
+
+### Limits
+
+- **Isolated jobs only.** A main-session job is a system event with no report of its own. Long-horizon task wakeups and jobs scheduled by a non-owner run are left out.
+- **The main conversation only.** The link is made to the agent's main session. If your direct messages have their own sessions (a `session.dmScope` other than the default), a reply sent there is not linked to the job.
+- **The next message only, within 6 hours.** A second comment on the same report, or a comment the next morning, is not linked. Add or change the practice on the Memory page instead, with the job as its scope.
+- **A job with `delivery.mode: "none"`** announces nothing, so nothing is linked and no line is shown. Practices saved for it by hand are still given to it.
+- **The model decides** whether an instruction is about the report and whether a message is a gap. It can be wrong in both directions.
+- **An explicit instruction is often offered instead of saved at once.** The model tends to restate your words with more in them (on a real run, "give me the unique counts too every time" came back as "Include unique counts every time you report repo traffic"), which puts the statement at or under the half of its words that must be yours. It is then stored as a candidate and the same reply asks "Include it every time? (yes / no)". Your yes saves it for the job.
+- **With `session.memory: "off"`** no report is recorded and nothing is linked.
+- **No trial run.** A practice is not tested before the next scheduled run uses it. The plan's refinement step (re-running the job in a scratch session with two candidate practices and adopting what the trial shows) is not built. The first scheduled run with the "Changed since last time" line, and your next message, are the only check.
+- **Rollback retires, it does not repair.** Nothing proposes a better wording.
+- Switch all of this off with `memory.practices.jobs.enabled: false`.
 
 ## In the daily brief
 
@@ -194,21 +287,21 @@ The section is left out when all four are empty. A practice saved or a repeat ma
 
 The **Memory** page of the Control UI has a **Practices** section, below the settled facts. Each practice shows its text, where it applies in words ("For repo stats", "Everywhere"), its status (Active, Waiting for your answer, Retired, Declined), the day it was saved, how many times it was given to your agent, how many times you had to repeat it, and the line you said it on when the transcript still has it.
 
-| Action               | What it calls                                                                                                    |
-| -------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| Yes, every time / No | `memory.answerPracticeOffer` on a candidate: the same change as answering the offer line in chat.                |
-| Edit                 | `memory.editPractice`.                                                                                           |
-| The scope select     | `memory.setPracticeScope`: Everywhere, one of your recurring task types, or the agent's project when it has one. |
-| Retire               | `memory.retirePractice`, after a confirmation.                                                                   |
-| Bring back           | `memory.unretirePractice` on a retired or declined practice.                                                     |
-| Add                  | `memory.savePractice`, with the scope you pick.                                                                  |
-| Merge into another   | `memory.mergeTaskTypes`, in the **Task types** list under the practices.                                         |
+| Action               | What it calls                                                                                                                                         |
+| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Yes, every time / No | `memory.answerPracticeOffer` on a candidate: the same change as answering the offer line in chat.                                                     |
+| Edit                 | `memory.editPractice`.                                                                                                                                |
+| The scope select     | `memory.setPracticeScope`: Everywhere, one of your recurring task types, the agent's project when it has one, or one of your isolated scheduled jobs. |
+| Retire               | `memory.retirePractice`, after a confirmation.                                                                                                        |
+| Bring back           | `memory.unretirePractice` on a retired or declined practice.                                                                                          |
+| Add                  | `memory.savePractice`, with the scope you pick.                                                                                                       |
+| Merge into another   | `memory.mergeTaskTypes`, in the **Task types** list under the practices.                                                                              |
 
 The Task types list shows your recurring kinds of request with how often you asked; the ones that are not recurring yet can be shown too, named by one of their requests, so that a split task can be merged before it recurs.
 
 Reading the section needs `operator.read`; every action needs admin. Without admin the list is shown and an action reports that the session may not change practices. On a gateway older than this section, the section is not shown.
 
-"Given to your agent" is the `applied` counter: runs whose prompt included the practice.
+"Given to your agent" is the `applied` counter: runs whose prompt included the practice. When the `notFollowed` counter is above zero the row also shows "not in the answer" with that count. A practice of a scheduled job shows as "For the scheduled job" followed by the job's name (its id when the job was deleted). The **Automations** page lists, under each scheduled job, the practices active for it.
 
 ## What sticks
 
@@ -218,18 +311,20 @@ Retiring a practice is your decision and it holds: capture, or any other writer 
 
 Gateway methods (reads need `operator.read`, changes need admin, like the other `memory.*` methods):
 
-| Method                       | What it does                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `memory.practices`           | Lists practices of every status, or one `status`, with counters, plus the recurring task types. Each practice also carries `scopeLabel` (the scope in words), `savedAt` and `evidence` (each ref with the line you said, or `null` when it cannot be read; only transcripts in the agent's own sessions folder are read). `activeProject` is the project a `project:` scope would match. `includePendingTaskTypes: true` adds the task types that are not recurring yet. |
-| `memory.savePractice`        | Adds a practice at your tier (`statement`, optional `scope`, optional `evidence`).                                                                                                                                                                                                                                                                                                                                                                                       |
-| `memory.editPractice`        | Rewords a practice (`id`, `statement`).                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| `memory.setPracticeScope`    | Widens or narrows a practice (`id`, `scope`). Logged as `widened` or `narrowed`.                                                                                                                                                                                                                                                                                                                                                                                         |
-| `memory.retirePractice`      | Retires a practice (`id`).                                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| `memory.unretirePractice`    | Brings back a retired or suppressed practice, or activates a candidate (`id`).                                                                                                                                                                                                                                                                                                                                                                                           |
-| `memory.answerPracticeOffer` | Answers a candidate as the offer line would (`id`, `answer`: `yes` or `no`): yes activates it, no sets it to `suppressed`.                                                                                                                                                                                                                                                                                                                                               |
-| `memory.mergeTaskTypes`      | Folds task type `from` into `into`; practices scoped to `from` move along.                                                                                                                                                                                                                                                                                                                                                                                               |
+| Method                       | What it does                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `memory.practices`           | Lists practices of every status, or one `status`, with counters, plus the recurring task types. Each practice also carries `scopeLabel` (the scope in words; for a `job:` scope the job's name, or its id when the job no longer exists), `savedAt` and `evidence` (each ref with the line you said, or `null` when it cannot be read; only transcripts in the agent's own sessions folder are read). `activeProject` is the project a `project:` scope would match. `includePendingTaskTypes: true` adds the task types that are not recurring yet. `jobs` lists the isolated scheduled jobs a practice can be scoped to (`scope`, `name`). |
+| `memory.savePractice`        | Adds a practice at your tier (`statement`, optional `scope`, optional `evidence`).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `memory.editPractice`        | Rewords a practice (`id`, `statement`).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `memory.setPracticeScope`    | Widens or narrows a practice (`id`, `scope`). Logged as `widened` or `narrowed`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `memory.retirePractice`      | Retires a practice (`id`).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `memory.unretirePractice`    | Brings back a retired or suppressed practice, or activates a candidate (`id`).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `memory.answerPracticeOffer` | Answers a candidate as the offer line would (`id`, `answer`: `yes` or `no`): yes activates it, no sets it to `suppressed`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `memory.mergeTaskTypes`      | Folds task type `from` into `into`; practices scoped to `from` move along.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 
-Every change writes an event on the practice (`stored`, `applied`, `repeat`, `offered`, `confirmed`, `declined`, `edited`, `widened`, `narrowed`, `retired`, and `attributed` when a reply carried the "Applied" line for it) and, for your own actions, an entry in the memory audit log.
+`cron.list` returns, for each isolated job with active practices, a `practices` list (`id`, `statement`, `savedAt`); `bitterbot cron list` prints them under the job.
+
+Every change writes an event on the practice (`stored`, `applied`, `repeat`, `not_followed`, `offered`, `confirmed`, `declined`, `edited`, `widened`, `narrowed`, `retired` (with `reason: "rolled_back"` for a rollback), `attributed` when a reply carried the "Applied" line for it, and `canary` when a scheduled run used up its "Changed since last time" line) and, for your own actions, an entry in the memory audit log.
 
 From the terminal:
 
@@ -247,6 +342,7 @@ bitterbot memory practices merge-types <from> <into>
 | `memory.practices.followUps.enabled`   | `true`  | `false` stops the follow-up check: no model call after a recurring-task answer and no candidates. Existing candidates are kept.                                                                                     |
 | `memory.practices.offers.enabled`      | `true`  | `false` stops the offer line, and a bare yes or no is no longer read as an answer. Candidates are still stored and can be activated with `memory.unretirePractice`.                                                 |
 | `memory.practices.attribution.enabled` | `true`  | `false` stops the "Applied" line. Practices are rendered and counted as before.                                                                                                                                     |
+| `memory.practices.jobs.enabled`        | `true`  | `false` stops the announcement record, the link from your next message to a scheduled job, and the "Changed since last time" line. Practices already saved for a job are still given to it.                         |
 | `memory.correction.enabled`            | `true`  | Practice capture uses this pass's model call, so `false` also stops practice capture, the follow-up check and the offer line. Stored practices are still rendered.                                                  |
 | `session.memory`                       | `"on"`  | `"off"` stops capture (the correction pass does not run) and stops task typing from recording your turns: a turn is still matched against existing recurring types, read-only. Stored practices are still rendered. |
 
@@ -264,9 +360,10 @@ bitterbot memory practices merge-types <from> <into>
 - The offer is made in direct chats only.
 - The "ends with a question" rule reads the last non-empty line of the reply text only. A question earlier in the reply does not hold the offer back, and a turn whose text was delivered by block streaming (no final text) is not checked.
 - On a channel, "shown" means the line was appended to the reply handed to the channel's sender. A send that fails afterwards is not detected, and the offer still counts.
-- The "Applied" line reports prompt inclusion. It is not shown for scheduled jobs, and a practice that was in the prompt and ignored by the model is still reported as applied.
+- The "Applied" line and the `notFollowed` counter rest on a word match between the practice and the answer. A practice about manner or about leaving something out is never checked.
 - The daily brief covers 24 hours. On a day when no brief is sent (nothing new, or the brief is off), a practice that was only applied again is not reported later.
-- A correction you make in your main chat about a scheduled job's report is not linked to that job. `job:` practices can be added with `memory.savePractice` or `memory.setPracticeScope`.
-- A repeat is counted but not acted on, and nothing checks whether an answer followed a practice.
+- A comment on a scheduled job's report is linked to the job only as your next message in the main conversation within 6 hours (see [Scheduled jobs](#scheduled-jobs)). Outside that, add a `job:` practice on the Memory page, or with `memory.savePractice` or `memory.setPracticeScope`.
+- A practice for a scheduled job is not tried out before the next scheduled run uses it.
+- A repeat is counted but not acted on.
 - Practices are not part of the memory export or import.
 - The link between an answer and your next message, and between an offer and your answer, is stored in the memory database and survives a gateway restart. The once-per-run de-duplication of `applied` and of task typing is in process memory and is lost on restart.

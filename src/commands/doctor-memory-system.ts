@@ -334,7 +334,7 @@ export function inspectPractices(db: DatabaseSync): DoctorCheckResult[] {
     for (const row of db
       .prepare(
         `SELECT kind, COUNT(*) AS c FROM practice_events
-          WHERE kind IN ('applied', 'repeat', 'offered', 'declined')
+          WHERE kind IN ('applied', 'repeat', 'not_followed', 'offered', 'declined')
              OR (kind = 'confirmed' AND detail LIKE '%"via":"offer"%')
           GROUP BY kind`,
       )
@@ -358,7 +358,7 @@ export function inspectPractices(db: DatabaseSync): DoctorCheckResult[] {
           `${types} recurring task type(s)`,
       ),
       info(
-        `Practice counters: applied ${n("applied")}, repeats ${n("repeat")}, offers ${n("offered")} ` +
+        `Practice counters: applied ${n("applied")}, repeats ${n("repeat")}, not followed ${n("not_followed")}, offers ${n("offered")} ` +
           `(${n("confirmed")} confirmed, ${n("declined")} declined)`,
       ),
     ];

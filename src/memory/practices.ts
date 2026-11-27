@@ -24,8 +24,9 @@
  * (evidence appended, tier raised when the writer outranks it) instead of
  * inserting a second.
  *
- * `applied` means "included in the prompt of a run", nothing more: nobody
- * checks here whether the answer followed the practice.
+ * `applied` means "included in the prompt of a run", nothing more. Whether
+ * the answer shows the practice is a separate word match
+ * (practice-attribution.practiceFollowedIn) that writes `not_followed`.
  *
  * PLAN-64 Phase 1b adds what follow-up learning needs: sightings (each time
  * a gap was seen is a `stored` event whose detail carries the session, the
@@ -39,6 +40,12 @@
  * `applied` events of that run's session file), how often the line was shown
  * for a practice (`attributed` events, so the count survives a restart) and
  * when a practice was saved or confirmed (`savedAt`).
+ *
+ * PLAN-64 Phase 5 adds what scheduled jobs need: `not_followed` events (the
+ * practice was in the prompt and its content words were not in the answer; a
+ * word match, counted next to repeats), the canary of a `job:` practice
+ * (`pendingJobCanaries`, `canary` events) and a reason on the `retired`
+ * event (`rolled_back`).
  */
 
 import crypto from "node:crypto";
@@ -78,6 +85,12 @@ export const PRACTICE_EVENT_KINDS = [
   "retired",
   // PLAN-64 Phase 3: a reply carried the generated "Applied: ..." line for it.
   "attributed",
+  // PLAN-64 Phase 5: the practice was in the prompt and its content words
+  // were not in the answer (checked by word match, no model).
+  "not_followed",
+  // PLAN-64 Phase 5: a scheduled job's run after the practice was saved or
+  // changed consumed its "Changed since last time" line.
+  "canary",
 ] as const;
 export type PracticeEventKind = (typeof PRACTICE_EVENT_KINDS)[number];
 
@@ -248,6 +261,8 @@ export type PracticeSighting = {
 export type PracticeCounts = {
   applied: number;
   repeats: number;
+  /** Runs whose prompt carried the practice and whose answer did not show its words. */
+  notFollowed: number;
   offers: number;
   confirmed: number;
   declined: number;
@@ -256,6 +271,7 @@ export type PracticeCounts = {
 const ZERO_COUNTS: PracticeCounts = {
   applied: 0,
   repeats: 0,
+  notFollowed: 0,
   offers: 0,
   confirmed: 0,
   declined: 0,
@@ -263,6 +279,7 @@ const ZERO_COUNTS: PracticeCounts = {
 const COUNTED_KINDS: Record<string, keyof PracticeCounts> = {
   applied: "applied",
   repeat: "repeats",
+  not_followed: "notFollowed",
   offered: "offers",
   confirmed: "confirmed",
   declined: "declined",
@@ -774,7 +791,7 @@ export class PracticesStore {
       const rows = this.db
         .prepare(
           `SELECT practice_id, kind, COUNT(*) AS n FROM practice_events
-            WHERE kind IN ('applied', 'repeat', 'offered', 'declined')
+            WHERE kind IN ('applied', 'repeat', 'not_followed', 'offered', 'declined')
                OR (kind = 'confirmed' AND detail LIKE '%"via":"offer"%')
             GROUP BY practice_id, kind`,
         )
@@ -868,6 +885,96 @@ export class PracticesStore {
       log.debug(`practice attribution event failed: ${String(err)}`);
       return false;
     }
+  }
+
+  /**
+   * The practice was in the prompt of a run and its content words were not
+   * in the answer. A counter, like `repeat`. Never throws.
+   */
+  recordNotFollowed(
+    id: string,
+    opts: { sessionRef?: string | null; via: "reply" | "job"; now?: number },
+  ): boolean {
+    try {
+      this.writeEvent(id, "not_followed", {
+        sessionRef: opts.sessionRef ?? null,
+        detail: { via: opts.via },
+        ts: opts.now ?? Date.now(),
+      });
+      return true;
+    } catch (err) {
+      log.debug(`practice not-followed event failed: ${String(err)}`);
+      return false;
+    }
+  }
+
+  // ── PLAN-64 Phase 5: scheduled jobs ─────────────────────────────────────
+
+  /**
+   * When the practice last changed what a run is told: stored or raised as
+   * active, confirmed, reworded or re-scoped. Null when it never did.
+   */
+  private lastChangeAt(id: string): number | null {
+    for (const event of this.events(id, 500)) {
+      if (
+        event.kind === "confirmed" ||
+        event.kind === "edited" ||
+        event.kind === "widened" ||
+        event.kind === "narrowed" ||
+        (event.kind === "stored" &&
+          event.detail?.status === "active" &&
+          (event.detail.op === "add" || event.detail.op === "promote"))
+      ) {
+        return event.ts;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * The active practices of a job that were saved or changed before `before`
+   * (the start of a run) and that no run has shown as changed yet, newest
+   * change first. Read-only.
+   */
+  pendingJobCanaries(jobId: string, before: number): Practice[] {
+    const scope = normalizeScope(`job:${jobId}`);
+    if (!scope) {
+      return [];
+    }
+    try {
+      const out: Array<{ practice: Practice; changedAt: number }> = [];
+      for (const practice of this.list({ statuses: ["active"], scope })) {
+        const changedAt = this.lastChangeAt(practice.id);
+        if (changedAt === null || changedAt > before) {
+          continue;
+        }
+        const shown = this.events(practice.id, 500).find((e) => e.kind === "canary");
+        if (!shown || shown.ts < changedAt) {
+          out.push({ practice, changedAt });
+        }
+      }
+      return out.toSorted((a, b) => b.changedAt - a.changedAt).map((e) => e.practice);
+    } catch (err) {
+      log.debug(`practice canary lookup failed: ${String(err)}`);
+      return [];
+    }
+  }
+
+  /** A run consumed the canary of these practices (shown or not). Never throws. */
+  recordCanary(ids: string[], opts: { sessionRef?: string | null; now?: number } = {}): number {
+    let n = 0;
+    for (const id of ids) {
+      try {
+        this.writeEvent(id, "canary", {
+          sessionRef: opts.sessionRef ?? null,
+          ts: opts.now ?? Date.now(),
+        });
+        n += 1;
+      } catch (err) {
+        log.debug(`practice canary event failed: ${String(err)}`);
+      }
+    }
+    return n;
   }
 
   /**
@@ -978,8 +1085,13 @@ export class PracticesStore {
     });
   }
 
-  /** The owner retires a practice: sticky against every tier below (see upsert). */
-  retire(id: string, now: number = Date.now()): boolean {
+  /**
+   * The owner retires a practice: sticky against every tier below (see
+   * upsert). `detail` is kept on the `retired` event (`reason:
+   * "rolled_back"`: the owner contradicted or repeated it right after a
+   * scheduled job first ran with it).
+   */
+  retire(id: string, now: number = Date.now(), detail?: Record<string, unknown>): boolean {
     return inSavepoint(this.db, "practice_retire", () => {
       const current = this.get(id);
       if (!current || current.status === "retired") {
@@ -988,7 +1100,10 @@ export class PracticesStore {
       this.db
         .prepare(`UPDATE practices SET status = 'retired', updated_at = ? WHERE id = ?`)
         .run(now, id);
-      this.writeEvent(id, "retired", { detail: { from: current.status }, ts: now });
+      this.writeEvent(id, "retired", {
+        detail: { ...detail, from: current.status },
+        ts: now,
+      });
       return true;
     });
   }

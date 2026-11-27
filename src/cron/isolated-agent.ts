@@ -21,6 +21,7 @@ import { createSubsystemLogger } from "../logging/subsystem.js";
 import { acquireTaskSlot, releaseTaskSlot } from "../tasks/active-task-tracker.js";
 import { INTERNAL_MESSAGE_CHANNEL } from "../utils/message-channel.js";
 import { type AnnouncePlan, resolveAnnouncePlan } from "./announce-plan.js";
+import { beginJobAnnouncement } from "./job-practices.js";
 import { lateNoteFor } from "./schedule.js";
 import type { CronJob, CronPayloadAgentTurn } from "./types.js";
 
@@ -92,6 +93,7 @@ export async function runIsolatedJob(job: CronJob): Promise<void> {
   }
 
   let reply: string | undefined;
+  const runStartedAt = Date.now();
   try {
     reply = await invokeAgentTurn({ job, sessionKey, agentId });
   } finally {
@@ -99,7 +101,7 @@ export async function runIsolatedJob(job: CronJob): Promise<void> {
       releaseTaskSlot(job.jobId);
     }
   }
-  await finishIsolatedRun({ job, plan, reply, agentId, sessionKey });
+  await finishIsolatedRun({ job, plan, reply, agentId, sessionKey, runStartedAt });
 }
 
 function readMainSessionEntry(
@@ -121,6 +123,8 @@ async function finishIsolatedRun(args: {
   reply: string | undefined;
   agentId: string;
   sessionKey: string;
+  /** When the job's turn was started (PLAN-64: which practices that run was given). */
+  runStartedAt?: number;
 }): Promise<void> {
   const { job, plan, reply, agentId, sessionKey } = args;
   if (plan.kind === "none") {
@@ -136,14 +140,29 @@ async function finishIsolatedRun(args: {
     throw new Error("isolated cron job produced no assistant reply to announce");
   }
 
+  // PLAN-64 Phase 5: the first run after one of this job's practices was
+  // saved or changed says so in one generated line, and the announcement is
+  // recorded so the owner's next message can be linked to the job.
+  const practices = await beginJobAnnouncement({
+    cfg: loadConfig(),
+    job,
+    agentId,
+    reply,
+    runStartedAt: args.runStartedAt ?? Date.now(),
+  });
+
   if (plan.kind === "main-only") {
     log.info(`cron ${job.jobId}: ${plan.reason}; result kept in the main session`);
-    postMainSessionSummary({
+    const posted = postMainSessionSummary({
       job,
       reply,
       agentId,
       where: `finished (not sent to a channel; full reply in session ${sessionKey})`,
+      generatedLine: practices.canaryLine,
     });
+    if (posted) {
+      practices.announced("main");
+    }
     return;
   }
 
@@ -153,11 +172,12 @@ async function finishIsolatedRun(args: {
     to: plan.to,
     ...(plan.accountId ? { accountId: plan.accountId } : {}),
     ...(plan.threadId != null ? { threadId: plan.threadId } : {}),
-    payloads: [{ text: reply }],
+    payloads: [{ text: practices.canaryLine ? `${reply}\n\n${practices.canaryLine}` : reply }],
     agentId,
     bestEffort: job.delivery?.bestEffort,
   });
   log.info(`cron ${job.jobId} delivered to ${plan.channel}:${plan.to}`);
+  practices.announced(`${plan.channel}:${plan.to}`);
 
   // Per docs/automation/cron-jobs.md: announce mode also posts a brief summary
   // to the agent's main session, respecting wakeMode. This keeps the operator
@@ -176,20 +196,24 @@ function postMainSessionSummary(args: {
   agentId: string;
   /** What happened to the reply, e.g. "delivered to telegram:123". */
   where: string;
-}): void {
+  /** A system-generated line that goes after the (truncated) summary, whole. */
+  generatedLine?: string | null;
+}): boolean {
   const { job, reply, agentId, where } = args;
   try {
     const cfg = loadConfig();
     const sessionKey = resolveAgentMainSessionKey({ cfg, agentId });
     const summary = truncate(reply, 280);
     const tag = `[cron:${job.jobId}${job.name ? ` ${job.name}` : ""}]`;
-    const text = `${tag} ${where} — ${summary}`;
+    const text = `${tag} ${where} — ${summary}${args.generatedLine ? `\n${args.generatedLine}` : ""}`;
     enqueueSystemEvent(text, { sessionKey, contextKey: `cron:${job.jobId}` });
     if (job.wakeMode === "now") {
       requestHeartbeatNow({ reason: `cron:${job.jobId}:summary` });
     }
+    return true;
   } catch (err) {
     log.warn(`could not post main-session summary for ${job.jobId}: ${formatErr(err)}`);
+    return false;
   }
 }
 

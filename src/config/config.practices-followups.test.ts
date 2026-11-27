@@ -3,6 +3,7 @@ import { validateConfigObject } from "./config.js";
 import {
   practiceAttributionEnabled,
   practiceFollowUpsEnabled,
+  practiceJobsEnabled,
   practiceOffersEnabled,
   practicesEnabled,
 } from "./feature-switches.js";
@@ -60,5 +61,23 @@ describe("memory.practices follow-up and offer switches", () => {
     expect(
       validateConfigObject({ memory: { practices: { attribution: { enabled: false } } } }).ok,
     ).toBe(true);
+  });
+
+  it("PLAN-64 Phase 5: memory.practices.jobs.enabled is on by default, documented and accepted", () => {
+    const key = "memory.practices.jobs.enabled";
+    expect(FIELD_DEFAULTS[key]).toBe(true);
+    expect(FIELD_LABELS[key]).toBeTruthy();
+    expect(FIELD_HELP[key]).toBeTruthy();
+    expect(FIELD_HELP[key]).not.toContain("—");
+    expect(practiceJobsEnabled(undefined)).toBe(true);
+    expect(practiceJobsEnabled({ followUps: { enabled: false } })).toBe(true);
+    expect(practiceJobsEnabled({ jobs: { enabled: false } })).toBe(false);
+    expect(practiceJobsEnabled({ enabled: false })).toBe(false);
+    // The other switches do not depend on it.
+    expect(practiceFollowUpsEnabled({ jobs: { enabled: false } })).toBe(true);
+    expect(practiceOffersEnabled({ jobs: { enabled: false } })).toBe(true);
+    expect(validateConfigObject({ memory: { practices: { jobs: { enabled: false } } } }).ok).toBe(
+      true,
+    );
   });
 });

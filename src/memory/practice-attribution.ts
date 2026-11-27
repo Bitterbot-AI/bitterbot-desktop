@@ -9,8 +9,10 @@
  *   Applied: "Include npm downloads" for repo stats, from 12 Nov.
  *
  * "Applied" has the meaning documented in docs/memory/practices.md: the
- * practice was in the prompt of this run. Nothing here checks whether the
- * answer followed it, and the line does not say so.
+ * practice was in the prompt of this run AND more than half of its content
+ * words are in the answer (a word match, no model). A practice that was in
+ * the prompt and does not show in the answer gets no line, keeps its
+ * showings, and gets a `not_followed` event instead.
  *
  * Rules: a practice is named the first two times, and once more after the
  * owner rewords or re-scopes it. One line per reply; when several practices
@@ -25,6 +27,7 @@
 
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { describePracticeScope } from "./correction-capture.js";
+import { countElementWordsIn, namesAnswerContent } from "./practice-followups.js";
 import type { Practice, PracticesStore } from "./practices.js";
 
 const log = createSubsystemLogger("memory/practice-attribution");
@@ -37,13 +40,56 @@ const MAX_LINE_CHARS = 280;
 const MAX_STATEMENT_CHARS_IN_LINE = 160;
 
 /**
- * The scopes whose match is specific to the turn. `job:` waits for the cron
- * phase. `person:` is left out: person scopes are not routed (they render on
+ * The scopes whose match is specific to the turn. `job:` practices render
+ * in a cron job's own session only, whose report gets the canary line
+ * (practice-jobs.ts) and never this one. `person:` is left out: person scopes are not routed (they render on
  * every owner turn), so naming one would credit it on turns it has nothing
  * to do with.
  */
 function isAttributableScope(scope: string): boolean {
   return scope.startsWith("task:") || scope.startsWith("project:");
+}
+
+/**
+ * A practice that says what to leave out or stop doing. Its words being
+ * absent from an answer is what following it looks like, so a word match
+ * cannot tell either way.
+ */
+export const PROHIBITION_RX =
+  /^(?:please\s+)?(?:always\s+)?(?:do\s+not|don['\u2019]?t|never|stop|no\s+need|avoid|skip|omit|exclude|drop|remove|leave\s+out|without)\b/i;
+
+/** Does the statement tell the agent NOT to do something? */
+export function isProhibition(statement: string): boolean {
+  return PROHIBITION_RX.test(statement.trim());
+}
+
+export type PracticeFollowed = "followed" | "not_followed" | "unknown";
+
+/**
+ * Does the answer show the practice? A word match, no model and no
+ * judgement, and deliberately cautious in both directions:
+ * - `followed`: more than half of the practice's content words (the
+ *   statement without its leading instruction verb) are in the answer text,
+ *   with the typo tolerance the grounding rule uses. An answer that says "no
+ *   traffic data today" counts.
+ * - `not_followed`: none of them is, and the practice names content for the
+ *   answer ("Include npm downloads", "Show the unique counts").
+ * - `unknown`: everything in between. Some of the words are there but not
+ *   most (a real case: "Include unique counts every time you report repo
+ *   traffic" and the answer "Clones: 379 (45 unique)"); or the practice is
+ *   about manner ("Keep answers short"), so its words were never going to be
+ *   in the answer; or it says what to leave out, where absent words are what
+ *   following it looks like.
+ */
+export function practiceFollowedIn(replyText: string, statement: string): PracticeFollowed {
+  const { present, wanted } = countElementWordsIn(replyText, statement);
+  if (PROHIBITION_RX.test(statement.trim()) || wanted === 0) {
+    return "unknown";
+  }
+  if (present / wanted > 0.5) {
+    return "followed";
+  }
+  return present === 0 && namesAnswerContent(statement) ? "not_followed" : "unknown";
 }
 
 /** May the line still be shown for this practice? */
@@ -107,42 +153,55 @@ export function formatAttributionLine(params: {
 }
 
 export type AttributionPick = {
-  practice: Practice;
+  /** The practice to name, or null when none qualifies. */
+  practice: Practice | null;
   /** Other practices that also qualified on this run (not named, not counted as shown). */
   more: number;
+  /** Scoped practices of this run whose content words are not in the answer. */
+  notFollowed: Practice[];
 };
 
 /**
- * The practice to name for this run, or null. Read-only: `sessionRef` is the
- * `session:<file>` ref the prompt path wrote on the run's `applied` events,
- * `since` the moment the run started.
+ * The practice to name for this run, and the ones the answer did not show.
+ * Read-only: `sessionRef` is the `session:<file>` ref the prompt path wrote
+ * on the run's `applied` events, `since` the moment the run started. A
+ * practice is named only when the answer shows it (`practiceFollowedIn`).
  */
 export function pickAttribution(
   store: Pick<PracticesStore, "appliedInRun" | "attributionState">,
-  params: { sessionRef: string; since: number },
-): AttributionPick | null {
-  const qualifying = store
-    .appliedInRun(params)
-    .filter((p) => isAttributableScope(p.scope))
+  params: { sessionRef: string; since: number; replyText: string },
+): AttributionPick {
+  const scoped = store.appliedInRun(params).filter((p) => isAttributableScope(p.scope));
+  const verdicts = new Map(
+    scoped.map((p) => [p.id, practiceFollowedIn(params.replyText, p.statement)]),
+  );
+  const qualifying = scoped
+    .filter((p) => verdicts.get(p.id) === "followed")
     .filter((p) => attributionAllowed(store.attributionState(p.id)));
-  const first = qualifying[0];
-  return first ? { practice: first, more: qualifying.length - 1 } : null;
+  return {
+    practice: qualifying[0] ?? null,
+    more: Math.max(0, qualifying.length - 1),
+    notFollowed: scoped.filter((p) => verdicts.get(p.id) === "not_followed"),
+  };
 }
 
 /**
  * Pick, record and format in one step. Returns the line, or null when no
- * practice qualifies. The named practice gets one `attributed` event; the
+ * practice qualifies. Scoped practices the answer does not show get a
+ * `not_followed` event each. The named practice gets one `attributed` event; the
  * ones only counted in "and N more" do not, so each is still named later.
  * Never throws.
  */
 export function resolveAttributionLine(
   store: Pick<
     PracticesStore,
-    "appliedInRun" | "attributionState" | "recordAttribution" | "savedAt"
+    "appliedInRun" | "attributionState" | "recordAttribution" | "recordNotFollowed" | "savedAt"
   >,
   params: {
     /** The run's session file (the prompt path refs it as `session:<file>`). */
     sessionFile?: string;
+    /** The answer of this run: a practice is named only when its words are in it. */
+    replyText: string;
     /** When the run started. */
     since: number;
     /** `task:<slug>` scopes are shown by their label. */
@@ -156,12 +215,21 @@ export function resolveAttributionLine(
   }
   try {
     const sessionRef = `session:${params.sessionFile}`;
-    const pick = pickAttribution(store, { sessionRef, since: params.since });
-    if (!pick) {
-      return null;
+    const pick = pickAttribution(store, {
+      sessionRef,
+      since: params.since,
+      replyText: params.replyText,
+    });
+    const now = params.now ?? Date.now();
+    for (const ignored of pick.notFollowed) {
+      // No line and no showing used up: the practice was in the prompt and
+      // the answer does not show it. Counted, nothing else.
+      store.recordNotFollowed(ignored.id, { sessionRef, via: "reply", now });
     }
     const { practice } = pick;
-    const now = params.now ?? Date.now();
+    if (!practice) {
+      return null;
+    }
     if (!store.recordAttribution(practice.id, { sessionRef, now })) {
       // Not counted, so not shown: an uncounted line would repeat for ever.
       return null;

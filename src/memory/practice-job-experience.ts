@@ -1,0 +1,285 @@
+/**
+ * PLAN-64 Phase 5: a scheduled job's experience file.
+ *
+ * `<agent dir>/cron/<jobId>/EXPERIENCE.md` says, for the owner, why a job
+ * behaves as it does: the practices active for it with the days they rest
+ * on, and a dated list of changes (saved, reworded, re-scoped, retired,
+ * rolled back, with the reason). It is generated from the practices store
+ * and rewritten whole on every change; no model writes to it and nothing
+ * appends to it. The job does not read it: its instructions reach its prompt
+ * through the practices block (src/agents/practices-block.ts). The owner's
+ * `payload.message` is never touched.
+ *
+ * The directory name is the job id as a scope name (lowercase, `[a-z0-9._-]`),
+ * so an id can never point outside `<agent dir>/cron`.
+ *
+ * EXTENSION POINT (not built): when the plan's probe step exists, a lesson a
+ * probe confirmed would be one more kind of line in "Changes".
+ */
+
+import fs from "node:fs/promises";
+import path from "node:path";
+import { createSubsystemLogger } from "../logging/subsystem.js";
+import { normalizeScopeName } from "./canonical-facts.js";
+import type { Practice, PracticeEvent, PracticesStore } from "./practices.js";
+
+const log = createSubsystemLogger("memory/practice-jobs");
+
+export const JOB_EXPERIENCE_FILENAME = "EXPERIENCE.md";
+const MAX_CHANGES = 60;
+
+/** The directory of a job's generated files, or null when the id cannot be a directory name. */
+export function resolveJobExperienceDir(agentDir: string, jobId: string): string | null {
+  const name = normalizeScopeName(jobId);
+  return name ? path.join(agentDir, "cron", name) : null;
+}
+
+export function resolveJobExperiencePath(agentDir: string, jobId: string): string | null {
+  const dir = resolveJobExperienceDir(agentDir, jobId);
+  return dir ? path.join(dir, JOB_EXPERIENCE_FILENAME) : null;
+}
+
+/** `2026-11-27` in the owner's timezone. */
+function isoDay(ts: number, timeZone: string): string {
+  try {
+    return new Intl.DateTimeFormat("en-CA", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(new Date(ts));
+  } catch {
+    return new Date(ts).toISOString().slice(0, 10);
+  }
+}
+
+const oneLine = (text: string) => text.replace(/\s+/g, " ").trim();
+const quoted = (text: string) => `"${oneLine(text).replace(/"/g, "'")}"`;
+
+function describeScope(scope: unknown): string {
+  const text = typeof scope === "string" ? scope : "";
+  if (text === "global") {
+    return "everywhere";
+  }
+  if (text.startsWith("job:")) {
+    return "this job";
+  }
+  return text || "another scope";
+}
+
+/**
+ * One line of the Changes list for an event, or null when the event is not
+ * a change. `wording` is what the practice said at the time of the event.
+ */
+function describeChange(wording: string, event: PracticeEvent): string | null {
+  const detail = event.detail ?? {};
+  const statement = quoted(wording);
+  switch (event.kind) {
+    case "stored": {
+      if (detail.status !== "active" || (detail.op !== "add" && detail.op !== "promote")) {
+        return null;
+      }
+      const how =
+        detail.origin === "owner_ui"
+          ? "added by you"
+          : detail.op === "promote"
+            ? "you stated it yourself"
+            : "from your message";
+      return `saved ${statement} (${how})`;
+    }
+    case "confirmed":
+      return detail.via === "offer"
+        ? `saved ${statement} (you answered yes when asked)`
+        : `brought back ${statement} (by you)`;
+    case "edited":
+      return typeof detail.from === "string"
+        ? `reworded to ${statement} (was ${quoted(detail.from)})`
+        : `reworded to ${statement}`;
+    case "widened":
+    case "narrowed":
+      return `moved ${statement} from ${describeScope(detail.from)} to ${describeScope(detail.to)}`;
+    case "retired":
+      if (detail.reason === "rolled_back") {
+        const because =
+          detail.because === "contradicted"
+            ? "you rejected it in your next message after the first run that used it"
+            : "you had to ask for it again in your next message after the first run that used it";
+        return `rolled back ${statement} (${because})`;
+      }
+      return `retired ${statement} (by you)`;
+    case "declined":
+      return `declined ${statement} (you answered no when asked)`;
+    default:
+      return null;
+  }
+}
+
+/**
+ * Render the file for one job from its practices (every status) and their
+ * events. Deterministic for a given store content, so an unchanged store
+ * rewrites nothing.
+ */
+export function renderJobExperience(params: {
+  jobId: string;
+  jobName?: string | null;
+  practices: Practice[];
+  eventsOf: (practiceId: string) => PracticeEvent[];
+  savedAt: (practiceId: string) => number | null;
+  timeZone: string;
+}): string {
+  const name = oneLine(params.jobName ?? "") || params.jobId;
+  const lines: string[] = [
+    `# What this job has learned: ${name}`,
+    "",
+    `Job id: \`${params.jobId}\``,
+    "",
+    "Generated by Bitterbot from the practices stored for this job, and rewritten whenever one of them changes. Edits to this file are lost. The job does not read this file: the active practices below are given to it in its prompt. Change them on the Memory page or with `bitterbot memory practices list`.",
+    "",
+    "## Active practices",
+    "",
+  ];
+  const active = params.practices
+    .filter((p) => p.status === "active")
+    .toSorted((a, b) => a.createdAt - b.createdAt || a.id.localeCompare(b.id));
+  if (active.length === 0) {
+    lines.push("None. The job runs on its own instruction only.");
+  }
+  for (const practice of active) {
+    const events = params.eventsOf(practice.id);
+    const saved = isoDay(params.savedAt(practice.id) ?? practice.createdAt, params.timeZone);
+    // Each time the owner said it (or asked for it): a `stored` event with a transcript ref.
+    const days = [
+      ...new Set(
+        events
+          .filter((e) => e.kind === "stored" && e.sessionRef)
+          .map((e) => isoDay(e.ts, params.timeZone)),
+      ),
+    ].toSorted();
+    const evidence =
+      days.length > 0 ? `; you said it on ${days.join(", ")}` : "; no conversation line on record";
+    lines.push(
+      `- ${oneLine(practice.statement).replace(/[.]+$/, "")} (in effect since ${saved}${evidence})`,
+    );
+  }
+  const changes: Array<{ ts: number; text: string }> = [];
+  for (const practice of params.practices) {
+    // Newest first: the wording before a rewording is that event's `from`.
+    let wording = practice.statement;
+    for (const event of params.eventsOf(practice.id).toSorted((a, b) => b.ts - a.ts)) {
+      const text = describeChange(wording, event);
+      if (text) {
+        changes.push({ ts: event.ts, text });
+      }
+      if (event.kind === "edited" && typeof event.detail?.from === "string") {
+        wording = event.detail.from;
+      }
+    }
+  }
+  lines.push("", "## Changes", "");
+  if (changes.length === 0) {
+    lines.push("None yet.");
+  }
+  for (const change of changes
+    .toSorted((a, b) => a.ts - b.ts || a.text.localeCompare(b.text))
+    .slice(-MAX_CHANGES)) {
+    lines.push(`- ${isoDay(change.ts, params.timeZone)}: ${change.text}`);
+  }
+  return `${lines.join("\n")}\n`;
+}
+
+async function readIfExists(file: string): Promise<string | null> {
+  try {
+    return await fs.readFile(file, "utf-8");
+  } catch {
+    return null;
+  }
+}
+
+/** Remove a job's experience file, and its directory when that leaves it empty. Never throws. */
+export async function removeJobExperience(agentDir: string, jobId: string): Promise<boolean> {
+  const dir = resolveJobExperienceDir(agentDir, jobId);
+  if (!dir) {
+    return false;
+  }
+  try {
+    await fs.unlink(path.join(dir, JOB_EXPERIENCE_FILENAME));
+  } catch {
+    return false;
+  }
+  try {
+    await fs.rmdir(dir);
+    // And the `cron` folder itself once no job has a file left.
+    await fs.rmdir(path.dirname(dir));
+  } catch {
+    // Not empty: something else lives there. Only the generated file goes.
+  }
+  return true;
+}
+
+/**
+ * Bring the experience files in line with the store: one file per job that
+ * has a practice that is or was in effect (active, retired or declined; a
+ * job with candidates only has none), rewritten only when its content
+ * changed; a file whose job has no such practice left is removed. Returns the paths written.
+ * Never throws.
+ */
+export async function syncJobExperienceFiles(params: {
+  store: PracticesStore;
+  agentDir: string;
+  /** The job's name, by the id in its `job:` scope. */
+  jobName?: (jobId: string) => string | null | undefined;
+  /**
+   * Does the job still exist? `false` removes its file (a deleted job keeps
+   * its practice rows, not its file); `undefined` (unknown, for example a
+   * process without the cron engine) writes it.
+   */
+  jobExists?: (jobId: string) => boolean | undefined;
+  timeZone: string;
+}): Promise<string[]> {
+  const written: string[] = [];
+  try {
+    const byJob = new Map<string, Practice[]>();
+    for (const practice of params.store.list()) {
+      if (practice.scope.startsWith("job:")) {
+        const jobId = practice.scope.slice("job:".length);
+        byJob.set(jobId, [...(byJob.get(jobId) ?? []), practice]);
+      }
+    }
+    for (const [jobId, practices] of byJob) {
+      const file = resolveJobExperiencePath(params.agentDir, jobId);
+      if (!file) {
+        continue;
+      }
+      // A deleted job keeps its practice rows, not its file. A job with
+      // nothing but candidates has learned nothing yet: no file either.
+      if (params.jobExists?.(jobId) === false || practices.every((p) => p.status === "candidate")) {
+        await removeJobExperience(params.agentDir, jobId);
+        continue;
+      }
+      const content = renderJobExperience({
+        jobId,
+        jobName: params.jobName?.(jobId),
+        practices,
+        eventsOf: (id) => params.store.events(id, 500),
+        savedAt: (id) => params.store.savedAt(id),
+        timeZone: params.timeZone,
+      });
+      if ((await readIfExists(file)) === content) {
+        continue;
+      }
+      await fs.mkdir(path.dirname(file), { recursive: true });
+      await fs.writeFile(file, content, "utf-8");
+      written.push(file);
+    }
+    // A practice moved to another scope leaves no row behind for its old job.
+    const root = path.join(params.agentDir, "cron");
+    for (const entry of await fs.readdir(root).catch(() => [] as string[])) {
+      if (!byJob.has(entry)) {
+        await removeJobExperience(params.agentDir, entry);
+      }
+    }
+  } catch (err) {
+    log.debug(`job experience files not synced: ${String(err)}`);
+  }
+  return written;
+}

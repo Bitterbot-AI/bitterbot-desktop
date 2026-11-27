@@ -73,7 +73,7 @@ describe("inspectPractices", () => {
       "Practices: 2 active, 1 candidate, 1 declined, 0 retired; 1 recurring task type(s)",
     );
     expect(lines[1]!.message).toBe(
-      "Practice counters: applied 1, repeats 0, offers 2 (1 confirmed, 1 declined)",
+      "Practice counters: applied 1, repeats 0, not followed 0, offers 2 (1 confirmed, 1 declined)",
     );
 
     practices.recordRepeat(active.practice.id, { via: "correction" });
