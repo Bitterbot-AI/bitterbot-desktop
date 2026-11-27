@@ -6,6 +6,8 @@ read_when:
   - You want to know what "applied" means for a practice
   - The agent asked "Include it every time? (yes / no)" and you want to know what that does
   - One task shows up as two task types and you want to merge them
+  - A reply ended with "Applied: ..." and you want to know what that means or how to turn it off
+  - You want to see or change practices on the Memory page
 title: "Standing practices"
 ---
 
@@ -83,7 +85,7 @@ If you state the instruction explicitly and the correction pass saves it as an a
 
 - Answer the offer with "no". The candidate is suppressed and the same gap is not stored or offered again.
 - Ignore the offer. It is made once more in a later conversation and then never again.
-- Changed your mind: `memory.unretirePractice` with the practice id activates a suppressed or candidate practice; `memory.retirePractice` retires an active one. `bitterbot memory practices list` prints the ids.
+- Changed your mind: **Bring back** on the Memory page, or `memory.unretirePractice` with the practice id, activates a suppressed or candidate practice; **Retire** or `memory.retirePractice` retires an active one. `bitterbot memory practices list` prints the ids.
 - Turn offers off with `memory.practices.offers.enabled: false`, or the whole mechanism with `memory.practices.followUps.enabled: false`.
 
 ### What the agent is told
@@ -134,6 +136,58 @@ Task typing compares words, so a short or vague request ("can you check the late
 
 The answering model decides whether the request is that kind of task. These conditional lines share the block's size budget, are never shown in a cron job's session, and are not counted as applied, because nothing established that the practice fits the turn. The model can misjudge in either direction: it may skip a practice that did apply, or apply one to a loosely related request.
 
+## The "Applied" line
+
+When the prompt of your turn carried a practice because its scope matched the turn, the reply can end with one generated line:
+
+```text
+Applied: "Include npm downloads" for repo stats, from 12 Nov.
+```
+
+The gateway writes this line from its own records. The model does not write it and does not see it.
+
+- **What it says.** The practice was included in the prompt of this run, as defined above. It does not say the answer followed the practice, and nothing checked that.
+- **Which practices.** Only a practice scoped to a task type or a project, rendered because that scope matched. Never a practice that applies everywhere, never a person-scoped one (person scopes show on every turn, so the credit would be wrong), and never the conditional "When the request is about ..." lines, because nothing established that those fit the turn.
+- **How often.** The first two times a practice is applied this way, then it stays silent. After you reword a practice or change where it applies, it is named once more. The count is stored as `attributed` events on the practice, so it survives a gateway restart.
+- **One line per reply.** When several practices qualify, the most specific is named and the others are counted ("and 2 more"). Only the named one uses up one of its showings.
+- **Other lines win.** A reply that already ends with a "Memory updated", "Practice saved" or offer line, or with the answer to an offer, gets no "Applied" line, and the showing is not used up.
+- **Where.** Direct chats with you only. Never in a group or channel, for a guest, a subagent or a heartbeat, and not in a scheduled job's announcement. A turn that produced no final text (for example a fully block-streamed answer) gets none either.
+- **The date** is the day the practice was saved, or the day you said yes to it, in your timezone (`agents.defaults.userTimezone`, else the gateway host's). The year is added when it is not the current one.
+- **Off switch.** `memory.practices.attribution.enabled: false`.
+
+The line is built from the `applied` events of the run, which are matched by the conversation's transcript file and the time the run started. A run with no transcript file gets no line.
+
+## In the daily brief
+
+The [daily dream brief](/memory/dream-engine#the-daily-dream-brief) has a section "What I learned from you". It is read from the practices tables with no model call and covers the same 24 hours as the rest of the brief:
+
+- practices saved, or confirmed by you, in that time;
+- candidates you were asked about and have not answered (a candidate that was never offered is not listed);
+- "things you no longer have to repeat": active practices that were in a prompt in that time and that you never had to say again, with the number of runs whose prompt included them;
+- practices you had to say again in that time, and how often. The brief says that the repeat was counted and nothing was changed, because that is all that happens.
+
+The section is left out when all four are empty. A practice saved or a repeat makes the brief worth sending on a day with no dream news; waiting candidates and practices that were only applied again do not. The brief follows `memory.dreamBrief.enabled`.
+
+## On the Memory page
+
+The **Memory** page of the Control UI has a **Practices** section, below the settled facts. Each practice shows its text, where it applies in words ("For repo stats", "Everywhere"), its status (Active, Waiting for your answer, Retired, Declined), the day it was saved, how many times it was given to your agent, how many times you had to repeat it, and the line you said it on when the transcript still has it.
+
+| Action               | What it calls                                                                                                    |
+| -------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| Yes, every time / No | `memory.answerPracticeOffer` on a candidate: the same change as answering the offer line in chat.                |
+| Edit                 | `memory.editPractice`.                                                                                           |
+| The scope select     | `memory.setPracticeScope`: Everywhere, one of your recurring task types, or the agent's project when it has one. |
+| Retire               | `memory.retirePractice`, after a confirmation.                                                                   |
+| Bring back           | `memory.unretirePractice` on a retired or declined practice.                                                     |
+| Add                  | `memory.savePractice`, with the scope you pick.                                                                  |
+| Merge into another   | `memory.mergeTaskTypes`, in the **Task types** list under the practices.                                         |
+
+The Task types list shows your recurring kinds of request with how often you asked; the ones that are not recurring yet can be shown too, named by one of their requests, so that a split task can be merged before it recurs.
+
+Reading the section needs `operator.read`; every action needs admin. Without admin the list is shown and an action reports that the session may not change practices. On a gateway older than this section, the section is not shown.
+
+"Given to your agent" is the `applied` counter: runs whose prompt included the practice.
+
 ## What sticks
 
 Retiring a practice is your decision and it holds: capture, or any other writer below your tier, cannot store a nearly identical practice again, at any scope. The same goes for a practice with status `suppressed`. Stating the instruction again yourself, or un-retiring it, brings it back.
@@ -142,17 +196,18 @@ Retiring a practice is your decision and it holds: capture, or any other writer 
 
 Gateway methods (reads need `operator.read`, changes need admin, like the other `memory.*` methods):
 
-| Method                    | What it does                                                                                    |
-| ------------------------- | ----------------------------------------------------------------------------------------------- |
-| `memory.practices`        | Lists practices of every status, or one `status`, with counters, plus the recurring task types. |
-| `memory.savePractice`     | Adds a practice at your tier (`statement`, optional `scope`, optional `evidence`).              |
-| `memory.editPractice`     | Rewords a practice (`id`, `statement`).                                                         |
-| `memory.setPracticeScope` | Widens or narrows a practice (`id`, `scope`). Logged as `widened` or `narrowed`.                |
-| `memory.retirePractice`   | Retires a practice (`id`).                                                                      |
-| `memory.unretirePractice` | Brings back a retired or suppressed practice, or activates a candidate (`id`).                  |
-| `memory.mergeTaskTypes`   | Folds task type `from` into `into`; practices scoped to `from` move along.                      |
+| Method                       | What it does                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `memory.practices`           | Lists practices of every status, or one `status`, with counters, plus the recurring task types. Each practice also carries `scopeLabel` (the scope in words), `savedAt` and `evidence` (each ref with the line you said, or `null` when it cannot be read; only transcripts in the agent's own sessions folder are read). `activeProject` is the project a `project:` scope would match. `includePendingTaskTypes: true` adds the task types that are not recurring yet. |
+| `memory.savePractice`        | Adds a practice at your tier (`statement`, optional `scope`, optional `evidence`).                                                                                                                                                                                                                                                                                                                                                                                       |
+| `memory.editPractice`        | Rewords a practice (`id`, `statement`).                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `memory.setPracticeScope`    | Widens or narrows a practice (`id`, `scope`). Logged as `widened` or `narrowed`.                                                                                                                                                                                                                                                                                                                                                                                         |
+| `memory.retirePractice`      | Retires a practice (`id`).                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `memory.unretirePractice`    | Brings back a retired or suppressed practice, or activates a candidate (`id`).                                                                                                                                                                                                                                                                                                                                                                                           |
+| `memory.answerPracticeOffer` | Answers a candidate as the offer line would (`id`, `answer`: `yes` or `no`): yes activates it, no sets it to `suppressed`.                                                                                                                                                                                                                                                                                                                                               |
+| `memory.mergeTaskTypes`      | Folds task type `from` into `into`; practices scoped to `from` move along.                                                                                                                                                                                                                                                                                                                                                                                               |
 
-Every change writes an event on the practice (`stored`, `applied`, `repeat`, `offered`, `confirmed`, `declined`, `edited`, `widened`, `narrowed`, `retired`) and, for your own actions, an entry in the memory audit log.
+Every change writes an event on the practice (`stored`, `applied`, `repeat`, `offered`, `confirmed`, `declined`, `edited`, `widened`, `narrowed`, `retired`, and `attributed` when a reply carried the "Applied" line for it) and, for your own actions, an entry in the memory audit log.
 
 From the terminal:
 
@@ -164,13 +219,14 @@ bitterbot memory practices merge-types <from> <into>
 
 ## Configuration
 
-| Key                                  | Default | Effect                                                                                                                                                                                                              |
-| ------------------------------------ | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `memory.practices.enabled`           | `true`  | `false` stops practice capture, task typing and the prompt block. Stored practices are kept and can still be listed, edited and retired.                                                                            |
-| `memory.practices.followUps.enabled` | `true`  | `false` stops the follow-up check: no model call after a recurring-task answer and no candidates. Existing candidates are kept.                                                                                     |
-| `memory.practices.offers.enabled`    | `true`  | `false` stops the offer line, and a bare yes or no is no longer read as an answer. Candidates are still stored and can be activated with `memory.unretirePractice`.                                                 |
-| `memory.correction.enabled`          | `true`  | Practice capture uses this pass's model call, so `false` also stops practice capture, the follow-up check and the offer line. Stored practices are still rendered.                                                  |
-| `session.memory`                     | `"on"`  | `"off"` stops capture (the correction pass does not run) and stops task typing from recording your turns: a turn is still matched against existing recurring types, read-only. Stored practices are still rendered. |
+| Key                                    | Default | Effect                                                                                                                                                                                                              |
+| -------------------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `memory.practices.enabled`             | `true`  | `false` stops practice capture, task typing and the prompt block. Stored practices are kept and can still be listed, edited and retired.                                                                            |
+| `memory.practices.followUps.enabled`   | `true`  | `false` stops the follow-up check: no model call after a recurring-task answer and no candidates. Existing candidates are kept.                                                                                     |
+| `memory.practices.offers.enabled`      | `true`  | `false` stops the offer line, and a bare yes or no is no longer read as an answer. Candidates are still stored and can be activated with `memory.unretirePractice`.                                                 |
+| `memory.practices.attribution.enabled` | `true`  | `false` stops the "Applied" line. Practices are rendered and counted as before.                                                                                                                                     |
+| `memory.correction.enabled`            | `true`  | Practice capture uses this pass's model call, so `false` also stops practice capture, the follow-up check and the offer line. Stored practices are still rendered.                                                  |
+| `session.memory`                       | `"on"`  | `"off"` stops capture (the correction pass does not run) and stops task typing from recording your turns: a turn is still matched against existing recurring types, read-only. Stored practices are still rendered. |
 
 ## What this does not do yet
 
@@ -180,7 +236,8 @@ bitterbot memory practices merge-types <from> <into>
 - An answer delivered with no final text payload (for example fully block-streamed) is not recorded, so the message after it is not checked.
 - A follow-up is attached to the task type of the answer before it. If word-overlap typing split your task into several types, the evidence for one gap is split too, until the types are merged.
 - The offer is made in direct chats only.
-- There is no page for practices in the Control UI; use the CLI commands and gateway methods above.
+- The "Applied" line reports prompt inclusion. It is not shown for scheduled jobs, and a practice that was in the prompt and ignored by the model is still reported as applied.
+- The daily brief covers 24 hours. On a day when no brief is sent (nothing new, or the brief is off), a practice that was only applied again is not reported later.
 - A correction you make in your main chat about a scheduled job's report is not linked to that job. `job:` practices can be added with `memory.savePractice` or `memory.setPracticeScope`.
 - A repeat is counted but not acted on, and nothing checks whether an answer followed a practice.
 - Practices are not part of the memory export or import.

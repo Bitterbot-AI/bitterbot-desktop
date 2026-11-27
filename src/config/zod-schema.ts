@@ -146,6 +146,8 @@ const MemorySchema = z
             // PLAN-64 Phase 1b: follow-up learning and the practice offer.
             followUps: z.object({ enabled: z.boolean().optional() }).passthrough().optional(),
             offers: z.object({ enabled: z.boolean().optional() }).passthrough().optional(),
+            // PLAN-64 Phase 3: the use-time attribution line.
+            attribution: z.object({ enabled: z.boolean().optional() }).passthrough().optional(),
           })
           .passthrough(),
         z.unknown(),

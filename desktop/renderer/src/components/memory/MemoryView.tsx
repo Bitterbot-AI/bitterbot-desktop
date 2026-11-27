@@ -6,6 +6,7 @@ import { formatRelativeTime } from "../../lib/format";
 import { cn } from "../../lib/utils";
 import { useGatewayStore } from "../../stores/gateway-store";
 import { useConfirm } from "../ui/confirm-dialog";
+import { PracticesSection } from "./PracticesSection";
 
 export type MemorySummary = {
   id: string;
@@ -47,6 +48,14 @@ const AUDIT_WORDS: Record<string, string> = {
   owner_retire_fact: "You retired a settled fact",
   owner_unretire_fact: "You brought a retired fact back",
   owner_pin_fact: "You pinned a settled fact",
+  practice_saved: "A practice was saved",
+  owner_edit_practice: "You reworded a practice",
+  owner_scope_practice: "You changed where a practice applies",
+  owner_retire_practice: "You retired a practice",
+  owner_unretire_practice: "You brought a practice back",
+  owner_confirm_practice: "You said yes to a practice",
+  owner_decline_practice: "You declined a practice",
+  owner_merge_task_types: "You merged two task types",
   forgotten: "Faded out (not used in a long time)",
   expired: "Expired (its keep-until date passed)",
   merged: "Merged into a similar memory",
@@ -428,6 +437,8 @@ export function MemoryView() {
           </ul>
         </section>
       )}
+
+      <PracticesSection />
 
       {prefs.length > 0 && (
         <section className="space-y-2">

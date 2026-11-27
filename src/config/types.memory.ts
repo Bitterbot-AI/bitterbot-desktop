@@ -150,6 +150,14 @@ export type MemoryConfig = {
       /** Append offers to replies and read a bare yes or no as the answer (default: true). */
       enabled?: boolean;
     };
+    /** PLAN-64 Phase 3: the one-line "Applied: ..." attribution on a reply. */
+    attribution?: {
+      /**
+       * Name a scoped practice the first two times its scope matched a turn,
+       * and once more after it is reworded or re-scoped (default: true).
+       */
+      enabled?: boolean;
+    };
   };
   /** PLAN-24 HORMA Phase 0: provenance pointers from synthesized memories to raw sources. */
   provenance?: {

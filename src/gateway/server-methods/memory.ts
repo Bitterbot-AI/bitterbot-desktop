@@ -10,17 +10,23 @@
  * memory.setPracticeScope, memory.retirePractice and memory.unretirePractice
  * change them (admin). PLAN-64 Phase 1b: memory.practices also returns event
  * counters; memory.mergeTaskTypes folds one recurring task type into another
- * (admin).
+ * (admin). PLAN-64 Phase 3: memory.practices also returns, per practice, the
+ * scope in words, the saved date and the owner's evidence lines, and can
+ * list the task types that are not recurring yet.
  */
 
 import os from "node:os";
 import path from "node:path";
-import { resolveDefaultAgentId } from "../../agents/agent-scope.js";
+import { resolveAgentWorkspaceDir, resolveDefaultAgentId } from "../../agents/agent-scope.js";
+import { resolveActiveProjectName } from "../../agents/canonical-facts-block.js";
 import { loadConfig } from "../../config/config.js";
+import { resolveSessionTranscriptsDirForAgent } from "../../config/sessions/paths.js";
+import { describePracticeScope } from "../../memory/correction-capture.js";
 import { getMemorySearchManager } from "../../memory/index.js";
 import type { MemoryIndexManager } from "../../memory/manager.js";
 import { MemoryImportRefused, parseMemoryExport } from "../../memory/memory-import.js";
 import { OwnerEditRefused } from "../../memory/owner-controls.js";
+import { createPracticeEvidenceResolver } from "../../memory/practice-evidence.js";
 import { PRACTICE_STATUSES, type PracticeStatus } from "../../memory/practices.js";
 import { normalizeControlUiBasePath } from "../control-ui-shared.js";
 import { mintMemoryExportToken } from "../memory-export-http.js";
@@ -281,11 +287,16 @@ export const memoryHandlers: GatewayRequestHandlers = {
    * candidate | active | retired | suppressed. `appliedCount` counts runs
    * whose prompt included the practice, not answers that followed it. Also
    * returns the recurring task types, so a `task:<slug>` scope can be shown
-   * by its label.
+   * by its label. PLAN-64 Phase 3: each practice also carries `scopeLabel`,
+   * `savedAt` and `evidence` (ref and the owner's line), each task type its
+   * `recurring` flag and one `example` request, and
+   * `includePendingTaskTypes: true` adds the types that are not recurring yet.
    */
   "memory.practices": async ({ params, respond }) => {
     try {
-      const m = await memoryManager(str(params.agentId));
+      const cfg = loadConfig();
+      const agentId = str(params.agentId) || resolveDefaultAgentId(cfg);
+      const m = await memoryManager(agentId);
       const status = (PRACTICE_STATUSES as readonly string[]).includes(str(params.status))
         ? (str(params.status) as PracticeStatus)
         : undefined;
@@ -293,21 +304,50 @@ export const memoryHandlers: GatewayRequestHandlers = {
       // and the owner's answers), per practice and overall.
       const counters = m.practiceCounters();
       const zero = { applied: 0, repeats: 0, offers: 0, confirmed: 0, declined: 0 };
-      respond(true, {
-        practices: m.ownerListPractices(status ? { statuses: [status] } : {}).map((p) => ({
+      // PLAN-64 Phase 3: what the Memory tab shows without deriving it. The
+      // task types that are not recurring yet are listed only on request
+      // (`includePendingTaskTypes`), for the merge action.
+      const allTypes = m.taskTypes().list();
+      const labels = new Map(allTypes.map((t) => [t.slug, t.label]));
+      const evidenceOf = createPracticeEvidenceResolver({
+        sessionsDir: resolveSessionTranscriptsDirForAgent(agentId),
+      });
+      const store = m.practices();
+      const practices = [];
+      for (const p of m.ownerListPractices(status ? { statuses: [status] } : {})) {
+        const taskLabel = p.scope.startsWith("task:")
+          ? labels.get(p.scope.slice("task:".length))?.trim() || undefined
+          : undefined;
+        practices.push({
           ...p,
           counts: counters.byPractice.get(p.id) ?? zero,
-        })),
+          // "repo stats", "project acme", "this scheduled job", "everything".
+          scopeLabel: describePracticeScope(p.scope, taskLabel),
+          // When it became a standing instruction (saved, or confirmed by the owner).
+          savedAt: store.savedAt(p.id) ?? p.createdAt,
+          // The owner's own lines behind it, newest last; text is null when
+          // the transcript line can no longer be read.
+          evidence: await evidenceOf(p.evidenceRefs),
+        });
+      }
+      respond(true, {
+        practices,
         counters: counters.overall,
-        taskTypes: m
-          .taskTypes()
-          .list({ recurringOnly: true })
+        // The project a `project:<name>` scope would match for this agent
+        // (its workspace folder), or null in the default workspace.
+        activeProject: resolveActiveProjectName(resolveAgentWorkspaceDir(cfg, agentId)),
+        taskTypes: allTypes
+          .filter((t) => t.recurring || params.includePendingTaskTypes === true)
           .map((t) => ({
             slug: t.slug,
             label: t.label,
             occurrences: t.occurrences,
             distinctDays: t.distinctDays,
             lastSeen: t.lastSeen,
+            recurring: t.recurring,
+            // A type that is not recurring yet has no label; one of its
+            // requests says what it is.
+            example: t.exemplars[0] ?? null,
           })),
       });
     } catch (err) {
@@ -415,6 +455,31 @@ export const memoryHandlers: GatewayRequestHandlers = {
     try {
       const m = await memoryManager(str(params.agentId));
       respond(true, { ok: await m.ownerUnretirePractice(str(params.id)) });
+    } catch (err) {
+      fail(respond, err);
+    }
+  },
+
+  /**
+   * PLAN-64 Phase 3: the owner's yes or no to a candidate practice, from the
+   * Memory tab. The same change a bare "yes" or "no" to the offer line
+   * makes: yes activates it at the owner tier (counted as `confirmed`), no
+   * sets it to `suppressed` for good (counted as `declined`). `ok` is false
+   * when the practice is not a candidate.
+   */
+  "memory.answerPracticeOffer": async ({ params, respond }) => {
+    try {
+      const answer = str(params.answer).toLowerCase();
+      if (answer !== "yes" && answer !== "no") {
+        respond(
+          false,
+          undefined,
+          errorShape(ErrorCodes.INVALID_REQUEST, 'answer must be "yes" or "no"'),
+        );
+        return;
+      }
+      const m = await memoryManager(str(params.agentId));
+      respond(true, { ok: await m.answerPracticeOffer(str(params.id), answer) });
     } catch (err) {
       fail(respond, err);
     }

@@ -70,6 +70,9 @@ export const FIELD_DEFAULTS: Record<string, unknown> = {
   // `=== false` turns off the follow-up check and the offer line (src/memory/practice-followup-turn.ts).
   "memory.practices.followUps.enabled": true,
   "memory.practices.offers.enabled": true,
+  // src/config/feature-switches.ts practiceAttributionEnabled() — only `=== false` turns off the
+  // "Applied: ..." line (src/auto-reply/reply/agent-runner-memory.ts resolvePracticeAttribution).
+  "memory.practices.attribution.enabled": true,
   // src/memory/correction-capture.ts, src/memory/manager.ts runSessionExtraction,
   // src/memory/manager-sync-ops.ts syncSessionFiles — only `=== "off"` keeps conversations out.
   "session.memory": "on",

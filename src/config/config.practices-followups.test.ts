@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { validateConfigObject } from "./config.js";
 import {
+  practiceAttributionEnabled,
   practiceFollowUpsEnabled,
   practiceOffersEnabled,
   practicesEnabled,
@@ -41,6 +42,23 @@ describe("memory.practices follow-up and offer switches", () => {
           practices: { enabled: true, followUps: { enabled: false }, offers: { enabled: false } },
         },
       }).ok,
+    ).toBe(true);
+  });
+
+  it("PLAN-64 Phase 3: memory.practices.attribution.enabled is on by default, documented and accepted", () => {
+    const key = "memory.practices.attribution.enabled";
+    expect(FIELD_DEFAULTS[key]).toBe(true);
+    expect(FIELD_LABELS[key]).toBeTruthy();
+    expect(FIELD_HELP[key]).toBeTruthy();
+    expect(FIELD_HELP[key]).not.toContain("—");
+    expect(practiceAttributionEnabled(undefined)).toBe(true);
+    expect(practiceAttributionEnabled({ offers: { enabled: false } })).toBe(true);
+    expect(practiceAttributionEnabled({ attribution: { enabled: false } })).toBe(false);
+    expect(practiceAttributionEnabled({ enabled: false })).toBe(false);
+    // The other switches do not depend on it.
+    expect(practiceOffersEnabled({ attribution: { enabled: false } })).toBe(true);
+    expect(
+      validateConfigObject({ memory: { practices: { attribution: { enabled: false } } } }).ok,
     ).toBe(true);
   });
 });

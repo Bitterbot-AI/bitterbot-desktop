@@ -33,6 +33,12 @@
  * (`offered` events, `offer_count`), the owner's no (`suppress`, a `declined`
  * event), `repeat` events (the owner had to say an active practice again)
  * and the counters over those events.
+ *
+ * PLAN-64 Phase 3 adds what the use-time attribution line needs: which
+ * practices a run's prompt carried (`appliedInRun`, read back from the
+ * `applied` events of that run's session file), how often the line was shown
+ * for a practice (`attributed` events, so the count survives a restart) and
+ * when a practice was saved or confirmed (`savedAt`).
  */
 
 import crypto from "node:crypto";
@@ -70,6 +76,8 @@ export const PRACTICE_EVENT_KINDS = [
   "narrowed",
   "edited",
   "retired",
+  // PLAN-64 Phase 3: a reply carried the generated "Applied: ..." line for it.
+  "attributed",
 ] as const;
 export type PracticeEventKind = (typeof PRACTICE_EVENT_KINDS)[number];
 
@@ -785,6 +793,106 @@ export class PracticesStore {
       log.debug(`practice counters unavailable: ${String(err)}`);
     }
     return { overall, byPractice };
+  }
+
+  // ── PLAN-64 Phase 3: use-time attribution ───────────────────────────────
+
+  /**
+   * The active practices whose `applied` event was written for this session
+   * file since `since` (the run's start), most specific scope first. An
+   * `applied` event exists only for a practice rendered through a scope
+   * match; the conditional fallback lines write none.
+   */
+  appliedInRun(opts: { sessionRef: string; since: number }): Practice[] {
+    try {
+      const rows = this.db
+        .prepare(
+          `SELECT DISTINCT practice_id FROM practice_events
+            WHERE kind = 'applied' AND session_ref = ? AND ts >= ?`,
+        )
+        .all(opts.sessionRef, opts.since) as unknown as Array<{ practice_id: string }>;
+      return rows
+        .map((r) => this.get(r.practice_id))
+        .filter((p): p is Practice => p !== null && p.status === "active")
+        .toSorted(
+          (a, b) =>
+            practiceScopeRank(a.scope) - practiceScopeRank(b.scope) || b.updatedAt - a.updatedAt,
+        );
+    } catch (err) {
+      log.debug(`practice applied-in-run lookup failed: ${String(err)}`);
+      return [];
+    }
+  }
+
+  /**
+   * How often the attribution line was shown for a practice: in total, and
+   * since the owner last reworded or re-scoped it (`changedAt`, null when
+   * they never did). Counted from events, so it survives a restart.
+   */
+  attributionState(id: string): {
+    shown: number;
+    shownSinceChange: number;
+    changedAt: number | null;
+  } {
+    const rows = this.db
+      .prepare(
+        `SELECT kind, ts FROM practice_events
+          WHERE practice_id = ? AND kind IN ('attributed', 'edited', 'widened', 'narrowed')
+          ORDER BY ts ASC, rowid ASC`,
+      )
+      .all(id) as unknown as Array<{ kind: string; ts: number }>;
+    let shown = 0;
+    let shownSinceChange = 0;
+    let changedAt: number | null = null;
+    for (const row of rows) {
+      if (row.kind === "attributed") {
+        shown += 1;
+        shownSinceChange += 1;
+      } else {
+        changedAt = row.ts;
+        shownSinceChange = 0;
+      }
+    }
+    return { shown, shownSinceChange, changedAt };
+  }
+
+  /** A reply carried the attribution line naming this practice. Never throws. */
+  recordAttribution(id: string, opts: { sessionRef?: string | null; now?: number } = {}): boolean {
+    try {
+      this.writeEvent(id, "attributed", {
+        sessionRef: opts.sessionRef ?? null,
+        ts: opts.now ?? Date.now(),
+      });
+      return true;
+    } catch (err) {
+      log.debug(`practice attribution event failed: ${String(err)}`);
+      return false;
+    }
+  }
+
+  /**
+   * When the practice became the owner's standing instruction: the latest
+   * yes to an offer or un-retire (`confirmed`), or the latest write that
+   * stored or raised it as active. Falls back to the row's creation time.
+   */
+  savedAt(id: string): number | null {
+    const practice = this.get(id);
+    if (!practice) {
+      return null;
+    }
+    for (const event of this.events(id, 500)) {
+      if (event.kind === "confirmed") {
+        return event.ts;
+      }
+      if (
+        event.kind === "stored" &&
+        event.detail?.status === "active" &&
+        (event.detail.op === "add" || event.detail.op === "promote")
+      ) {
+        return event.ts;
+      }
+    }
+    return practice.createdAt;
   }
 
   // ── Owner actions (owner-controls.ts wraps these with the audit log) ──────

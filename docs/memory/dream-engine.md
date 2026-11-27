@@ -629,11 +629,14 @@ tells you what happened while you were away:
 - the strongest insights from those dreams,
 - what changed in what it holds true about you (new, updated, and retired facts,
   and updated preferences),
+- what it learned from you: [practices](/memory/practices#in-the-daily-brief) saved or
+  confirmed, candidates waiting for your yes or no, practices you no longer have to
+  repeat, and any you had to repeat,
 - loops it has left open.
 
 The brief arrives like other owner notices: in the main session, in the Control
 UI, and on your chat channel (subject to quiet hours). It is skipped on days
-with nothing new to say. It is sent from the daily digest timer, so it needs the
+with nothing new to say (a practice saved or repeated counts as something to say). It is sent from the daily digest timer, so it needs the
 digest on (`memory.digest.enabled`, default on). If something in it is wrong, correct or forget it on
 the **Memory** page.
 

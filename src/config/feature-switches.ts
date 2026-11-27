@@ -98,7 +98,7 @@ export function practicesEnabled(practices: Toggle): boolean {
 }
 
 type PracticesToggles =
-  | { enabled?: boolean; followUps?: Toggle; offers?: Toggle }
+  | { enabled?: boolean; followUps?: Toggle; offers?: Toggle; attribution?: Toggle }
   | undefined
   | null;
 
@@ -117,6 +117,15 @@ export function practiceFollowUpsEnabled(practices: PracticesToggles): boolean {
  */
 export function practiceOffersEnabled(practices: PracticesToggles): boolean {
   return practices?.enabled !== false && practices?.offers?.enabled !== false;
+}
+
+/**
+ * The one-line "Applied: ..." attribution on a reply whose prompt carried a
+ * scoped practice (PLAN-64 Phase 3): on unless `memory.practices.enabled` or
+ * `memory.practices.attribution.enabled` is false.
+ */
+export function practiceAttributionEnabled(practices: PracticesToggles): boolean {
+  return practices?.enabled !== false && practices?.attribution?.enabled !== false;
 }
 
 /** Conversation memory: on unless `session.memory` is "off". */

@@ -6,13 +6,17 @@
  * trimming, payload shape, error mapping) and the sticky semantics the
  * handler is supposed to reach.
  */
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CanonicalFactsStore } from "../../memory/canonical-facts.js";
 import { getMemorySearchManager } from "../../memory/index.js";
 import { ensureMemoryIndexSchema } from "../../memory/memory-schema.js";
 import { listSuppressions } from "../../memory/memory-suppressions.js";
 import {
+  answerPracticeOffer,
   editPractice,
   listAuditLog,
   listPractices,
@@ -34,7 +38,16 @@ vi.mock("../../memory/index.js", () => ({
   getMemorySearchManager: vi.fn(),
 }));
 vi.mock("../../config/config.js", () => ({ loadConfig: () => ({}) }));
-vi.mock("../../agents/agent-scope.js", () => ({ resolveDefaultAgentId: () => "default" }));
+vi.mock("../../agents/agent-scope.js", () => ({
+  resolveDefaultAgentId: () => "default",
+  resolveAgentWorkspaceDir: () => "/srv/agents/acme",
+}));
+// PLAN-64 Phase 3: evidence lines are read only from the agent's sessions directory.
+const sessions = vi.hoisted(() => ({ dir: "/nonexistent/bitterbot-sessions" }));
+vi.mock("../../config/sessions/paths.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../config/sessions/paths.js")>()),
+  resolveSessionTranscriptsDirForAgent: () => sessions.dir,
+}));
 
 const retire = memoryHandlers["memory.retireFact"]!;
 const unretire = memoryHandlers["memory.unretireFact"]!;
@@ -77,6 +90,7 @@ beforeEach(() => {
   const manager = {
     // PLAN-64 Phase 1: the same thin wrappers the real manager has.
     taskTypes: () => taskTypes,
+    practices: () => practices,
     ownerListPractices: (opts: Parameters<typeof listPractices>[1]) =>
       listPractices(practices, opts),
     ownerSavePractice: async (input: Parameters<typeof savePractice>[2]) =>
@@ -91,6 +105,9 @@ beforeEach(() => {
     practiceCounters: () => practices.counters(),
     ownerMergeTaskTypes: async (from: string, into: string) =>
       mergeTaskTypes(db, taskTypes, from, into),
+    // PLAN-64 Phase 3.
+    answerPracticeOffer: async (id: string, answer: "yes" | "no") =>
+      answerPracticeOffer(db, practices, id, answer),
     canonicalFacts: () => store,
     ownerRetireFact: async (key: string) => retireFact(db, store, key),
     ownerUnretireFact: async (key: string) => unretireFact(db, store, key),
@@ -460,5 +477,200 @@ describe("practice counters and memory.mergeTaskTypes (PLAN-64 Phase 1b)", () =>
     expect((await call(merge, { from: "nope", into: "repo-stats" })).ok).toBe(false);
     expect((await call(merge, { from: "", into: "repo-stats" })).ok).toBe(false);
     expect(taskTypes.get("repo-stats")?.occurrences).toBe(6);
+  });
+});
+
+describe("memory.practices: what the Memory tab shows (PLAN-64 Phase 3)", () => {
+  const list = memoryHandlers["memory.practices"]!;
+  type Row = {
+    id: string;
+    scope: string;
+    scopeLabel: string;
+    savedAt: number;
+    evidence: Array<{ ref: string; text: string | null }>;
+  };
+  type Payload = {
+    practices: Row[];
+    taskTypes: Array<{
+      slug: string;
+      label: string;
+      occurrences: number;
+      recurring: boolean;
+      example: string | null;
+    }>;
+  };
+  let dir: string;
+
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), "bb-practices-rpc-"));
+    sessions.dir = dir;
+  });
+  afterEach(() => {
+    fs.rmSync(dir, { recursive: true, force: true });
+    sessions.dir = "/nonexistent/bitterbot-sessions";
+  });
+
+  const message = (role: string, text: string) =>
+    JSON.stringify({ type: "message", message: { role, content: [{ type: "text", text }] } });
+
+  it("returns the scope in words, by task label, project, job and everything", async () => {
+    taskTypes.adopt({
+      slug: "repo-stats",
+      label: "repo stats",
+      exemplars: ["How many clones did your repo get yesterday?"],
+      occurrences: 4,
+      distinctDays: 3,
+      firstSeen: 1,
+      lastSeen: 2,
+      recurring: true,
+    });
+    const statements: Array<[string, string]> = [
+      ["task:repo-stats", "Include npm downloads."],
+      ["task:unnamed-thing", "Give the numbers first."],
+      ["project:acme", "Answer in British English."],
+      ["job:job-7", "Skip the weather section."],
+      ["global", "Keep answers under ten lines."],
+    ];
+    for (const [scope, statement] of statements) {
+      expect(practices.upsert({ statement, scope, source: "owner" }).ok).toBe(true);
+    }
+    const payload = (await call(list, {})).payload as Payload;
+    expect(Object.fromEntries(payload.practices.map((p) => [p.scope, p.scopeLabel]))).toEqual({
+      "task:repo-stats": "repo stats",
+      "task:unnamed-thing": "unnamed thing",
+      "project:acme": "project acme",
+      "job:job-7": "this scheduled job",
+      global: "everything",
+    });
+  });
+
+  it("returns savedAt: the creation of an owner practice, or the day a candidate was confirmed", async () => {
+    const owner = practices.upsert({
+      statement: "Include npm downloads.",
+      source: "owner",
+      now: 1_000,
+    });
+    const candidate = practices.upsert({
+      statement: "Include views and traffic.",
+      source: "extraction",
+      now: 2_000,
+    });
+    if (!owner.ok || !candidate.ok) {
+      throw new Error("unreachable");
+    }
+    practices.activate(candidate.practice.id, 9_000, "offer");
+    // A later edit does not move the saved date.
+    practices.editStatement(owner.practice.id, "Include npm downloads per day.", 12_000);
+    const byId = new Map(
+      ((await call(list, {})).payload as Payload).practices.map((p) => [p.id, p.savedAt]),
+    );
+    expect(byId.get(owner.practice.id)).toBe(1_000);
+    expect(byId.get(candidate.practice.id)).toBe(9_000);
+  });
+
+  it("returns the owner's evidence line from the agent's own transcripts, and null otherwise", async () => {
+    const file = path.join(dir, "s1.jsonl");
+    fs.writeFileSync(
+      file,
+      [
+        message("user", "How many clones did your repo get yesterday?"),
+        message("assistant", "Yesterday the repo had 68 unique clones."),
+        message("user", "how about our   npm downloads"),
+      ].join("\n"),
+    );
+    const outside = path.join(os.tmpdir(), `bb-outside-${process.pid}.jsonl`);
+    fs.writeFileSync(outside, message("user", "a line from somewhere else"));
+    try {
+      const saved = practices.upsert({
+        statement: "Include npm downloads.",
+        scope: "task:repo-stats",
+        source: "owner",
+        evidenceRef: `session:${file}#L3`,
+      });
+      if (!saved.ok) {
+        throw new Error("unreachable");
+      }
+      for (const evidenceRef of [
+        `session:${file}#L2`, // the assistant's line: not the owner's words
+        `session:${file}#L40`, // past the end
+        `session:${outside}#L1`, // readable, but not the agent's sessions directory
+        "a short quote, not a line ref",
+      ]) {
+        practices.addSighting(saved.practice.id, { evidenceRef });
+      }
+      const row = ((await call(list, {})).payload as Payload).practices[0]!;
+      expect(row.evidence).toEqual([
+        { ref: `session:${file}#L3`, text: "how about our npm downloads" },
+        { ref: `session:${file}#L2`, text: null },
+        { ref: `session:${file}#L40`, text: null },
+        { ref: `session:${outside}#L1`, text: null },
+        { ref: "a short quote, not a line ref", text: null },
+      ]);
+    } finally {
+      fs.rmSync(outside, { force: true });
+    }
+  });
+
+  it("flags recurring task types, and lists pending ones with an example only on request", async () => {
+    taskTypes.adopt({
+      slug: "repo-stats",
+      label: "repo stats",
+      exemplars: ["How many clones did your repo get yesterday?"],
+      occurrences: 4,
+      distinctDays: 3,
+      firstSeen: 1,
+      lastSeen: 2,
+      recurring: true,
+    });
+    const pending = taskTypes.observe("What is the weather in Lisbon this weekend?", {
+      now: Date.now(),
+    }).type!.slug;
+    const recurringOnly = (await call(list, {})).payload as Payload;
+    expect(recurringOnly.taskTypes).toMatchObject([
+      {
+        slug: "repo-stats",
+        label: "repo stats",
+        occurrences: 4,
+        recurring: true,
+        example: "How many clones did your repo get yesterday?",
+      },
+    ]);
+    const all = (await call(list, { includePendingTaskTypes: true })).payload as Payload;
+    expect(all.taskTypes.map((t) => [t.slug, t.recurring])).toEqual([
+      ["repo-stats", true],
+      [pending, false],
+    ]);
+    expect(all.taskTypes[1]?.example).toBeTruthy();
+  });
+
+  it("returns the agent's project, the one a project scope would match", async () => {
+    expect(((await call(list, {})).payload as { activeProject: string | null }).activeProject).toBe(
+      "acme",
+    );
+  });
+
+  it("memory.answerPracticeOffer: yes activates a candidate, no declines it for good", async () => {
+    const answer = memoryHandlers["memory.answerPracticeOffer"]!;
+    const a = practices.upsert({ statement: "Include views and traffic.", source: "extraction" });
+    const b = practices.upsert({ statement: "Mention open pull requests.", source: "extraction" });
+    if (!a.ok || !b.ok) {
+      throw new Error("unreachable");
+    }
+    expect((await call(answer, { id: a.practice.id, answer: "yes" })).payload).toEqual({
+      ok: true,
+    });
+    expect(practices.get(a.practice.id)).toMatchObject({ status: "active", source: "owner" });
+    expect((await call(answer, { id: b.practice.id, answer: "No" })).payload).toEqual({ ok: true });
+    expect(practices.get(b.practice.id)?.status).toBe("suppressed");
+    // Counted like an answer to the offer line.
+    expect(practices.counters().overall).toMatchObject({ confirmed: 1, declined: 1 });
+    // Not a candidate any more, an unknown id, a bad answer.
+    expect((await call(answer, { id: a.practice.id, answer: "no" })).payload).toEqual({
+      ok: false,
+    });
+    expect((await call(answer, { id: "missing", answer: "yes" })).payload).toEqual({ ok: false });
+    expect((await call(answer, { id: b.practice.id, answer: "maybe" })).error?.code).toBe(
+      ErrorCodes.INVALID_REQUEST,
+    );
   });
 });

@@ -132,6 +132,7 @@ describe("memory control scopes (PLAN-53 G1)", () => {
       "memory.setPracticeScope",
       "memory.retirePractice",
       "memory.unretirePractice",
+      "memory.answerPracticeOffer",
       // PLAN-64 Phase 1b.
       "memory.mergeTaskTypes",
     ]) {
