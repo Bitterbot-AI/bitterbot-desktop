@@ -143,6 +143,9 @@ const MemorySchema = z
         z
           .object({
             enabled: z.boolean().optional(),
+            // PLAN-64 Phase 1b: follow-up learning and the practice offer.
+            followUps: z.object({ enabled: z.boolean().optional() }).passthrough().optional(),
+            offers: z.object({ enabled: z.boolean().optional() }).passthrough().optional(),
           })
           .passthrough(),
         z.unknown(),

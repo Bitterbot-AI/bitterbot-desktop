@@ -6,7 +6,11 @@ import { runWithModelFallback } from "../../agents/model-fallback.js";
 import { isCliProvider } from "../../agents/model-selection.js";
 import { resolveSandboxConfigForAgent, resolveSandboxRuntimeStatus } from "../../agents/sandbox.js";
 import type { BitterbotConfig } from "../../config/config.js";
-import { practicesEnabled } from "../../config/feature-switches.js";
+import {
+  practiceFollowUpsEnabled,
+  practiceOffersEnabled,
+  practicesEnabled,
+} from "../../config/feature-switches.js";
 import {
   resolveAgentIdFromSessionKey,
   type SessionEntry,
@@ -240,7 +244,10 @@ export function takeSteeredUserTurns(sessionId: string): string[] {
  * PLAN-55 Phase 1: the per-turn correction capture, on run completion of a
  * first-party owner turn (the reply runner, the followup runner, and the
  * turns a steered message joined). Returns the one-line "Memory updated"
- * confirmation to append to the reply, or null. Cheap gates run before the
+ * confirmation to append to the reply, or null. PLAN-64 Phase 1b: the same
+ * hook runs follow-up learning around the pass (the follow-up check shares
+ * the pass's one model call; the generated offer and offer-answer lines join
+ * the returned text). Cheap gates run before the
  * memory manager is touched; the whole pass is bounded by
  * CORRECTION_CAPTURE_TIMEOUT_MS, which also ABORTS the model call (review
  * item 12: a timed-out call must not bill and write later), and never
@@ -313,6 +320,8 @@ export async function runCorrectionCaptureAfterTurn(params: {
             sessionKey: string | undefined,
             text: string,
           ) => { slug: string; label: string } | null;
+          // PLAN-64 Phase 1b: follow-up learning.
+          practiceFollowUpDeps?: () => import("../../memory/practice-followup-turn.js").FollowUpTurnDeps;
         }
       | null
       | undefined;
@@ -322,6 +331,24 @@ export async function runCorrectionCaptureAfterTurn(params: {
       return null;
     }
     const lines: string[] = [];
+    // PLAN-64 Phase 1b: follow-up learning, for the turn's own message (a
+    // steered message is not "the owner's next message" after an answer).
+    const practicesCfg = params.cfg.memory?.practices;
+    const followDeps =
+      practicesOn && (practiceFollowUpsEnabled(practicesCfg) || practiceOffersEnabled(practicesCfg))
+        ? (m?.practiceFollowUpDeps?.() ?? null)
+        : null;
+    const followUps = followDeps ? await import("../../memory/practice-followup-turn.js") : null;
+    const followTurn =
+      followDeps && followUps
+        ? await followUps.beginFollowUpTurn(followDeps, {
+            cfg: params.cfg,
+            sessionKey: params.sessionKey ?? run.sessionKey,
+            sessionId: run.sessionId,
+            userMessage: primary,
+          })
+        : null;
+    let primaryCapture: Awaited<ReturnType<typeof runCorrectionCapture>> | null = null;
     // One pass (at most one model call) per owner message; the run's own
     // agent writes are reported once, with the first.
     let since = params.runStartedAt;
@@ -355,13 +382,37 @@ export async function runCorrectionCaptureAfterTurn(params: {
                 null,
             }
           : null,
+        followUp: userMessage === primary && !primaryCapture ? followTurn?.gapContext : null,
         pinAsOwner: m?.ownerPinFact ? (input) => m.ownerPinFact!(input) : null,
         llmCall: m?.correctionLlmCall?.() ?? null,
         signal: abort.signal,
       });
       since = Date.now();
+      if (userMessage === primary && !primaryCapture) {
+        primaryCapture = result;
+      }
       if (result.line) {
         lines.push(result.line);
+      }
+    }
+    if (followDeps && followUps && followTurn && !abort.signal.aborted) {
+      if (followTurn.answerLine) {
+        lines.push(followTurn.answerLine);
+      }
+      const finished = await followUps.finishFollowUpTurn(followDeps, followTurn, {
+        cfg: params.cfg,
+        sessionKey: params.sessionKey ?? run.sessionKey,
+        sessionId: run.sessionId,
+        sessionFile: run.sessionFile,
+        userMessage: primary,
+        replyText: params.replyText,
+        chatType: params.chatType,
+        activeProject: resolveActiveProjectName(run.workspaceDir),
+        followUp: primaryCapture?.followUp ?? null,
+        captured: primaryCapture?.practices ?? [],
+      });
+      if (finished.offerLine) {
+        lines.push(finished.offerLine);
       }
     }
     return lines.length > 0 ? lines.join("\n") : null;

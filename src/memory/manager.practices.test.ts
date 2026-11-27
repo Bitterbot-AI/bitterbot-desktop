@@ -37,6 +37,12 @@ type Glue = Pick<
   | "ownerSetPracticeScope"
   | "ownerRetirePractice"
   | "ownerUnretirePractice"
+  | "followUpState"
+  | "practiceFollowUpDeps"
+  | "answerPracticeOffer"
+  | "resolvePracticeOfferNote"
+  | "ownerMergeTaskTypes"
+  | "practiceCounters"
 >;
 
 function makeManager(cfg: Record<string, unknown> = {}): {
@@ -180,5 +186,179 @@ describe("MemoryIndexManager practices glue", () => {
         "owner_unretire_practice",
       ]),
     );
+  });
+
+  // ── PLAN-64 Phase 1b ────────────────────────────────────────────────────
+
+  function seedType(slug: string, exemplars: string[]): void {
+    m.taskTypes().adopt({
+      slug,
+      label: slug.replace(/-/g, " "),
+      exemplars,
+      occurrences: 3,
+      distinctDays: 3,
+      firstSeen: Date.now() - 5 * DAY,
+      lastSeen: Date.now() - DAY,
+      recurring: true,
+    });
+  }
+
+  it("a turn right after a recurring-task answer is not typed as a new kind of request", () => {
+    seedType("repo-stats", QUESTIONS);
+    m.followUpState().recordAnswer("agent:main:main", {
+      sessionId: "s1",
+      taskSlug: "repo-stats",
+      ownerText: QUESTIONS[0]!,
+      answerText: "68 unique clones.",
+    });
+    expect(
+      m.observeOwnerTurnTaskType({
+        text: "how about our npm downloads",
+        sessionKey: "agent:main:main",
+        turnKey: "run-2",
+      }),
+    ).toBeNull();
+    expect(m.taskTypes().list()).toHaveLength(1);
+    // In another session the same words do found a pending type.
+    m.observeOwnerTurnTaskType({
+      text: "how about our npm downloads",
+      sessionKey: "agent:main:other",
+      turnKey: "run-3",
+    });
+    expect(m.taskTypes().list()).toHaveLength(2);
+  });
+
+  it("memory.practices.followUps.enabled=false: the turn is typed as before", () => {
+    const off = makeManager({ memory: { practices: { followUps: { enabled: false } } } });
+    off.m.followUpState().recordAnswer("agent:main:main", {
+      taskSlug: "repo-stats",
+      ownerText: "q",
+      answerText: "a",
+    });
+    off.m.observeOwnerTurnTaskType({
+      text: "how about our npm downloads",
+      sessionKey: "agent:main:main",
+      turnKey: "run-2",
+    });
+    expect(off.m.taskTypes().list()).toHaveLength(1);
+  });
+
+  it("capture scoping survives a restart: the persisted answer names the task of the turn before", () => {
+    seedType("repo-stats", QUESTIONS);
+    // Nothing in process memory (a fresh manager), only the state row.
+    m.followUpState().recordAnswer("agent:main:main", {
+      taskSlug: "repo-stats",
+      ownerText: QUESTIONS[0]!,
+      answerText: "68 unique clones.",
+    });
+    expect(m.resolveCaptureTaskType("agent:main:main", "stop asking me that please")).toEqual({
+      slug: "repo-stats",
+      label: "repo stats",
+    });
+    expect(
+      m.resolveCaptureTaskType("agent:main:elsewhere", "stop asking me that please"),
+    ).toBeNull();
+  });
+
+  it("merging task types by hand re-points practices and the follow-up state, audited", async () => {
+    seedType("repo-stats", QUESTIONS);
+    seedType("npm-download-clone", ["how about our npm downloads"]);
+    const saved = await m.ownerSavePractice({
+      statement: NPM,
+      scope: "task:npm-download-clone",
+    });
+    m.followUpState().recordAnswer("agent:main:main", {
+      taskSlug: "npm-download-clone",
+      ownerText: "q",
+      answerText: "a",
+    });
+    expect(await m.ownerMergeTaskTypes("npm-download-clone", "repo-stats")).toMatchObject({
+      ok: true,
+      type: { slug: "repo-stats", occurrences: 6 },
+    });
+    expect(m.taskTypes().get("npm-download-clone")).toBeNull();
+    expect(saved.ok && m.practices().get(saved.practice.id)?.scope).toBe("task:repo-stats");
+    expect(m.followUpState().get("agent:main:main")?.taskSlug).toBe("repo-stats");
+    expect(listAuditLog(db, { limit: 20 }).map((e) => e.event)).toContain("owner_merge_task_types");
+    expect(await m.ownerMergeTaskTypes("nope", "repo-stats")).toMatchObject({ ok: false });
+  });
+
+  it("answering an offer goes through the mutex with an audit entry, and shows in the counters", async () => {
+    const yes = m.practices().upsert({
+      statement: "Include npm downloads",
+      scope: "task:repo-stats",
+      source: "extraction",
+      origin: "follow_up",
+    });
+    const no = m.practices().upsert({
+      statement: "Include views and traffic",
+      scope: "task:repo-stats",
+      source: "extraction",
+      origin: "follow_up",
+    });
+    if (!yes.ok || !no.ok) {
+      throw new Error("unreachable");
+    }
+    m.practices().recordOffer(yes.practice.id, { sessionId: "s1" });
+    m.practices().recordOffer(no.practice.id, { sessionId: "s2" });
+    expect(await m.answerPracticeOffer(yes.practice.id, "yes")).toBe(true);
+    expect(await m.answerPracticeOffer(no.practice.id, "no")).toBe(true);
+    // Answered once: a second answer finds no candidate.
+    expect(await m.answerPracticeOffer(yes.practice.id, "no")).toBe(false);
+    expect(m.practices().get(yes.practice.id)).toMatchObject({ status: "active", source: "owner" });
+    expect(m.practices().get(no.practice.id)?.status).toBe("suppressed");
+    expect(m.practiceCounters().overall).toEqual({
+      applied: 0,
+      repeats: 0,
+      offers: 2,
+      confirmed: 1,
+      declined: 1,
+    });
+    // Un-retiring is the owner's action too, but not a yes to an offer.
+    await m.ownerRetirePractice(yes.practice.id);
+    await m.ownerUnretirePractice(yes.practice.id);
+    expect(m.practiceCounters().overall.confirmed).toBe(1);
+    expect(listAuditLog(db, { limit: 20 }).map((e) => e.event)).toEqual(
+      expect.arrayContaining(["owner_confirm_practice", "owner_decline_practice"]),
+    );
+  });
+
+  it("the prompt path's offer note: applied for a bare yes, nothing in incognito", async () => {
+    seedType("repo-stats", QUESTIONS);
+    const candidate = m.practices().upsert({
+      statement: "Include npm downloads",
+      scope: "task:repo-stats",
+      source: "extraction",
+      origin: "follow_up",
+    });
+    if (!candidate.ok) {
+      throw new Error("unreachable");
+    }
+    m.followUpState().setOffer("agent:main:main", candidate.practice.id);
+    expect(
+      await m.resolvePracticeOfferNote({ sessionKey: "agent:main:main", text: "maybe later" }),
+    ).toBeNull();
+    const note = await m.resolvePracticeOfferNote({
+      sessionKey: "agent:main:main",
+      text: "yes",
+      runId: "r1",
+    });
+    expect(note).toContain("## Practice offer answered");
+    expect(m.practices().get(candidate.practice.id)?.status).toBe("active");
+
+    const incognito = makeManager({ session: { memory: "off" } });
+    const held = incognito.m.practices().upsert({
+      statement: "Include npm downloads",
+      scope: "task:repo-stats",
+      source: "extraction",
+    });
+    if (!held.ok) {
+      throw new Error("unreachable");
+    }
+    incognito.m.followUpState().setOffer("agent:main:main", held.practice.id);
+    expect(
+      await incognito.m.resolvePracticeOfferNote({ sessionKey: "agent:main:main", text: "yes" }),
+    ).toBeNull();
+    expect(incognito.m.practices().get(held.practice.id)?.status).toBe("candidate");
   });
 });

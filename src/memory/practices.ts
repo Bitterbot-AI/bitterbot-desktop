@@ -26,6 +26,13 @@
  *
  * `applied` means "included in the prompt of a run", nothing more: nobody
  * checks here whether the answer followed the practice.
+ *
+ * PLAN-64 Phase 1b adds what follow-up learning needs: sightings (each time
+ * a gap was seen is a `stored` event whose detail carries the session, the
+ * day and whether the owner's words were an explicit instruction), offers
+ * (`offered` events, `offer_count`), the owner's no (`suppress`, a `declined`
+ * event), `repeat` events (the owner had to say an active practice again)
+ * and the counters over those events.
  */
 
 import crypto from "node:crypto";
@@ -215,8 +222,49 @@ export type PracticeUpsertInput = {
   source: CanonicalSource;
   origin?: PracticeOrigin;
   evidenceRef?: string | null;
+  /** Extra fields for the `stored` event's detail (a follow-up sighting). */
+  eventDetail?: Record<string, unknown> | null;
   now?: number;
 };
+
+/** One time a follow-up gap was seen for a practice (from its `stored` events). */
+export type PracticeSighting = {
+  sessionId: string;
+  /** The owner's calendar day of the follow-up (`YYYY-M-D`). */
+  day: string;
+  /** The owner's words were an explicit instruction ("give me X too"). */
+  explicit: boolean;
+  ts: number;
+};
+
+export type PracticeCounts = {
+  applied: number;
+  repeats: number;
+  offers: number;
+  confirmed: number;
+  declined: number;
+};
+
+const ZERO_COUNTS: PracticeCounts = {
+  applied: 0,
+  repeats: 0,
+  offers: 0,
+  confirmed: 0,
+  declined: 0,
+};
+const COUNTED_KINDS: Record<string, keyof PracticeCounts> = {
+  applied: "applied",
+  repeat: "repeats",
+  offered: "offers",
+  confirmed: "confirmed",
+  declined: "declined",
+};
+
+/** The calendar day of a timestamp on this machine. */
+export function practiceDayKey(ts: number): string {
+  const d = new Date(ts);
+  return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+}
 
 export type PracticeUpsertResult =
   | {
@@ -418,7 +466,14 @@ export class PracticesStore {
           );
         this.writeEvent(practice.id, "stored", {
           sessionRef: evidenceRef,
-          detail: { op: "add", scope, source: input.source, status: practice.status, origin },
+          detail: {
+            ...input.eventDetail,
+            op: "add",
+            scope,
+            source: input.source,
+            status: practice.status,
+            origin,
+          },
           ts: now,
         });
         return { ok: true, op: "add", practice };
@@ -454,7 +509,7 @@ export class PracticesStore {
       const op = raise ? "promote" : "strengthen";
       this.writeEvent(existing.id, "stored", {
         sessionRef: evidenceRef,
-        detail: { op, scope, source: input.source, status: next.status },
+        detail: { ...input.eventDetail, op, scope, source: input.source, status: next.status },
         ts: now,
       });
       return { ok: true, op, practice: next };
@@ -511,6 +566,225 @@ export class PracticesStore {
       log.debug(`practice applied-count write failed: ${String(err)}`);
       return 0;
     }
+  }
+
+  // ── PLAN-64 Phase 1b: follow-up learning ────────────────────────────────
+
+  /**
+   * A follow-up gap was seen again for an existing candidate: append the
+   * evidence and write a `stored` event carrying the sighting. The row's
+   * wording, status and tier do not change.
+   */
+  addSighting(
+    id: string,
+    opts: { evidenceRef?: string | null; detail?: Record<string, unknown>; now?: number } = {},
+  ): Practice | null {
+    return inSavepoint(this.db, "practice_sighting", () => {
+      const current = this.get(id);
+      if (!current) {
+        return null;
+      }
+      const now = opts.now ?? Date.now();
+      const evidenceRef = opts.evidenceRef?.trim().slice(0, MAX_EVIDENCE_REF_CHARS) || null;
+      const refs = [...current.evidenceRefs];
+      if (evidenceRef && !refs.includes(evidenceRef)) {
+        refs.push(evidenceRef);
+      }
+      const evidenceRefs = refs.slice(-MAX_EVIDENCE_REFS);
+      this.db
+        .prepare(`UPDATE practices SET evidence_refs = ?, updated_at = ? WHERE id = ?`)
+        .run(JSON.stringify(evidenceRefs), now, id);
+      this.writeEvent(id, "stored", {
+        sessionRef: evidenceRef,
+        detail: { ...opts.detail, op: "strengthen", scope: current.scope, status: current.status },
+        ts: now,
+      });
+      return { ...current, evidenceRefs, updatedAt: now };
+    });
+  }
+
+  /** The follow-up sightings of a practice, oldest first. */
+  sightings(id: string): PracticeSighting[] {
+    const out: PracticeSighting[] = [];
+    for (const event of this.events(id, 200).toReversed()) {
+      const sighting = event.kind === "stored" ? event.detail?.sighting : null;
+      if (!sighting || typeof sighting !== "object") {
+        continue;
+      }
+      const s = sighting as { sessionId?: unknown; day?: unknown; explicit?: unknown };
+      if (typeof s.sessionId === "string" && typeof s.day === "string") {
+        out.push({
+          sessionId: s.sessionId,
+          day: s.day,
+          explicit: s.explicit === true,
+          ts: event.ts,
+        });
+      }
+    }
+    return out;
+  }
+
+  /** The reply carried the offer for this candidate: one `offered` event, `offer_count` + 1. */
+  recordOffer(id: string, opts: { sessionId: string; now?: number }): boolean {
+    return inSavepoint(this.db, "practice_offer", () => {
+      const now = opts.now ?? Date.now();
+      const res = this.db
+        .prepare(
+          `UPDATE practices SET offer_count = offer_count + 1, updated_at = ?
+            WHERE id = ? AND status = 'candidate'`,
+        )
+        .run(now, id);
+      if (Number(res.changes) === 0) {
+        return false;
+      }
+      this.writeEvent(id, "offered", { detail: { sessionId: opts.sessionId }, ts: now });
+      return true;
+    });
+  }
+
+  /** Was this practice already offered in this session? */
+  offeredInSession(id: string, sessionId: string): boolean {
+    return this.events(id, 200).some(
+      (e) => e.kind === "offered" && e.detail?.sessionId === sessionId,
+    );
+  }
+
+  /**
+   * The owner said no to the offer: `suppressed`, for good (sticky against
+   * every tier below the owner, see upsert), with a `declined` event.
+   */
+  suppress(id: string, now: number = Date.now()): boolean {
+    return inSavepoint(this.db, "practice_suppress", () => {
+      const current = this.get(id);
+      if (!current || current.status !== "candidate") {
+        return false;
+      }
+      this.db
+        .prepare(`UPDATE practices SET status = 'suppressed', updated_at = ? WHERE id = ?`)
+        .run(now, id);
+      this.writeEvent(id, "declined", { detail: { from: current.status }, ts: now });
+      return true;
+    });
+  }
+
+  /**
+   * The owner had to say an active practice again (an explicit correction or
+   * a follow-up gap that nearly matches it). A counter, nothing more: no
+   * diagnosis and no repair. Never throws.
+   */
+  recordRepeat(
+    id: string,
+    opts: { sessionRef?: string | null; via: "correction" | "follow_up"; now?: number },
+  ): boolean {
+    try {
+      const current = this.get(id);
+      if (!current || current.status !== "active") {
+        return false;
+      }
+      this.writeEvent(id, "repeat", {
+        sessionRef: opts.sessionRef ?? null,
+        detail: { via: opts.via },
+        ts: opts.now ?? Date.now(),
+      });
+      return true;
+    } catch (err) {
+      log.debug(`practice repeat event failed: ${String(err)}`);
+      return false;
+    }
+  }
+
+  /**
+   * A task type was merged or renamed: move what was scoped to the old slug.
+   * A practice that nearly matches a live one already at the new scope is
+   * folded into it (evidence and events move, the duplicate row goes), so
+   * the merged type never holds the same instruction twice.
+   */
+  repointTaskScope(fromSlug: string, intoSlug: string): number {
+    const from = normalizeScope(`task:${fromSlug}`);
+    const into = normalizeScope(`task:${intoSlug}`);
+    if (!from || !into || from === into) {
+      return 0;
+    }
+    return inSavepoint(this.db, "practice_repoint", () => {
+      let moved = 0;
+      const all = this.allRows();
+      const target = all.filter((p) => p.scope === into);
+      for (const practice of all.filter((p) => p.scope === from)) {
+        const twin = target.find(
+          (p) =>
+            (p.status === "active" || p.status === "candidate") &&
+            arePracticesNearDuplicate(p.statement, practice.statement),
+        );
+        if (!twin) {
+          this.db.prepare(`UPDATE practices SET scope = ? WHERE id = ?`).run(into, practice.id);
+          target.push({ ...practice, scope: into });
+          moved += 1;
+          continue;
+        }
+        const refs = [...new Set([...twin.evidenceRefs, ...practice.evidenceRefs])].slice(
+          -MAX_EVIDENCE_REFS,
+        );
+        // The live twin keeps its wording; an active duplicate makes it active.
+        const promote = practice.status === "active" && twin.status !== "active";
+        this.db
+          .prepare(
+            `UPDATE practices SET evidence_refs = ?, applied_count = applied_count + ?,
+               offer_count = MAX(offer_count, ?), status = ?, source = ? WHERE id = ?`,
+          )
+          .run(
+            JSON.stringify(refs),
+            practice.appliedCount,
+            practice.offerCount,
+            promote ? "active" : twin.status,
+            promote ? practice.source : twin.source,
+            twin.id,
+          );
+        this.db
+          .prepare(`UPDATE practice_events SET practice_id = ? WHERE practice_id = ?`)
+          .run(twin.id, practice.id);
+        this.db.prepare(`DELETE FROM practices WHERE id = ?`).run(practice.id);
+        twin.evidenceRefs = refs;
+        if (promote) {
+          twin.status = "active";
+        }
+        moved += 1;
+      }
+      return moved;
+    });
+  }
+
+  /**
+   * Event counts per practice and overall: prompt inclusions, repeats, offers
+   * and the owner's answers to them (`confirmed` counts a yes to an offer,
+   * not an un-retire). Counted from `practice_events`, so a
+   * practice that was merged away still counts under the one that kept it.
+   */
+  counters(): { overall: PracticeCounts; byPractice: Map<string, PracticeCounts> } {
+    const overall: PracticeCounts = { ...ZERO_COUNTS };
+    const byPractice = new Map<string, PracticeCounts>();
+    try {
+      const rows = this.db
+        .prepare(
+          `SELECT practice_id, kind, COUNT(*) AS n FROM practice_events
+            WHERE kind IN ('applied', 'repeat', 'offered', 'declined')
+               OR (kind = 'confirmed' AND detail LIKE '%"via":"offer"%')
+            GROUP BY practice_id, kind`,
+        )
+        .all() as unknown as Array<{ practice_id: string; kind: string; n: number }>;
+      for (const row of rows) {
+        const field = COUNTED_KINDS[row.kind];
+        if (!field) {
+          continue;
+        }
+        const counts = byPractice.get(row.practice_id) ?? { ...ZERO_COUNTS };
+        counts[field] += Number(row.n);
+        overall[field] += Number(row.n);
+        byPractice.set(row.practice_id, counts);
+      }
+    } catch (err) {
+      log.debug(`practice counters unavailable: ${String(err)}`);
+    }
+    return { overall, byPractice };
   }
 
   // ── Owner actions (owner-controls.ts wraps these with the audit log) ──────
@@ -613,9 +887,11 @@ export class PracticesStore {
 
   /**
    * The owner brings a practice back (from `retired` or `suppressed`), or
-   * activates a candidate. The result is `active` at the owner tier.
+   * activates a candidate. The result is `active` at the owner tier. `via:
+   * "offer"` marks a yes to an offer, which is what the counters count as
+   * `confirmed`.
    */
-  activate(id: string, now: number = Date.now()): boolean {
+  activate(id: string, now: number = Date.now(), via?: "offer"): boolean {
     return inSavepoint(this.db, "practice_activate", () => {
       const current = this.get(id);
       if (!current || current.status === "active") {
@@ -626,7 +902,10 @@ export class PracticesStore {
           `UPDATE practices SET status = 'active', source = 'owner', updated_at = ? WHERE id = ?`,
         )
         .run(now, id);
-      this.writeEvent(id, "confirmed", { detail: { from: current.status }, ts: now });
+      this.writeEvent(id, "confirmed", {
+        detail: { from: current.status, ...(via ? { via } : {}) },
+        ts: now,
+      });
       return true;
     });
   }

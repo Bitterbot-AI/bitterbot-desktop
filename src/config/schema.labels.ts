@@ -52,6 +52,8 @@ export const FIELD_LABELS: Record<string, string> = {
   "memory.correction.enabled": "Capture Corrections As You Chat",
   "memory.correction.confirm": "Confirm Memory Updates In Replies",
   "memory.practices.enabled": "Standing Practices",
+  "memory.practices.followUps.enabled": "Learn Practices From Follow-ups",
+  "memory.practices.offers.enabled": "Offer Practices In Replies",
   "session.memory": "Learn From Conversations",
   "tools.wallet.enabled": "Wallet Tool",
   "tools.wallet.network": "Wallet Network",

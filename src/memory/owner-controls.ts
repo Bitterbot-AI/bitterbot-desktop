@@ -42,7 +42,11 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import type { DatabaseSync } from "node:sqlite";
-import type { CanonicalFactsStore, CanonicalSource } from "./canonical-facts.js";
+import {
+  type CanonicalFactsStore,
+  type CanonicalSource,
+  normalizeScopeName,
+} from "./canonical-facts.js";
 import { insertEditedChunkCopy } from "./chunk-writer.js";
 import { yieldToEventLoop } from "./event-loop.js";
 import {
@@ -78,6 +82,7 @@ import type {
   PracticesStore,
   PracticeUpsertResult,
 } from "./practices.js";
+import type { MergeResult, TaskTypesStore } from "./task-types.js";
 
 /** Id prefixes of memories that exist only in the database (the agent's own). */
 export const OWNER_EDITABLE_PREFIXES = [
@@ -655,6 +660,60 @@ export function unretirePractice(db: DatabaseSync, store: PracticesStore, id: st
       writeAudit(db, `practice:${id}`, "owner_unretire_practice", {});
     }
     return ok;
+  });
+}
+
+/**
+ * PLAN-64 Phase 1b: the owner's bare yes or no to a practice offer. Yes
+ * makes the candidate an active owner-tier practice (`confirmed`); no
+ * suppresses it for good (`declined`). False when it is no longer a
+ * candidate.
+ */
+export function answerPracticeOffer(
+  db: DatabaseSync,
+  store: PracticesStore,
+  id: string,
+  answer: "yes" | "no",
+): boolean {
+  return inSavepoint(db, "owner_answer_offer", () => {
+    if (store.get(id)?.status !== "candidate") {
+      return false;
+    }
+    const ok = answer === "yes" ? store.activate(id, Date.now(), "offer") : store.suppress(id);
+    if (ok) {
+      writeAudit(
+        db,
+        `practice:${id}`,
+        answer === "yes" ? "owner_confirm_practice" : "owner_decline_practice",
+        { via: "offer" },
+      );
+    }
+    return ok;
+  });
+}
+
+/**
+ * PLAN-64 Phase 1b: fold one task type into another as the owner (word
+ * overlap can split one task into several types). Practices scoped to the
+ * merged slug move with it (the store's `onMerge`).
+ */
+export function mergeTaskTypes(
+  db: DatabaseSync,
+  taskTypes: TaskTypesStore,
+  fromSlug: string,
+  intoSlug: string,
+): MergeResult {
+  return inSavepoint(db, "owner_merge_task_types", () => {
+    const from = normalizeScopeName(fromSlug ?? "");
+    const into = normalizeScopeName(intoSlug ?? "");
+    if (!from || !into) {
+      return { ok: false, reason: "both task type slugs are needed" };
+    }
+    const result = taskTypes.merge(from, into);
+    if (result.ok) {
+      writeAudit(db, `task_type:${into}`, "owner_merge_task_types", { from, into });
+    }
+    return result;
   });
 }
 

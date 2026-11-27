@@ -36,6 +36,13 @@
  * turn supports (resolvePracticeScope). Off with `memory.practices.enabled
  * = false`.
  *
+ * PLAN-64 Phase 1b: when the caller says this turn follows a recurring-task
+ * answer (`followUp`), the follow-up check (practice-followups.ts) rides on
+ * the same call as one more prompt section, or is the turn's one call when
+ * the pre-filter did not fire. Still at most one model call per owner turn.
+ * A captured explicit practice that nearly matches a practice already
+ * active for the turn writes a `repeat` event on it.
+ *
  * Skipped: heartbeats, cron, subagents, A2A, circles, group/channel chats
  * and guests (classifySessionKeyTrust), non-owner senders, the slug
  * generator and isolated cron runs (they never reach the hook),
@@ -62,7 +69,19 @@ import {
   normalizeScopeName,
 } from "./canonical-facts.js";
 import type { OwnerPinInput, OwnerPinResult, SavePracticeInput } from "./owner-controls.js";
-import type { Practice, PracticesStore, PracticeUpsertResult } from "./practices.js";
+import {
+  buildFollowUpGapPrompt,
+  buildFollowUpPromptSection,
+  type FollowUpContext,
+  type FollowUpGap,
+  parseFollowUpGap,
+} from "./practice-followups.js";
+import {
+  arePracticesNearDuplicate,
+  type Practice,
+  type PracticesStore,
+  type PracticeUpsertResult,
+} from "./practices.js";
 import {
   buildCorrectionExtractionPrompt,
   type CorrectionFact,
@@ -71,7 +90,7 @@ import {
   parseCorrectionResponse,
 } from "./session-extractor.js";
 import { classifySessionKeyTrust } from "./session-trust.js";
-import { contentWords } from "./task-types.js";
+import { contentWords, stripMessageEnvelope } from "./task-types.js";
 
 const log = createSubsystemLogger("memory/correction");
 
@@ -289,6 +308,32 @@ export function matchesCorrectionPrefilter(text: string): string | null {
   return null;
 }
 
+/** The shapes that make a follow-up an explicit standing instruction ("give me X too"). */
+const EXPLICIT_INSTRUCTION_PATTERNS: ReadonlySet<string> = new Set([
+  "always",
+  "from-now-on",
+  "give-too",
+]);
+
+/**
+ * PLAN-64 Phase 1b: is this message an explicit instruction to do something
+ * every time ("give me X too", "always include X", "from now on ...")? One
+ * such follow-up is enough to offer the practice; anything else needs two
+ * sightings.
+ */
+export function isExplicitStandingInstruction(text: string): boolean {
+  const prose = stripNonProse(text).replace(/[\u2018\u2019]/g, "'");
+  if (!prose.trim()) {
+    return false;
+  }
+  return CORRECTION_PREFILTER_PATTERNS.some(
+    (pattern) =>
+      EXPLICIT_INSTRUCTION_PATTERNS.has(pattern.name) &&
+      pattern.rx.test(prose) &&
+      !(pattern.unless && pattern.unless.test(prose)),
+  );
+}
+
 export type CorrectionTier = "owner" | "extraction";
 
 export type CorrectionWrite = {
@@ -321,6 +366,8 @@ export type PracticeWrite = {
   tier: CorrectionTier;
   /** The task type's plain label, for the confirmation line. */
   taskLabel?: string;
+  /** PLAN-64 Phase 1b: the already active practice this one repeated, when it did. */
+  repeatOf?: string;
 };
 
 /** What the pass needs to store practices (PLAN-64 Phase 1); absent disables it. */
@@ -355,6 +402,12 @@ export type CorrectionCaptureInput = {
   store: CanonicalFactsStore | null | undefined;
   /** PLAN-64 Phase 1: practice capture; ignored when `memory.practices.enabled` is false. */
   practices?: PracticeCaptureDeps | null;
+  /**
+   * PLAN-64 Phase 1b: this turn follows a recurring-task answer whose one
+   * gap check is still unspent. The check is made here so it shares the
+   * turn's single model call. Ignored without `practices`.
+   */
+  followUp?: FollowUpContext | null;
   /** The owner tier's writer (manager.ownerPinFact, which serialises on the maintenance mutex). */
   pinAsOwner: ((input: OwnerPinInput) => Promise<OwnerPinResult>) | null | undefined;
   /** The cheap-model lane (manager.correctionLlmCall); null disables the model call. */
@@ -375,6 +428,10 @@ export type CorrectionCaptureResult = {
   held: HeldSupersede[];
   /** PLAN-64 Phase 1: practices stored or widened this turn (candidates included). */
   practices: PracticeWrite[];
+  /** PLAN-64 Phase 1b: the follow-up classification, when one was asked for and usable. */
+  followUp: FollowUpGap | null;
+  /** The follow-up check was sent to the model on this turn (its one chance). */
+  followUpChecked: boolean;
   /** The "Memory updated" line for the reply, or null. */
   line: string | null;
 };
@@ -729,6 +786,8 @@ export async function runCorrectionCapture(
     writes: [],
     held: [],
     practices: [],
+    followUp: null,
+    followUpChecked: false,
     line: null,
   };
   const skipped = resolveCorrectionSkipReason(input);
@@ -750,8 +809,9 @@ export async function runCorrectionCapture(
     result.prefilter = matchesCorrectionPrefilter(input.userMessage);
     // Facts need the ledger and its owner writer; practices need their own.
     const canPinFacts = Boolean(store && input.pinAsOwner);
+    const followUp = practiceDeps && input.llmCall ? (input.followUp ?? null) : null;
     if (result.prefilter && input.llmCall && (canPinFacts || practiceDeps)) {
-      const extracted = await extractWithOneCall(input, result, Boolean(practiceDeps));
+      const extracted = await extractWithOneCall(input, result, Boolean(practiceDeps), followUp);
       const facts = canPinFacts ? extracted.facts : [];
       const practices = practiceDeps ? extracted.practices : [];
       const evidenceRef =
@@ -785,6 +845,9 @@ export async function runCorrectionCapture(
           result.practices.push(write);
         }
       }
+    } else if (followUp) {
+      // No corrective shape: the follow-up check is this turn's one call.
+      await classifyFollowUpAlone(input, result, followUp);
     }
     if (store) {
       // The model path: what the agent pinned itself during this run, and what
@@ -823,14 +886,18 @@ async function extractWithOneCall(
   input: CorrectionCaptureInput,
   result: CorrectionCaptureResult,
   withPractices: boolean,
+  followUp: FollowUpContext | null,
 ): Promise<{ facts: CorrectionFact[]; practices: CorrectionPractice[] }> {
-  const prompt = buildCorrectionExtractionPrompt({
-    userMessage: stripNonProse(input.userMessage),
-    assistantReply: input.assistantReply,
-    project: input.activeProject ?? null,
-    practices: withPractices,
-  });
+  const prose = stripNonProse(input.userMessage);
+  const prompt =
+    buildCorrectionExtractionPrompt({
+      userMessage: prose,
+      assistantReply: input.assistantReply,
+      project: input.activeProject ?? null,
+      practices: withPractices,
+    }) + (followUp ? buildFollowUpPromptSection(followUp, followUpOwnerText(prose)) : "");
   result.llmCalls += 1;
+  result.followUpChecked = Boolean(followUp);
   let raw: string;
   try {
     raw = await input.llmCall!(prompt, { signal: input.signal });
@@ -838,10 +905,38 @@ async function extractWithOneCall(
     log.warn(`correction capture LLM call failed: ${String(err)}`);
     return { facts: [], practices: [] };
   }
+  if (followUp) {
+    result.followUp = parseFollowUpGap(raw);
+  }
   return {
     facts: parseCorrectionResponse(raw),
     practices: withPractices ? parseCorrectionPractices(raw) : [],
   };
+}
+
+/** The owner's follow-up as the check sees it: prose, no channel envelope, one line. */
+function followUpOwnerText(prose: string): string {
+  return stripMessageEnvelope(prose).replace(/\s+/g, " ").trim();
+}
+
+async function classifyFollowUpAlone(
+  input: CorrectionCaptureInput,
+  result: CorrectionCaptureResult,
+  followUp: FollowUpContext,
+): Promise<void> {
+  const ownerText = followUpOwnerText(stripNonProse(input.userMessage));
+  if (!ownerText) {
+    return;
+  }
+  result.llmCalls += 1;
+  result.followUpChecked = true;
+  try {
+    result.followUp = parseFollowUpGap(
+      await input.llmCall!(buildFollowUpGapPrompt(followUp, ownerText), { signal: input.signal }),
+    );
+  } catch (err) {
+    log.warn(`follow-up check LLM call failed: ${String(err)}`);
+  }
 }
 
 /** Share of a statement's content words the owner's prose must contain for the owner tier. */
@@ -945,6 +1040,21 @@ async function saveCapturedPractice(params: {
   const ownerAuthored =
     practice.explicit && ownerProseSupportsStatement(input.userMessage, practice.statement);
   const tier: CorrectionTier = ownerAuthored ? "owner" : "extraction";
+  // PLAN-64 Phase 1b: the owner stating, again, something already active for
+  // this turn is a repeat (they had to say it twice). A counter only.
+  const repeated =
+    ownerAuthored && deps.store
+      ? deps.store
+          .listVisible({
+            activeProject: input.activeProject,
+            taskSlug: deps.taskType?.slug,
+            cronJobId: deps.cronJobId,
+          })
+          .find((p) => arePracticesNearDuplicate(p.statement, practice.statement))
+      : undefined;
+  if (repeated) {
+    deps.store!.recordRepeat(repeated.id, { sessionRef: params.evidenceRef, via: "correction" });
+  }
   const res = await deps.save({
     statement: practice.statement,
     scope,
@@ -967,6 +1077,7 @@ async function saveCapturedPractice(params: {
     ...(deps.taskType && res.practice.scope === `task:${deps.taskType.slug}`
       ? { taskLabel: deps.taskType.label }
       : {}),
+    ...(repeated ? { repeatOf: repeated.id } : {}),
   };
 }
 

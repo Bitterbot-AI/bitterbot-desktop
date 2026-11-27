@@ -66,6 +66,10 @@ export const FIELD_DEFAULTS: Record<string, unknown> = {
   // src/config/feature-switches.ts practicesEnabled() — only `=== false` turns off practice capture
   // (src/memory/correction-capture.ts), task typing and the prompt block (src/agents/practices-block.ts).
   "memory.practices.enabled": true,
+  // src/config/feature-switches.ts practiceFollowUpsEnabled() / practiceOffersEnabled() — only
+  // `=== false` turns off the follow-up check and the offer line (src/memory/practice-followup-turn.ts).
+  "memory.practices.followUps.enabled": true,
+  "memory.practices.offers.enabled": true,
   // src/memory/correction-capture.ts, src/memory/manager.ts runSessionExtraction,
   // src/memory/manager-sync-ops.ts syncSessionFiles — only `=== "off"` keeps conversations out.
   "session.memory": "on",

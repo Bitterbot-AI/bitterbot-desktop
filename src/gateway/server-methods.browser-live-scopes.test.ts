@@ -132,6 +132,8 @@ describe("memory control scopes (PLAN-53 G1)", () => {
       "memory.setPracticeScope",
       "memory.retirePractice",
       "memory.unretirePractice",
+      // PLAN-64 Phase 1b.
+      "memory.mergeTaskTypes",
     ]) {
       expect(coreGatewayHandlers[method], `${method} has a handler`).toBeTypeOf("function");
       expect(authorizeGatewayMethod(method, operatorWith(["operator.write"]))).not.toBeNull();

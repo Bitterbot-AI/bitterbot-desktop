@@ -21,6 +21,18 @@
  * their content words do. Pending types are capped and the least recently
  * seen are dropped. All work is bounded by those caps (a few hundred short
  * word sets per turn), so `observe` and `classify` are synchronous.
+ *
+ * PLAN-64 Phase 1b, because a replay of the owner's real messages split one
+ * task into three types:
+ * - Merge at naming time. The one naming call is shown the label and two
+ *   exemplars of each existing recurring type and may answer `same_as`
+ *   instead of a new name; the pending type is then folded into that type
+ *   (`merge`). The owner can merge two types by hand as well. Without a model
+ *   nothing is merged automatically.
+ * - A follow-up does not found a type. A turn inside the follow-up window of
+ *   a recurring-task answer that does not match a recurring type on its own
+ *   is not counted (`deferred`); the caller counts it later only when the
+ *   follow-up check says it was a new topic.
  */
 
 import crypto from "node:crypto";
@@ -42,6 +54,12 @@ const MAX_CONTENT_WORDS = 24;
 const MAX_TYPING_CHARS = 600;
 const MAX_EXEMPLARS = 8;
 const MAX_EXEMPLAR_CHARS = 200;
+/** A merged type keeps more exemplars, so the folded-in phrasings still match. */
+const MAX_MERGED_EXEMPLARS = 16;
+/** Exemplars of the folded-in type that survive a merge whatever the target holds. */
+const MERGE_KEPT_FROM = 4;
+/** Existing recurring types shown to the naming call. */
+const MAX_NAMING_EXISTING_TYPES = 20;
 export const MAX_PENDING_TYPES = 150;
 const PENDING_PREFIX = "pending-";
 const LABEL_TIMEOUT_MS = 8_000;
@@ -214,7 +232,33 @@ export function fallbackTaskSlug(exemplars: string[]): string {
 
 export type TaskLabelLlmCall = (prompt: string, opts?: { signal?: AbortSignal }) => Promise<string>;
 
-export function buildTaskLabelPrompt(exemplars: string[]): string {
+/** An existing recurring type as the naming call sees it. */
+export type NamingExistingType = { slug: string; label: string; exemplars: string[] };
+
+export function buildTaskLabelPrompt(
+  exemplars: string[],
+  existing: NamingExistingType[] = [],
+): string {
+  const known = existing.slice(0, MAX_NAMING_EXISTING_TYPES);
+  const knownBlock =
+    known.length > 0
+      ? `
+Kinds of request that already have a name:
+${known
+  .map(
+    (t) =>
+      `- ${t.slug} (${t.label || t.slug.replace(/-/g, " ")}): ${t.exemplars
+        .slice(0, 2)
+        .map((e) => JSON.stringify(e.slice(0, MAX_EXEMPLAR_CHARS)))
+        .join("; ")}`,
+  )
+  .join("\n")}
+
+If the requests above ask for the same kind of thing as one of these (the same task in other words, or the same task with one more item asked for), answer with that slug instead of a new name:
+{"same_as":"${known[0]!.slug}"}
+Only do that when an answer to one would also answer the other. When unsure, give a new name.
+`
+      : "";
   return `The owner of an assistant asks for the same kind of thing repeatedly. Name that kind of request.
 
 Requests:
@@ -222,10 +266,42 @@ ${exemplars
   .slice(0, MAX_EXEMPLARS)
   .map((e) => `- ${e}`)
   .join("\n")}
-
+${knownBlock}
 Respond with ONLY a JSON object (no markdown fences):
 {"slug":"repo-stats","label":"repo stats"}
 "slug": 1 to 3 lowercase words joined by hyphens. "label": the same in plain words, at most 4 words. Describe the kind of request, not one instance: no dates, no numbers, no names of people.`;
+}
+
+export type TaskNaming =
+  | { kind: "new"; slug: string; label: string }
+  | { kind: "same"; slug: string };
+
+/**
+ * Parse the naming response when existing types were offered: `same_as`
+ * counts only when it names one of the slugs that were shown (anything else
+ * is ignored and the new name, if any, is used).
+ */
+export function parseTaskNamingResponse(
+  raw: string,
+  existingSlugs: ReadonlySet<string>,
+): TaskNaming | null {
+  try {
+    const cleaned = raw
+      .replace(/^```(?:json)?\s*\n?/m, "")
+      .replace(/\n?```\s*$/m, "")
+      .trim();
+    const parsed = JSON.parse(cleaned) as { same_as?: unknown };
+    if (typeof parsed.same_as === "string") {
+      const same = normalizeScopeName(parsed.same_as.trim().slice(0, 64));
+      if (same && existingSlugs.has(same)) {
+        return { kind: "same", slug: same };
+      }
+    }
+  } catch {
+    return null;
+  }
+  const named = parseTaskLabelResponse(raw);
+  return named ? { kind: "new", ...named } : null;
 }
 
 /** Parse the labelling response. Null on anything unusable (the fallback is used then). */
@@ -265,7 +341,24 @@ export type ObserveResult = {
    * its pending slug: the caller should run `promote` (it names the type).
    */
   needsPromotion: boolean;
+  /**
+   * The turn sits in the follow-up window of a recurring-task answer and
+   * matched no recurring type on its own: it was not counted. The caller
+   * counts it later (`observe` without `followUpOf`) when the follow-up check
+   * says it was a new topic.
+   */
+  deferred?: boolean;
 };
+
+export type TaskTypesStoreOptions = {
+  /**
+   * Called inside the merge transaction, after the type rows changed: the
+   * place to re-point whatever is scoped to the merged or renamed slug.
+   */
+  onMerge?: (fromSlug: string, intoSlug: string) => void;
+};
+
+export type MergeResult = { ok: true; type: TaskType } | { ok: false; reason: string };
 
 type SessionTurn = { turnKey: string; textHash: string; slug: string | null; at: number };
 
@@ -283,8 +376,13 @@ export class TaskTypesStore {
   /** The last two typed owner turns per session (in memory; lost on restart). */
   private readonly sessionTurns = new Map<string, SessionTurn[]>();
   private readonly promoting = new Set<string>();
+  /** Deferred follow-up turns (`<sessionKey>|<text hash>`), until counted or forgotten. */
+  private readonly deferredTurns = new Set<string>();
 
-  constructor(private readonly db: DatabaseSync) {}
+  constructor(
+    private readonly db: DatabaseSync,
+    private readonly opts: TaskTypesStoreOptions = {},
+  ) {}
 
   list(opts: { recurringOnly?: boolean } = {}): TaskType[] {
     try {
@@ -361,7 +459,17 @@ export class TaskTypesStore {
    */
   observe(
     text: string,
-    opts: { now?: number; turnKey?: string; sessionKey?: string } = {},
+    opts: {
+      now?: number;
+      turnKey?: string;
+      sessionKey?: string;
+      /**
+       * Slug of the recurring type whose answer this turn follows (same
+       * session, inside the follow-up window). Set: a turn that matches no
+       * recurring type on its own is deferred instead of counted.
+       */
+      followUpOf?: string | null;
+    } = {},
   ): ObserveResult {
     const none: ObserveResult = { type: null, duplicate: false, needsPromotion: false };
     const now = opts.now ?? Date.now();
@@ -379,6 +487,18 @@ export class TaskTypesStore {
         return none;
       }
       const match = this.bestMatch(words, this.list());
+      if (opts.followUpOf && !match?.type.recurring) {
+        // A follow-up never founds (or feeds) a type of its own.
+        this.rememberSessionTurn(opts.sessionKey, opts.turnKey, text, null, now);
+        this.deferredTurns.add(`${opts.sessionKey ?? ""}|${textHash(text)}`);
+        if (this.deferredTurns.size > MAX_TRACKED_TURN_KEYS) {
+          const first = this.deferredTurns.values().next().value;
+          if (first !== undefined) {
+            this.deferredTurns.delete(first);
+          }
+        }
+        return { ...none, deferred: true };
+      }
       const type = match ? this.bump(match.type, text, now) : this.insertPending(text, now);
       // The slug is kept even while the type is pending: it may be promoted
       // (and renamed) before the next turn asks what preceded it.
@@ -392,6 +512,27 @@ export class TaskTypesStore {
       log.debug(`task typing failed: ${String(err)}`);
       return none;
     }
+  }
+
+  /**
+   * The follow-up check said a deferred turn was a new topic after all:
+   * count it now, as any other turn. A turn that was not deferred (or whose
+   * deferral this process no longer remembers) is left alone, so nothing is
+   * counted twice.
+   */
+  countDeferred(sessionKey: string | undefined, text: string, now: number = Date.now()): boolean {
+    const key = `${sessionKey ?? ""}|${textHash(text)}`;
+    if (!this.deferredTurns.delete(key)) {
+      return false;
+    }
+    // A type that reaches the threshold here is named on its next turn
+    // (`observe` reports `needsPromotion` for as long as it is eligible).
+    return this.observe(text, { now }).type !== null;
+  }
+
+  /** A deferred turn turned out to be a follow-up: forget it without counting. */
+  dropDeferred(sessionKey: string | undefined, text: string): void {
+    this.deferredTurns.delete(`${sessionKey ?? ""}|${textHash(text)}`);
   }
 
   private bump(type: TaskType, text: string, now: number): TaskType {
@@ -461,7 +602,8 @@ export class TaskTypesStore {
       if (!before || before.recurring) {
         return before;
       }
-      let named: { slug: string; label: string } | null = null;
+      let named: TaskNaming | null = null;
+      const existing = this.namingCandidates(pendingSlug);
       if (llmCall) {
         const abort = new AbortController();
         const timer = setTimeout(
@@ -469,8 +611,11 @@ export class TaskTypesStore {
           LABEL_TIMEOUT_MS,
         );
         try {
-          named = parseTaskLabelResponse(
-            await llmCall(buildTaskLabelPrompt(before.exemplars), { signal: abort.signal }),
+          named = parseTaskNamingResponse(
+            await llmCall(buildTaskLabelPrompt(before.exemplars, existing), {
+              signal: abort.signal,
+            }),
+            new Set(existing.map((t) => t.slug)),
           );
         } catch (err) {
           log.debug(`task label call failed, using the fallback: ${String(err)}`);
@@ -478,9 +623,215 @@ export class TaskTypesStore {
           clearTimeout(timer);
         }
       }
-      return this.finalize(pendingSlug, named);
+      if (named?.kind === "same") {
+        // Re-read: eligibility may have changed while the model was called.
+        const now = this.get(pendingSlug);
+        if (!now || now.recurring) {
+          return now;
+        }
+        const merged = this.merge(pendingSlug, named.slug);
+        if (merged.ok) {
+          log.info(`task type folded into ${named.slug} at naming time (${pendingSlug})`);
+          return merged.type;
+        }
+        return this.finalize(pendingSlug, null);
+      }
+      return this.finalize(pendingSlug, named ? { slug: named.slug, label: named.label } : null);
     } finally {
       this.promoting.delete(pendingSlug);
+    }
+  }
+
+  /** The recurring types a naming call may fold a type into, most recently seen first. */
+  private namingCandidates(exceptSlug: string): NamingExistingType[] {
+    return this.list({ recurringOnly: true })
+      .filter((t) => t.slug !== exceptSlug)
+      .slice(0, MAX_NAMING_EXISTING_TYPES)
+      .map((t) => ({ slug: t.slug, label: t.label, exemplars: t.exemplars }));
+  }
+
+  /**
+   * Fold one task type into another: exemplars (bounded, the folded-in
+   * type's first MERGE_KEPT_FROM always kept), occurrence counts and first
+   * and last seen are combined, the `from` row is deleted, and `onMerge`
+   * re-points what was scoped to it. One transaction. The result is
+   * recurring when either type was.
+   */
+  merge(fromSlug: string, intoSlug: string): MergeResult {
+    if (fromSlug === intoSlug) {
+      return { ok: false, reason: "a task type cannot be merged into itself" };
+    }
+    try {
+      this.db.exec("SAVEPOINT task_type_merge");
+      try {
+        const from = this.get(fromSlug);
+        const into = this.get(intoSlug);
+        if (!from || !into) {
+          this.db.exec("RELEASE task_type_merge");
+          return { ok: false, reason: `no task type named ${!from ? fromSlug : intoSlug}` };
+        }
+        const known = new Set(into.exemplars.map((e) => contentWords(e).join(" ")));
+        const extra = from.exemplars.filter((e) => !known.has(contentWords(e).join(" ")));
+        const keptFrom = Math.min(extra.length, MERGE_KEPT_FROM);
+        const base = into.exemplars.slice(0, MAX_MERGED_EXEMPLARS - keptFrom);
+        const exemplars = [...base, ...extra].slice(0, MAX_MERGED_EXEMPLARS);
+        const firstSeen = Math.min(from.firstSeen, into.firstSeen);
+        const lastSeen = Math.max(from.lastSeen, into.lastSeen);
+        // Both types may have been seen on the same days: the sum is capped
+        // by the days the merged type spans.
+        const span = Math.floor((lastSeen - firstSeen) / 86_400_000) + 1;
+        const merged: TaskType = {
+          ...into,
+          exemplars,
+          occurrences: into.occurrences + from.occurrences,
+          distinctDays: Math.max(
+            into.distinctDays,
+            Math.min(into.distinctDays + from.distinctDays, span),
+          ),
+          firstSeen,
+          lastSeen,
+          recurring: into.recurring || from.recurring,
+          label: into.label || from.label,
+        };
+        this.db.prepare(`DELETE FROM task_types WHERE slug = ?`).run(fromSlug);
+        this.db
+          .prepare(
+            `UPDATE task_types SET label = ?, exemplars = ?, occurrences = ?, distinct_days = ?,
+               first_seen = ?, last_seen = ?, recurring = ? WHERE slug = ?`,
+          )
+          .run(
+            merged.label,
+            JSON.stringify(exemplars),
+            merged.occurrences,
+            merged.distinctDays,
+            firstSeen,
+            lastSeen,
+            merged.recurring ? 1 : 0,
+            intoSlug,
+          );
+        this.opts.onMerge?.(fromSlug, intoSlug);
+        this.db.exec("RELEASE task_type_merge");
+        this.repointSessionTurns(fromSlug, intoSlug);
+        return { ok: true, type: merged };
+      } catch (err) {
+        this.db.exec("ROLLBACK TO task_type_merge");
+        this.db.exec("RELEASE task_type_merge");
+        throw err;
+      }
+    } catch (err) {
+      log.debug(`task type merge failed: ${String(err)}`);
+      return { ok: false, reason: "the task types could not be merged" };
+    }
+  }
+
+  /**
+   * Name an already recurring type again with the model (the backfill names
+   * with the fallback first, so it can count before it spends): `same_as`
+   * folds it into another recurring type, a new name renames it (and
+   * `onMerge` re-points what was scoped to the old slug). Returns the type
+   * as it now is; unchanged when there is no usable answer.
+   */
+  async relabel(slug: string, llmCall: TaskLabelLlmCall): Promise<TaskType | null> {
+    const before = this.get(slug);
+    if (!before?.recurring) {
+      return before;
+    }
+    const existing = this.namingCandidates(slug);
+    let named: TaskNaming | null = null;
+    const abort = new AbortController();
+    const timer = setTimeout(
+      () => abort.abort(new Error("task label timed out")),
+      LABEL_TIMEOUT_MS,
+    );
+    try {
+      named = parseTaskNamingResponse(
+        await llmCall(buildTaskLabelPrompt(before.exemplars, existing), { signal: abort.signal }),
+        new Set(existing.map((t) => t.slug)),
+      );
+    } catch (err) {
+      log.debug(`task relabel call failed: ${String(err)}`);
+    } finally {
+      clearTimeout(timer);
+    }
+    if (!named || !this.get(slug)) {
+      return this.get(slug);
+    }
+    if (named.kind === "same") {
+      const merged = this.merge(slug, named.slug);
+      return merged.ok ? merged.type : this.get(slug);
+    }
+    if (named.slug === slug || this.get(named.slug)) {
+      // Same slug, or the new one is taken: keep the slug, take the label.
+      this.db.prepare(`UPDATE task_types SET label = ? WHERE slug = ?`).run(named.label, slug);
+      return this.get(slug);
+    }
+    try {
+      this.db.exec("SAVEPOINT task_type_rename");
+      try {
+        this.db
+          .prepare(`UPDATE task_types SET slug = ?, label = ? WHERE slug = ?`)
+          .run(named.slug, named.label, slug);
+        this.opts.onMerge?.(slug, named.slug);
+        this.db.exec("RELEASE task_type_rename");
+      } catch (err) {
+        this.db.exec("ROLLBACK TO task_type_rename");
+        this.db.exec("RELEASE task_type_rename");
+        throw err;
+      }
+      this.repointSessionTurns(slug, named.slug);
+      return this.get(named.slug);
+    } catch (err) {
+      log.debug(`task type rename failed: ${String(err)}`);
+      return this.get(slug);
+    }
+  }
+
+  /**
+   * Take over a recurring type found elsewhere (the backfill's replay of old
+   * transcripts): inserted when the slug is new here; when it already exists
+   * only its exemplars are extended (bounded), counts are left alone.
+   * Returns "added", "extended" or null when nothing changed.
+   */
+  adopt(type: TaskType): "added" | "extended" | null {
+    try {
+      const existing = this.get(type.slug);
+      if (!existing) {
+        this.db
+          .prepare(`INSERT INTO task_types (${COLUMNS}) VALUES (?, ?, ?, ?, ?, ?, ?, 1)`)
+          .run(
+            type.slug,
+            type.label,
+            JSON.stringify(type.exemplars.slice(0, MAX_MERGED_EXEMPLARS)),
+            type.occurrences,
+            type.distinctDays,
+            type.firstSeen,
+            type.lastSeen,
+          );
+        return "added";
+      }
+      const known = new Set(existing.exemplars.map((e) => contentWords(e).join(" ")));
+      const extra = type.exemplars.filter((e) => !known.has(contentWords(e).join(" ")));
+      const exemplars = [...existing.exemplars, ...extra].slice(0, MAX_MERGED_EXEMPLARS);
+      if (exemplars.length === existing.exemplars.length) {
+        return null;
+      }
+      this.db
+        .prepare(`UPDATE task_types SET exemplars = ? WHERE slug = ?`)
+        .run(JSON.stringify(exemplars), type.slug);
+      return "extended";
+    } catch (err) {
+      log.debug(`task type adopt failed: ${String(err)}`);
+      return null;
+    }
+  }
+
+  private repointSessionTurns(fromSlug: string, intoSlug: string): void {
+    for (const turns of this.sessionTurns.values()) {
+      for (const turn of turns) {
+        if (turn.slug === fromSlug) {
+          turn.slug = intoSlug;
+        }
+      }
     }
   }
 
@@ -515,13 +866,7 @@ export class TaskTypesStore {
       this.db
         .prepare(`UPDATE task_types SET slug = ?, label = ?, recurring = 1 WHERE slug = ?`)
         .run(slug, label, pendingSlug);
-      for (const turns of this.sessionTurns.values()) {
-        for (const turn of turns) {
-          if (turn.slug === pendingSlug) {
-            turn.slug = slug;
-          }
-        }
-      }
+      this.repointSessionTurns(pendingSlug, slug);
       log.info(`task type is now recurring: ${slug} (${type.occurrences} occurrences)`);
       return { ...type, slug, label, recurring: true };
     } catch (err) {
@@ -599,13 +944,21 @@ export class TaskTypesStore {
  */
 export function observeOwnerTurn(
   store: TaskTypesStore,
-  params: { text: string; sessionKey?: string; turnKey?: string; now?: number },
+  params: {
+    text: string;
+    sessionKey?: string;
+    turnKey?: string;
+    now?: number;
+    /** See TaskTypesStore.observe: the recurring type whose answer this turn follows. */
+    followUpOf?: string | null;
+  },
   llmCall?: TaskLabelLlmCall | null,
 ): { slug: string; label: string } | null {
   const observed = store.observe(params.text, {
     turnKey: params.turnKey,
     sessionKey: params.sessionKey,
     now: params.now,
+    followUpOf: params.followUpOf,
   });
   let type = observed.type;
   if (type && observed.needsPromotion) {

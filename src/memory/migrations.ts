@@ -2916,6 +2916,36 @@ export const MIGRATIONS: Migration[] = [
       );
     },
   },
+  {
+    version: 82,
+    description:
+      "PLAN-64 Phase 1b (2026-11-27): follow-up learning state. One row per owner " +
+      "session: the last recurring-task answer (task slug, the owner's request, an " +
+      "excerpt of the answer, when it was sent, whether its one gap check was spent), " +
+      "the practice offer the last reply carried, and the owner's yes or no to it until " +
+      "the reply reports it. Persisted so a gateway restart between an answer and the " +
+      "follow-up, or between an offer and its answer, does not lose the link.",
+    up: (db) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS practice_session_state (
+          session_key TEXT PRIMARY KEY,
+          session_id TEXT,
+          task_slug TEXT,
+          owner_text TEXT,
+          answer_text TEXT,
+          answered_at INTEGER,
+          gap_checked INTEGER NOT NULL DEFAULT 0,
+          offer_practice_id TEXT,
+          offered_at INTEGER,
+          answer_practice_id TEXT,
+          answer_kind TEXT,
+          answer_run_id TEXT,
+          answer_at INTEGER,
+          updated_at INTEGER NOT NULL
+        );
+      `);
+    },
+  },
 ];
 
 /**

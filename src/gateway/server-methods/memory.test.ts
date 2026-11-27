@@ -14,7 +14,9 @@ import { ensureMemoryIndexSchema } from "../../memory/memory-schema.js";
 import { listSuppressions } from "../../memory/memory-suppressions.js";
 import {
   editPractice,
+  listAuditLog,
   listPractices,
+  mergeTaskTypes,
   pinFact,
   retireFact,
   retirePractice,
@@ -69,7 +71,9 @@ beforeEach(() => {
   store = new CanonicalFactsStore(db);
   store.pin({ key: "infra.deploy_endpoint", value: "api.acme.com", source: "extraction" });
   practices = new PracticesStore(db);
-  taskTypes = new TaskTypesStore(db);
+  taskTypes = new TaskTypesStore(db, {
+    onMerge: (from, into) => practices.repointTaskScope(from, into),
+  });
   const manager = {
     // PLAN-64 Phase 1: the same thin wrappers the real manager has.
     taskTypes: () => taskTypes,
@@ -83,6 +87,10 @@ beforeEach(() => {
       setPracticeScope(db, practices, id, scope),
     ownerRetirePractice: async (id: string) => retirePractice(db, practices, id),
     ownerUnretirePractice: async (id: string) => unretirePractice(db, practices, id),
+    // PLAN-64 Phase 1b.
+    practiceCounters: () => practices.counters(),
+    ownerMergeTaskTypes: async (from: string, into: string) =>
+      mergeTaskTypes(db, taskTypes, from, into),
     canonicalFacts: () => store,
     ownerRetireFact: async (key: string) => retireFact(db, store, key),
     ownerUnretireFact: async (key: string) => unretireFact(db, store, key),
@@ -369,5 +377,88 @@ describe("memory.practices and its mutations (PLAN-64 Phase 1)", () => {
     expect(((await call(list, {})).payload as Listed).taskTypes).toMatchObject([
       { slug: "repo-stats", label: "repo stats", occurrences: 3, distinctDays: 3 },
     ]);
+  });
+});
+
+describe("practice counters and memory.mergeTaskTypes (PLAN-64 Phase 1b)", () => {
+  const list = memoryHandlers["memory.practices"]!;
+  const merge = memoryHandlers["memory.mergeTaskTypes"]!;
+  const seedType = (slug: string, exemplar: string) =>
+    taskTypes.adopt({
+      slug,
+      label: slug.replace(/-/g, " "),
+      exemplars: [exemplar],
+      occurrences: 3,
+      distinctDays: 3,
+      firstSeen: 1,
+      lastSeen: 2,
+      recurring: true,
+    });
+
+  it("memory.practices returns counts per practice and overall", async () => {
+    const active = practices.upsert({
+      statement: "Include npm downloads.",
+      scope: "task:repo-stats",
+      source: "owner",
+    });
+    const candidate = practices.upsert({
+      statement: "Include views and traffic.",
+      scope: "task:repo-stats",
+      source: "extraction",
+      origin: "follow_up",
+    });
+    if (!active.ok || !candidate.ok) {
+      throw new Error("unreachable");
+    }
+    practices.recordApplied([active.practice.id], { turnKey: "r1" });
+    practices.recordApplied([active.practice.id], { turnKey: "r2" });
+    practices.recordRepeat(active.practice.id, { via: "follow_up" });
+    practices.recordOffer(candidate.practice.id, { sessionId: "s1" });
+    practices.suppress(candidate.practice.id);
+    const payload = (await call(list, {})).payload as {
+      practices: Array<{ id: string; counts: Record<string, number> }>;
+      counters: Record<string, number>;
+    };
+    expect(payload.counters).toEqual({
+      applied: 2,
+      repeats: 1,
+      offers: 1,
+      confirmed: 0,
+      declined: 1,
+    });
+    expect(payload.practices.find((p) => p.id === active.practice.id)?.counts).toEqual({
+      applied: 2,
+      repeats: 1,
+      offers: 0,
+      confirmed: 0,
+      declined: 0,
+    });
+    expect(payload.practices.find((p) => p.id === candidate.practice.id)?.counts).toMatchObject({
+      offers: 1,
+      declined: 1,
+    });
+  });
+
+  it("memory.mergeTaskTypes folds one type into another and moves its practices", async () => {
+    seedType("repo-stats", "How many clones did your repo get yesterday?");
+    seedType("npm-download-clone", "how about our npm downloads");
+    const saved = practices.upsert({
+      statement: "Include npm downloads.",
+      scope: "task:npm-download-clone",
+      source: "owner",
+    });
+    const res = await call(merge, { from: "npm-download-clone", into: "repo-stats" });
+    expect(res.ok).toBe(true);
+    expect(res.payload).toMatchObject({
+      ok: true,
+      taskType: { slug: "repo-stats", occurrences: 6 },
+    });
+    expect(taskTypes.get("npm-download-clone")).toBeNull();
+    expect(saved.ok && practices.get(saved.practice.id)?.scope).toBe("task:repo-stats");
+    expect(listAuditLog(db, {}).some((e) => e.event === "owner_merge_task_types")).toBe(true);
+    // Unknown or missing slugs are a refused request, nothing changes.
+    expect((await call(merge, { from: "nope", into: "repo-stats" })).ok).toBe(false);
+    expect((await call(merge, { from: "", into: "repo-stats" })).ok).toBe(false);
+    expect(taskTypes.get("repo-stats")?.occurrences).toBe(6);
   });
 });

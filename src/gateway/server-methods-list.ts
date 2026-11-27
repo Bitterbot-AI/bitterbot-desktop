@@ -247,6 +247,7 @@ const BASE_METHODS = [
   "memory.setPracticeScope",
   "memory.retirePractice",
   "memory.unretirePractice",
+  "memory.mergeTaskTypes",
   "memory.export",
   "memory.forgetPreview",
   "memory.exportDownload",

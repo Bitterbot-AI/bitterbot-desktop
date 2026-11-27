@@ -8,7 +8,9 @@
  * link; memory.import restores an export. PLAN-64 Phase 1: memory.practices
  * (read) lists standing practices; memory.savePractice, memory.editPractice,
  * memory.setPracticeScope, memory.retirePractice and memory.unretirePractice
- * change them (admin).
+ * change them (admin). PLAN-64 Phase 1b: memory.practices also returns event
+ * counters; memory.mergeTaskTypes folds one recurring task type into another
+ * (admin).
  */
 
 import os from "node:os";
@@ -287,8 +289,16 @@ export const memoryHandlers: GatewayRequestHandlers = {
       const status = (PRACTICE_STATUSES as readonly string[]).includes(str(params.status))
         ? (str(params.status) as PracticeStatus)
         : undefined;
+      // PLAN-64 Phase 1b: event counts (prompt inclusions, repeats, offers
+      // and the owner's answers), per practice and overall.
+      const counters = m.practiceCounters();
+      const zero = { applied: 0, repeats: 0, offers: 0, confirmed: 0, declined: 0 };
       respond(true, {
-        practices: m.ownerListPractices(status ? { statuses: [status] } : {}),
+        practices: m.ownerListPractices(status ? { statuses: [status] } : {}).map((p) => ({
+          ...p,
+          counts: counters.byPractice.get(p.id) ?? zero,
+        })),
+        counters: counters.overall,
         taskTypes: m
           .taskTypes()
           .list({ recurringOnly: true })
@@ -324,6 +334,34 @@ export const memoryHandlers: GatewayRequestHandlers = {
         return;
       }
       respond(true, result);
+    } catch (err) {
+      fail(respond, err);
+    }
+  },
+
+  /**
+   * PLAN-64 Phase 1b: fold task type `from` into `into` (word-overlap typing
+   * can split one task into several types). Practices scoped to `from` move
+   * to `into`. Audited.
+   */
+  "memory.mergeTaskTypes": async ({ params, respond }) => {
+    try {
+      const m = await memoryManager(str(params.agentId));
+      const result = await m.ownerMergeTaskTypes(str(params.from), str(params.into));
+      if (!result.ok) {
+        respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, result.reason));
+        return;
+      }
+      respond(true, {
+        ok: true,
+        taskType: {
+          slug: result.type.slug,
+          label: result.type.label,
+          occurrences: result.type.occurrences,
+          distinctDays: result.type.distinctDays,
+          lastSeen: result.type.lastSeen,
+        },
+      });
     } catch (err) {
       fail(respond, err);
     }

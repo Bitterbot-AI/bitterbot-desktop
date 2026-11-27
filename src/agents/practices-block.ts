@@ -23,10 +23,18 @@
  * "Applied" is prompt inclusion: every practice rendered gets an `applied`
  * event and its `applied_count` bumped, once per run. Nothing here knows
  * whether the answer followed it.
+ *
+ * PLAN-64 Phase 1b: the same resolver carries one per-turn note. When the
+ * owner's message is a bare yes or no to the practice offer the previous
+ * reply ended with, the answer is applied here (no model call) and a short
+ * "Practice offer answered" section tells the agent what the message was
+ * answering. The offer line is generated outside the model and is not in
+ * its transcript, so without the note a bare "yes" has no question before
+ * it. Owner turns only; rendered with or without practices.
  */
 
 import type { BitterbotConfig } from "../config/config.js";
-import { practicesEnabled } from "../config/feature-switches.js";
+import { practiceOffersEnabled, practicesEnabled } from "../config/feature-switches.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { stripNonProse } from "../memory/correction-capture.js";
 import type { Practice } from "../memory/practices.js";
@@ -168,6 +176,12 @@ export type PracticesBlockManager = {
     sessionKey?: string;
     turnKey?: string;
   }) => { slug: string; label: string } | null;
+  /** PLAN-64 Phase 1b: applies a bare yes/no to a pending offer; returns the agent's note. */
+  resolvePracticeOfferNote?: (params: {
+    sessionKey?: string;
+    text: string;
+    runId?: string;
+  }) => Promise<string | null>;
 };
 
 const JOB_ONLY: ReadonlySet<string> = new Set(["job"]);
@@ -226,6 +240,26 @@ export function buildPracticesBlock(
   return block;
 }
 
+async function resolveOfferNote(
+  manager: PracticesBlockManager,
+  params: { sessionKey?: string; prompt?: string; runId?: string },
+): Promise<string | null> {
+  try {
+    const text = stripNonProse(params.prompt ?? "").trim();
+    if (!text || !manager.resolvePracticeOfferNote) {
+      return null;
+    }
+    return await manager.resolvePracticeOfferNote({
+      sessionKey: params.sessionKey,
+      text,
+      runId: params.runId,
+    });
+  } catch (err) {
+    log.debug(`practice offer note unavailable: ${String(err)}`);
+    return null;
+  }
+}
+
 export async function resolvePracticesBlock(
   params: PracticesTurn & {
     agentId: string;
@@ -237,7 +271,8 @@ export async function resolvePracticesBlock(
 ): Promise<string | undefined> {
   // Decided before the memory manager is touched: a turn that gets no
   // practices costs nothing.
-  if (!resolvePracticesTurnPolicy(params)) {
+  const policy = resolvePracticesTurnPolicy(params);
+  if (!policy) {
     return undefined;
   }
   try {
@@ -250,7 +285,16 @@ export async function resolvePracticesBlock(
     if (!manager) {
       return undefined;
     }
-    return buildPracticesBlock(manager, params);
+    // Before the block is built: a yes makes the offered practice active,
+    // so it is rendered from this turn on when its scope matches.
+    const note =
+      policy.kind === "owner" &&
+      params.prompt &&
+      practiceOffersEnabled(params.config?.memory?.practices)
+        ? await resolveOfferNote(manager, params)
+        : null;
+    const block = buildPracticesBlock(manager, params);
+    return [block, note].filter(Boolean).join("\n\n") || undefined;
   } catch (err) {
     log.debug(`practices block unavailable: ${String(err)}`);
     return undefined;

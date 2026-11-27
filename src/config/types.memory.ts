@@ -136,6 +136,20 @@ export type MemoryConfig = {
      * practices are kept and can still be listed and edited.
      */
     enabled?: boolean;
+    /**
+     * PLAN-64 Phase 1b: learn candidate practices from follow-ups on a
+     * recurring request. One cheap-model call per recurring-task answer at
+     * most, on the correction lane.
+     */
+    followUps?: {
+      /** Run the follow-up check and store candidates (default: true). */
+      enabled?: boolean;
+    };
+    /** PLAN-64 Phase 1b: the one-line "Include it every time? (yes / no)" offer. */
+    offers?: {
+      /** Append offers to replies and read a bare yes or no as the answer (default: true). */
+      enabled?: boolean;
+    };
   };
   /** PLAN-24 HORMA Phase 0: provenance pointers from synthesized memories to raw sources. */
   provenance?: {

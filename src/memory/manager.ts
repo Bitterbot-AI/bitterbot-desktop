@@ -41,6 +41,7 @@ import {
   dreamEngineEnabled,
   harnessEvolveEnabled,
   marketabilityPredictorEnabled,
+  practiceFollowUpsEnabled,
   practicesEnabled,
   skillEvolutionEnabled,
   skillSeekersEnabled,
@@ -172,7 +173,9 @@ import {
   pinFact as ownerPinFact,
   retireFact as ownerRetireFact,
   unretireFact as ownerUnretireFact,
+  answerPracticeOffer as ownerAnswerPracticeOffer,
   editPractice as ownerEditPractice,
+  mergeTaskTypes as ownerMergeTaskTypes,
   listPractices as ownerListPractices,
   retirePractice as ownerRetirePractice,
   savePractice as ownerSavePractice,
@@ -181,6 +184,8 @@ import {
   unretirePractice as ownerUnretirePractice,
 } from "./owner-controls.js";
 import { PeerReputationManager } from "./peer-reputation.js";
+import { type FollowUpTurnDeps, resolveOfferAnswerBeforeRun } from "./practice-followup-turn.js";
+import { FollowUpStateStore } from "./practice-followups.js";
 import { type PracticeListOptions, PracticesStore } from "./practices.js";
 import { truncateAtSentence } from "./proactive-recall.js";
 import { resolveLearningConfig } from "./procedural-learning-contract.js";
@@ -6903,9 +6908,79 @@ export class MemoryIndexManager implements MemorySearchManager {
 
   taskTypes(): TaskTypesStore {
     if (!this.taskTypesStore || this.taskTypesStore.db !== this.db) {
-      this.taskTypesStore = { db: this.db, store: new TaskTypesStore(this.db) };
+      this.taskTypesStore = {
+        db: this.db,
+        store: new TaskTypesStore(this.db, {
+          // A merged or renamed type takes what was scoped to it along.
+          onMerge: (from, into) => {
+            this.practices().repointTaskScope(from, into);
+            this.followUpState().repointTask(from, into);
+          },
+        }),
+      };
     }
     return this.taskTypesStore.store;
+  }
+
+  // ── PLAN-64 Phase 1b: follow-up learning ────────────────────────────────
+
+  private followUpStateStore: { db: DatabaseSync; store: FollowUpStateStore } | null = null;
+
+  /** The persisted per-session link between an answer, a follow-up and an offer. */
+  followUpState(): FollowUpStateStore {
+    if (!this.followUpStateStore || this.followUpStateStore.db !== this.db) {
+      this.followUpStateStore = { db: this.db, store: new FollowUpStateStore(this.db) };
+    }
+    return this.followUpStateStore.store;
+  }
+
+  /** What the per-turn follow-up steps use (practice-followup-turn.ts). */
+  practiceFollowUpDeps(): FollowUpTurnDeps {
+    return {
+      practices: this.practices(),
+      taskTypes: this.taskTypes(),
+      state: this.followUpState(),
+      change: (label, fn) => this.ownerChange(label, fn),
+      answerOffer: (id, answer) => this.answerPracticeOffer(id, answer),
+    };
+  }
+
+  /** The owner's bare yes or no to a practice offer (audited, serialised). */
+  async answerPracticeOffer(id: string, answer: "yes" | "no"): Promise<boolean> {
+    return await this.ownerChange("answer-practice-offer", () =>
+      ownerAnswerPracticeOffer(this.db, this.practices(), id, answer),
+    );
+  }
+
+  /**
+   * The prompt path: when this owner message is a bare yes or no to the
+   * offer the previous reply carried, apply it and return the note for the
+   * agent. Null on every other turn. No model call.
+   */
+  async resolvePracticeOfferNote(params: {
+    sessionKey?: string;
+    text: string;
+    runId?: string;
+  }): Promise<string | null> {
+    if (!conversationMemoryEnabled(this.cfg.session)) {
+      return null;
+    }
+    return await resolveOfferAnswerBeforeRun(this.practiceFollowUpDeps(), {
+      cfg: this.cfg,
+      ...params,
+    });
+  }
+
+  /** Fold one task type into another as the owner; practices scoped to it move along. */
+  async ownerMergeTaskTypes(fromSlug: string, intoSlug: string) {
+    return await this.ownerChange("merge-task-types", () =>
+      ownerMergeTaskTypes(this.db, this.taskTypes(), fromSlug, intoSlug),
+    );
+  }
+
+  /** Event counts per practice and overall (applied, repeats, offers, confirmed, declined). */
+  practiceCounters() {
+    return this.practices().counters();
   }
 
   /**
@@ -6931,13 +7006,20 @@ export class MemoryIndexManager implements MemorySearchManager {
       const type = this.taskTypes().classify(params.text);
       return type ? { slug: type.slug, label: type.label } : null;
     }
-    return observeOwnerTurn(this.taskTypes(), params, this.correctionLlmCall());
+    // PLAN-64 Phase 1b: a turn right after a recurring-task answer may be a
+    // follow-up to it; it does not found a type of its own (the reply path
+    // counts it afterwards when the follow-up check says it was a new topic).
+    const followUpOf = practiceFollowUpsEnabled(this.cfg.memory?.practices)
+      ? (this.followUpState().pendingAnswer(params.sessionKey)?.taskSlug ?? null)
+      : null;
+    return observeOwnerTurn(this.taskTypes(), { ...params, followUpOf }, this.correctionLlmCall());
   }
 
   /**
    * The task type a captured practice should be scoped to: the recurring
    * type of this message, else of the owner turn just before it in the
-   * session (in-process memory, 30 minutes). Read-only.
+   * session (in-process memory, or the persisted follow-up state after a
+   * restart; 30 minutes). Read-only.
    */
   resolveCaptureTaskType(
     sessionKey: string | undefined,
@@ -6947,7 +7029,14 @@ export class MemoryIndexManager implements MemorySearchManager {
       return null;
     }
     const store = this.taskTypes();
-    const type = store.classify(text) ?? store.precedingRecurringType(sessionKey, text);
+    let type = store.classify(text) ?? store.precedingRecurringType(sessionKey, text);
+    if (!type) {
+      // The in-process lookup is lost on a restart; the persisted state of
+      // the last recurring-task answer is not.
+      const slug = this.followUpState().recentTaskSlug(sessionKey);
+      const persisted = slug ? store.get(slug) : null;
+      type = persisted?.recurring ? persisted : null;
+    }
     return type ? { slug: type.slug, label: type.label } : null;
   }
 
