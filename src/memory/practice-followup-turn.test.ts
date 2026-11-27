@@ -27,6 +27,7 @@ import {
   beginFollowUpTurn,
   finishFollowUpTurn,
   type FollowUpTurnDeps,
+  replyEndsWithQuestion,
   resolveOfferAnswerBeforeRun,
 } from "./practice-followup-turn.js";
 import { FollowUpStateStore } from "./practice-followups.js";
@@ -116,6 +117,8 @@ async function ownerTurn(params: {
   cfg?: BitterbotConfig;
   /** Skip the prompt path's offer-answer step (the prompt carried other blocks). */
   skipPromptPath?: boolean;
+  /** The offer line never reached a surface that shows it: not confirmed. */
+  undelivered?: boolean;
 }) {
   const cfg = params.cfg ?? {};
   const sessionId = params.sessionId ?? "s1";
@@ -190,11 +193,16 @@ async function ownerTurn(params: {
     captured: capture.practices,
     now: params.now,
   });
+  // The reply path confirms the offer once its line was handed to delivery.
+  const offerRecorded = params.undelivered
+    ? false
+    : ((await finished.confirmOffer?.(params.now)) ?? false);
   return {
     note,
     turn,
     capture,
     finished,
+    offerRecorded,
     calls: llm.mock.calls.length - callsBefore,
     lines: [capture.line, turn.answerLine, finished.offerLine].filter((line): line is string =>
       Boolean(line),
@@ -721,6 +729,100 @@ describe("the offer and its answer", () => {
     expect(late.note).toBeNull();
     expect(late.lines).toEqual([]);
     expect(h.practices.get(id)?.status).toBe("candidate");
+  });
+
+  it("an offer whose line was never handed to a surface that shows it is not recorded, and yes is not an answer", async () => {
+    const id = await untilOffered();
+    // A new session: the offer line is generated, but delivery is not confirmed.
+    const s3 = await ownerTurn({
+      text: STATS,
+      reply: STATS_ANSWER,
+      now: T0 + 5 * DAY,
+      sessionId: "s3",
+      undelivered: true,
+    });
+    expect(s3.lines).toEqual([OFFER_TWICE]);
+    expect(h.practices.get(id)?.offerCount).toBe(1);
+    expect(h.practices.events(id).filter((e) => e.kind === "offered")).toHaveLength(1);
+    expect(h.state.get(SESSION)?.offerPracticeId ?? null).toBeNull();
+    // The owner never saw a question: a bare "yes" is a plain message.
+    const yes = await ownerTurn({
+      text: "yes",
+      now: T0 + 5 * DAY + MIN,
+      sessionId: "s3",
+      runId: "run-yes-unseen",
+    });
+    expect(yes.note).toBeNull();
+    expect(yes.lines).toEqual([]);
+    expect(h.practices.get(id)).toMatchObject({ status: "candidate", offerCount: 1 });
+    // The unshown offer used up nothing: a later session still gets it.
+    const s4 = await ownerTurn({
+      text: STATS,
+      reply: STATS_ANSWER,
+      now: T0 + 6 * DAY,
+      sessionId: "s4",
+    });
+    expect(s4.lines).toEqual([OFFER_TWICE]);
+    expect(s4.offerRecorded).toBe(true);
+    expect(h.practices.get(id)?.offerCount).toBe(2);
+    expect(h.state.get(SESSION)?.offerPracticeId).toBe(id);
+  });
+
+  it("confirming an offer twice records it once", async () => {
+    const id = await untilOffered();
+    const s3 = await ownerTurn({
+      text: STATS,
+      reply: STATS_ANSWER,
+      now: T0 + 5 * DAY,
+      sessionId: "s3",
+    });
+    expect(await s3.finished.confirmOffer?.(T0 + 5 * DAY)).toBe(true);
+    expect(h.practices.get(id)?.offerCount).toBe(2);
+  });
+
+  it("no offer rides on a reply that ends with a question of the assistant's own, and it is not counted", async () => {
+    const id = await untilOffered();
+    // Real, 2026-11-27: the answer ended "Want me to pull npm downloads too?"
+    // and the offer was attached to it; "yes" then became a standing practice.
+    const asked = await ownerTurn({
+      text: STATS,
+      reply: `${STATS_ANSWER}\n\nWant me to pull npm downloads too?\n`,
+      now: T0 + 5 * DAY,
+      sessionId: "s3",
+    });
+    expect(asked.lines).toEqual([]);
+    expect(asked.finished.confirmOffer).toBeNull();
+    expect(h.practices.get(id)?.offerCount).toBe(1);
+    expect(h.practices.events(id).filter((e) => e.kind === "offered")).toHaveLength(1);
+    expect(h.state.get(SESSION)?.offerPracticeId ?? null).toBeNull();
+    // "yes" answers the assistant's question, not an offer.
+    const yes = await ownerTurn({
+      text: "yes",
+      now: T0 + 5 * DAY + MIN,
+      sessionId: "s3",
+      runId: "run-yes-own-question",
+    });
+    expect(yes.note).toBeNull();
+    expect(h.practices.get(id)?.status).toBe("candidate");
+    // Still offer-ready: the next stats reply of that session that does not
+    // end with a question carries it.
+    const later = await ownerTurn({
+      text: STATS,
+      reply: STATS_ANSWER,
+      now: T0 + 5 * DAY + 20 * MIN,
+      sessionId: "s3",
+    });
+    expect(later.lines).toEqual([OFFER_TWICE]);
+    expect(h.practices.get(id)?.offerCount).toBe(2);
+  });
+
+  it("replyEndsWithQuestion reads the last non-empty line only", () => {
+    expect(replyEndsWithQuestion("Clones: 68.\nWant npm too?")).toBe(true);
+    expect(replyEndsWithQuestion("Clones: 68.\n\n**Want npm too?**\n\n")).toBe(true);
+    expect(replyEndsWithQuestion('Clones: 68. Shall I add "views"?)')).toBe(true);
+    expect(replyEndsWithQuestion("Why the dip? Weekend traffic.\nClones: 68.")).toBe(false);
+    expect(replyEndsWithQuestion("Clones: 68.")).toBe(false);
+    expect(replyEndsWithQuestion("")).toBe(false);
   });
 
   it("offers at most twice in total and never twice in one session", async () => {

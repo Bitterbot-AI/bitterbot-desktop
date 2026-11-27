@@ -30,6 +30,7 @@ import {
   signalTypingIfNeeded,
 } from "./agent-runner-helpers.js";
 import {
+  handOffGeneratedLine,
   rememberSteeredUserTurn,
   runCorrectionCaptureAfterTurn,
   runMemoryFlushIfNeeded,
@@ -407,7 +408,7 @@ export async function runReplyAgent(params: {
     // no payload), so the line goes out on its own when there is nothing to
     // append it to. Skipped inside for heartbeats, guests, non-owner and
     // non-first-party sessions.
-    const memoryUpdatedLine = await runCorrectionCaptureAfterTurn({
+    const generatedLine = await runCorrectionCaptureAfterTurn({
       cfg,
       followupRun,
       sessionKey,
@@ -420,6 +421,12 @@ export async function runReplyAgent(params: {
       chatType: sessionCtx.ChatType,
       runStartedAt,
     });
+    // A surface that shows the reply from the agent event stream (the desktop
+    // and webchat `chat.send` path) discards the final payload text, so it
+    // takes the line as a message of its own, here, after the answer. Every
+    // other surface gets it appended to the payload it sends. Either way the
+    // hand-off is what records a practice offer in the line.
+    const memoryUpdatedLine = await handOffGeneratedLine(generatedLine, opts?.deliverGeneratedNote);
     const lineOnly = memoryUpdatedLine ? { text: memoryUpdatedLine } : undefined;
 
     // Drain any late tool/block deliveries before deciding there's "nothing to send".

@@ -11,7 +11,10 @@
  * recurring-task answer (handing the correction pass the context for the
  * one model call); `finishFollowUpTurn` stores the gap as a candidate or a
  * repeat, picks at most one offer for the reply and records this turn's
- * answer for the next message.
+ * answer for the next message. The offer is only picked there: the `offered`
+ * event and the pending-offer state that makes a bare yes or no count are
+ * written by `confirmOffer`, which the reply path calls once the line was
+ * handed to a delivery path that shows it.
  *
  * Nothing here throws into the reply path, and nothing calls a model.
  */
@@ -278,9 +281,30 @@ export async function beginFollowUpTurn(
 export type FollowUpTurnResult = {
   /** The generated offer line for this reply, or null. */
   offerLine: string | null;
+  /**
+   * Set with `offerLine`: records the offer (one `offered` event, the
+   * pending-offer state). Call it only once the line was handed to a delivery
+   * path that shows it; an offer the owner never saw must not turn their next
+   * bare "yes" into consent. Resolves false when nothing was recorded.
+   */
+  confirmOffer: ((at?: number) => Promise<boolean>) | null;
   /** What became of a detected gap, when there was one. */
   sighting: GapSightingResult | null;
 };
+
+/**
+ * Does the reply end with a question of the assistant's own? A bare "yes"
+ * after such a reply answers that question, so no offer rides on it.
+ */
+export function replyEndsWithQuestion(replyText: string): boolean {
+  const lines = replyText
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const last = lines.at(-1) ?? "";
+  // Closing emphasis, quotes and brackets do not hide the question mark.
+  return /[?\uFF1F][\s*_~`"'\u201D\u2019)\]]*$/.test(last);
+}
 
 /**
  * The reply path, after the correction pass. Never throws.
@@ -304,7 +328,7 @@ export async function finishFollowUpTurn(
     now?: number;
   },
 ): Promise<FollowUpTurnResult> {
-  const out: FollowUpTurnResult = { offerLine: null, sighting: null };
+  const out: FollowUpTurnResult = { offerLine: null, confirmOffer: null, sighting: null };
   const sessionKey = params.sessionKey;
   if (!sessionKey) {
     return out;
@@ -357,6 +381,11 @@ export async function finishFollowUpTurn(
     const type = text ? deps.taskTypes.classify(text) : null;
     const direct = !params.chatType || params.chatType.toLowerCase() === "direct";
     const offerSlug = out.sighting?.kind === "candidate" ? ctx?.taskSlug : type?.slug;
+    if (turn.hadOffer) {
+      // The owner's next message has come and gone: the offer lapses (a new
+      // one is armed only when its line is confirmed as handed to delivery).
+      deps.state.clearOffer(sessionKey, now);
+    }
     if (
       offerSlug &&
       direct &&
@@ -368,23 +397,37 @@ export async function finishFollowUpTurn(
         sessionId,
         preferId: out.sighting?.kind === "candidate" ? out.sighting.practice.id : null,
       });
-      if (
-        pick &&
-        (await deps.change("practice-offer", () =>
-          deps.practices.recordOffer(pick.practice.id, { sessionId, now }),
-        ))
-      ) {
-        deps.state.setOffer(sessionKey, pick.practice.id, { sessionId, now });
+      if (pick && replyEndsWithQuestion(params.replyText)) {
+        // A "yes" to this reply would answer the assistant's own question.
+        // Nothing is recorded: the candidate stays ready for a later reply
+        // and this does not count as one of its offers.
+        log.info(`practice offer held back (reply ends with a question): ${pick.practice.id}`);
+      } else if (pick) {
+        const practiceId = pick.practice.id;
         out.offerLine = formatOfferLine({
           statement: pick.practice.statement,
           taskLabel: taskLabelOf(deps, pick.practice),
           sightings: pick.sightings,
         });
+        let confirmed: Promise<boolean> | null = null;
+        out.confirmOffer = (confirmedAt?: number) =>
+          (confirmed ??= (async () => {
+            try {
+              const at = confirmedAt ?? Date.now();
+              const recorded = await deps.change("practice-offer", () =>
+                deps.practices.recordOffer(practiceId, { sessionId, now: at }),
+              );
+              if (recorded) {
+                deps.state.setOffer(sessionKey, practiceId, { sessionId, now: at });
+                log.info(`practice offered: ${practiceId}`);
+              }
+              return recorded;
+            } catch (err) {
+              log.debug(`practice offer not recorded: ${String(err)}`);
+              return false;
+            }
+          })());
       }
-    }
-    if (!out.offerLine && turn.hadOffer) {
-      // The owner's next message has come and gone: the offer lapses.
-      deps.state.clearOffer(sessionKey, now);
     }
 
     if (text && practiceFollowUpsEnabled(params.cfg.memory?.practices)) {

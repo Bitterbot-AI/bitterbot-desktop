@@ -788,4 +788,37 @@ describe("offers", () => {
       expect(line).not.toContain("—");
     }
   });
+
+  it("the offer-answer note names what was offered, what the answer did, and that nothing else changed", () => {
+    // Real, 2026-11-27: after "no" to "Include traffic" the model replied
+    // "Got it, dropping the npm add-on going forward" (a different, active
+    // practice). The note has to leave no room for that.
+    const declined = formatOfferAnswerNote({
+      kind: "declined",
+      statement: "Include traffic",
+      taskLabel: "repo clone metrics",
+    });
+    expect(declined).toContain('"Include traffic"');
+    expect(declined).toContain("repo clone metrics");
+    expect(declined).toContain("The owner said no.");
+    expect(declined).toContain("It was only a proposal and was never in effect.");
+    expect(declined).toContain("No other practice changed");
+    expect(declined).toContain("Acknowledge in one short sentence.");
+    expect(declined).toContain("do not restate or change any other practice");
+    expect(declined).toContain("do not claim that you saved, dropped or changed anything yourself");
+    expect(declined).not.toContain("—");
+
+    const confirmed = formatOfferAnswerNote({
+      kind: "confirmed",
+      statement: "Include npm downloads",
+      taskLabel: "repo clone metrics",
+    });
+    expect(confirmed).toContain(
+      'The system saved "Include npm downloads" as a standing practice for repo clone metrics',
+    );
+    expect(confirmed).toContain("No other practice changed");
+    expect(confirmed).not.toContain("dropped the proposal");
+    // The question was the system's, not the model's.
+    expect(confirmed).toContain("the system (not you) asked the owner one question");
+  });
 });

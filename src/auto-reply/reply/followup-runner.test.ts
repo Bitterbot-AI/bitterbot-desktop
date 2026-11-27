@@ -32,13 +32,24 @@ vi.mock("../../agents/embedded.js", () => ({
 const correctionLineMock = vi.hoisted(() =>
   vi.fn(async (_params: unknown): Promise<string | null> => null),
 );
+const routeReplyMock = vi.hoisted(() => vi.fn(async (_params: unknown) => ({ ok: true })));
+vi.mock("./route-reply.js", async () => {
+  const actual = await vi.importActual<typeof import("./route-reply.js")>("./route-reply.js");
+  return { ...actual, routeReply: (params: unknown) => routeReplyMock(params) };
+});
+
+// The line's hand-off confirmation (what records a practice offer).
+const lineDeliveredMock = vi.hoisted(() => vi.fn(async () => {}));
 vi.mock("./agent-runner-memory.js", async () => {
   const actual = await vi.importActual<typeof import("./agent-runner-memory.js")>(
     "./agent-runner-memory.js",
   );
   return {
     ...actual,
-    runCorrectionCaptureAfterTurn: (params: unknown) => correctionLineMock(params),
+    runCorrectionCaptureAfterTurn: async (params: unknown) => {
+      const text = await correctionLineMock(params);
+      return text ? { text, markDelivered: lineDeliveredMock } : null;
+    },
   };
 });
 
@@ -321,10 +332,13 @@ describe("createFollowupRunner messaging tool dedupe", () => {
 });
 
 describe("createFollowupRunner correction capture (PLAN-55 Phase 1 review, item 9)", () => {
-  function makeRunner(onBlockReply: ReturnType<typeof vi.fn>) {
+  function makeRunner(
+    onBlockReply: ReturnType<typeof vi.fn>,
+    deliverGeneratedNote?: (text: string) => Promise<boolean>,
+  ) {
     const sessionEntry: SessionEntry = { sessionId: "session", updatedAt: Date.now() };
     return createFollowupRunner({
-      opts: { onBlockReply },
+      opts: { onBlockReply, deliverGeneratedNote },
       typing: createMockTypingController(),
       typingMode: "instant",
       sessionEntry,
@@ -371,6 +385,43 @@ describe("createFollowupRunner correction capture (PLAN-55 Phase 1 review, item 
     expect(typeof params.runStartedAt).toBe("number");
     const texts = onBlockReply.mock.calls.map((c) => (c[0] as { text?: string }).text);
     expect(texts).toEqual(["Got it.", "Memory updated: deploy endpoint = api2.acme.com"]);
+  });
+
+  it("PLAN-64: a surface that shows notes itself takes the queued turn's line; a channel-routed turn keeps it in the payload", async () => {
+    correctionLineMock.mockReset();
+    lineDeliveredMock.mockReset();
+    correctionLineMock.mockResolvedValue("Memory updated: deploy endpoint = api2.acme.com");
+    runEmbeddedPiAgentMock.mockResolvedValue({ payloads: [{ text: "Got it." }], meta: {} });
+    const onBlockReply = vi.fn(async () => {});
+    const deliverGeneratedNote = vi.fn(async (_text: string) => true);
+    await makeRunner(onBlockReply, deliverGeneratedNote)(queued("No, it is api2.acme.com"));
+    expect(onBlockReply.mock.calls.map((c) => (c[0] as { text?: string }).text)).toEqual([
+      "Got it.",
+    ]);
+    expect(deliverGeneratedNote.mock.calls).toEqual([
+      ["Memory updated: deploy endpoint = api2.acme.com"],
+    ]);
+    expect(lineDeliveredMock).toHaveBeenCalledTimes(1);
+
+    // A message queued from a channel is answered on that channel: the line
+    // stays in the payload and the webchat surface is not handed a copy.
+    deliverGeneratedNote.mockClear();
+    onBlockReply.mockClear();
+    routeReplyMock.mockClear();
+    await makeRunner(
+      onBlockReply,
+      deliverGeneratedNote,
+    )({
+      ...queued("No, it is api2.acme.com"),
+      originatingChannel: "telegram",
+      originatingTo: "12345",
+    } as FollowupRun);
+    expect(deliverGeneratedNote).not.toHaveBeenCalled();
+    const routed = routeReplyMock.mock.calls.map(
+      (c) => (c[0] as { payload: { text?: string } }).payload.text,
+    );
+    expect(routed).toEqual(["Got it.", "Memory updated: deploy endpoint = api2.acme.com"]);
+    runEmbeddedPiAgentMock.mockReset();
   });
 
   it("delivers the line on its own when the queued turn produced no payload", async () => {

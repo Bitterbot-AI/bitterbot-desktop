@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { resolveSessionAgentId } from "../../agents/agent-scope.js";
+import { GENERATED_NOTE_FIELD } from "../../agents/generated-note.js";
 import { resolveThinkingDefault } from "../../agents/model-selection.js";
 import { openTranscriptForAgent } from "../../agents/runtime/open-transcript.js";
 import {
@@ -157,6 +158,8 @@ function appendAssistantTranscriptMessage(params: {
   agentId?: string;
   createIfMissing?: boolean;
   idempotencyKey?: string;
+  /** A system-generated one-line note (see `GENERATED_NOTE_FIELD`). */
+  generatedNote?: boolean;
   abortMeta?: {
     aborted: true;
     origin: AbortOrigin;
@@ -219,6 +222,7 @@ function appendAssistantTranscriptMessage(params: {
     provider: "bitterbot",
     model: "gateway-injected",
     ...(params.idempotencyKey ? { idempotencyKey: params.idempotencyKey } : {}),
+    ...(params.generatedNote ? { [GENERATED_NOTE_FIELD]: true } : {}),
     ...(params.abortMeta
       ? {
           bitterbotAbort: {
@@ -364,6 +368,29 @@ function broadcastChatFinal(params: {
   params.context.broadcast("chat", payload);
   params.context.nodeSendToSession(params.sessionKey, "chat", payload);
   params.context.agentRunSeq.delete(params.runId);
+}
+
+/**
+ * Show a gateway-injected transcript message in connected chat UIs right
+ * away: a `final` chat event on a run id of its own (`inject-<messageId>`),
+ * which a client appends as a separate message. Used by `chat.inject` and
+ * for the generated one-line note of a `chat.send` turn.
+ */
+function broadcastInjectedMessage(params: {
+  context: Pick<GatewayRequestContext, "broadcast" | "nodeSendToSession">;
+  sessionKey: string;
+  messageId: string;
+  message: Record<string, unknown>;
+}) {
+  const chatPayload = {
+    runId: `inject-${params.messageId}`,
+    sessionKey: params.sessionKey,
+    seq: 0,
+    state: "final" as const,
+    message: params.message,
+  };
+  params.context.broadcast("chat", chatPayload);
+  params.context.nodeSendToSession(params.sessionKey, "chat", chatPayload);
 }
 
 function broadcastChatError(params: {
@@ -737,6 +764,47 @@ export const chatHandlers: GatewayRequestHandlers = {
           images: parsedImages.length > 0 ? parsedImages : undefined,
           disableBlockStreaming: true,
           projectId: typeof p.projectId === "string" ? p.projectId : undefined,
+          // The reply of an agent run reaches this surface through the agent
+          // event stream, and the final payload text is discarded below. The
+          // turn's generated one-line note ("Memory updated", a practice
+          // offer, "Practice saved", "Applied: ...") is therefore taken here:
+          // persisted as a short assistant message of its own after the
+          // answer (so `chat.history` returns it) and broadcast like a
+          // `chat.inject` message (so it shows without a reload). True only
+          // when both happened: an offer the owner cannot see is not armed.
+          deliverGeneratedNote: (text) => {
+            const note = text.trim();
+            if (!note || !agentRunStarted) {
+              return false;
+            }
+            const { storePath: latestStorePath, entry: latestEntry } = loadSessionEntry(sessionKey);
+            const sessionId = latestEntry?.sessionId ?? entry?.sessionId;
+            if (!sessionId) {
+              return false;
+            }
+            const appended = appendAssistantTranscriptMessage({
+              message: note,
+              sessionId,
+              storePath: latestStorePath,
+              sessionFile: latestEntry?.sessionFile,
+              agentId,
+              createIfMissing: false,
+              generatedNote: true,
+            });
+            if (!appended.ok || !appended.messageId || !appended.message) {
+              context.logGateway.warn(
+                `webchat generated note not persisted: ${appended.error ?? "unknown error"}`,
+              );
+              return false;
+            }
+            broadcastInjectedMessage({
+              context,
+              sessionKey: rawSessionKey,
+              messageId: appended.messageId,
+              message: appended.message,
+            });
+            return true;
+          },
           onAgentRunStart: (runId) => {
             agentRunStarted = true;
             const connId = typeof client?.connId === "string" ? client.connId : undefined;
@@ -900,15 +968,12 @@ export const chatHandlers: GatewayRequestHandlers = {
     }
 
     // Broadcast to webchat for immediate UI update
-    const chatPayload = {
-      runId: `inject-${appended.messageId}`,
+    broadcastInjectedMessage({
+      context,
       sessionKey: rawSessionKey,
-      seq: 0,
-      state: "final" as const,
+      messageId: appended.messageId,
       message: appended.message,
-    };
-    context.broadcast("chat", chatPayload);
-    context.nodeSendToSession(rawSessionKey, "chat", chatPayload);
+    });
 
     respond(true, { ok: true, messageId: appended.messageId });
   },

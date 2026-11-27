@@ -861,8 +861,11 @@ export function formatOfferAnswerLine(params: {
 
 /**
  * The note for the agent on the turn whose message answered an offer. The
- * offer and its answer line are generated outside the model, so without this
- * the agent sees a bare "yes" with no question before it.
+ * offer and its answer line are generated outside the model (on the desktop
+ * chat the offer is also in the transcript, on a channel it is not), so
+ * without this the agent sees a bare "yes" with no question before it. The
+ * note names exactly what was offered and what the answer did: a "no" to one
+ * candidate must never be reported as dropping another practice.
  */
 export function formatOfferAnswerNote(params: {
   kind: "confirmed" | "declined";
@@ -872,12 +875,13 @@ export function formatOfferAnswerNote(params: {
   const label = params.taskLabel.trim() || "a recurring request";
   const outcome =
     params.kind === "confirmed"
-      ? "The owner said yes: it is saved and applies from now on."
-      : "The owner said no: it was dropped and will not be offered again.";
+      ? `The owner said yes. The system saved "${params.statement}" as a standing practice for ${label}; it applies from now on.`
+      : `The owner said no. The system dropped the proposal "${params.statement}" for ${label} and will not offer it again. It was only a proposal and was never in effect.`;
   return [
     "## Practice offer answered",
-    `The previous reply ended with a system-generated question: whether to make "${params.statement}" a standing practice for ${label}.`,
-    `The owner's message this turn answers that question. ${outcome}`,
-    "A system-generated confirmation line is added to your reply. Acknowledge in a few words. Do not treat the message as a new request and do not repeat the confirmation.",
+    `After your previous reply the system (not you) asked the owner one question: whether to make "${params.statement}" a standing practice for ${label}.`,
+    `The owner's message this turn answers only that question. ${outcome}`,
+    "No other practice changed: every standing practice listed in your instructions is still in effect exactly as before.",
+    "The system adds its own confirmation line after your reply. Acknowledge in one short sentence. Do not treat the message as a new request, do not restate or change any other practice, do not claim that you saved, dropped or changed anything yourself, and do not repeat the confirmation.",
   ].join("\n");
 }

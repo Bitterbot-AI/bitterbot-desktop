@@ -90,6 +90,26 @@ external end-user instructions.
 
 ---
 
+## Global rule: system-generated notes
+
+On the desktop app and the browser Control UI, the one-line note a turn may end
+with ("Memory updated: ...", a practice offer, "Practice saved ...",
+"Applied: ...") is stored as a short assistant message of its own, right after
+the answer, with:
+
+- `message.bitterbotGeneratedNote = true`
+- `message.provider = "bitterbot"`, `message.model = "gateway-injected"`
+
+The stored text is the line exactly as shown. During context rebuild, Bitterbot
+prepends a short `[System note shown to the owner after your reply. ...]`
+marker to those messages in-memory, so the model does not take the note for its
+own words, repeat the question or start writing such lines itself.
+
+- Implemented in `annotateGeneratedNotes` in `src/agents/generated-note.ts`
+- Applied in `sanitizeSessionHistory` in `src/agents/embedded-runner/google.ts`
+
+---
+
 ## Provider matrix (current behavior)
 
 **OpenAI / OpenAI Codex**

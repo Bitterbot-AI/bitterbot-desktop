@@ -13,7 +13,7 @@ import { stripHeartbeatToken } from "../heartbeat.js";
 import type { OriginatingChannelType } from "../templating.js";
 import { isSilentReplyText, SILENT_REPLY_TOKEN } from "../tokens.js";
 import type { GetReplyOptions, ReplyPayload } from "../types.js";
-import { runCorrectionCaptureAfterTurn } from "./agent-runner-memory.js";
+import { handOffGeneratedLine, runCorrectionCaptureAfterTurn } from "./agent-runner-memory.js";
 import type { FollowupRun } from "./queue.js";
 import {
   applyReplyThreading,
@@ -222,7 +222,7 @@ export function createFollowupRunner(params: {
       // PLAN-55 Phase 1 review (item 9): a queued owner message is a turn
       // like any other; its correction is captured here, and the line goes
       // out on its own when the turn produced nothing to append it to.
-      const memoryUpdatedLine = await runCorrectionCaptureAfterTurn({
+      const generatedLine = await runCorrectionCaptureAfterTurn({
         cfg: queued.run.config,
         followupRun: queued,
         sessionKey: queued.run.sessionKey,
@@ -235,6 +235,16 @@ export function createFollowupRunner(params: {
         chatType: queued.originatingChatType,
         runStartedAt,
       });
+      // As in the reply runner: a surface that shows generated notes as their
+      // own message takes the line here; otherwise it rides the payloads. A
+      // queued message that came from a channel is answered on that channel,
+      // whatever surface started the run this followup runs behind.
+      const routedToChannel =
+        isRoutableChannel(queued.originatingChannel) && Boolean(queued.originatingTo);
+      const memoryUpdatedLine = await handOffGeneratedLine(
+        generatedLine,
+        routedToChannel ? undefined : opts?.deliverGeneratedNote,
+      );
       if (payloadArray.length === 0) {
         if (memoryUpdatedLine) {
           await sendFollowupPayloads([{ text: memoryUpdatedLine }], queued);

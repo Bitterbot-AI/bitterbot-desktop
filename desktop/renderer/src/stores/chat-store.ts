@@ -92,6 +92,13 @@ interface ChatState {
   startRun: (runId: string) => void;
   appendDelta: (runId: string, text: string, seq: number) => void;
   finalizeRun: (runId: string, message?: ChatMessage) => void;
+  /**
+   * A message the gateway added to this session outside a run (`chat.inject`,
+   * or the generated one-line note after a reply: "Memory updated", a practice
+   * offer, "Applied: ..."). It arrives as a `final` on a run id of its own
+   * (`inject-<messageId>`), so no active run matches it. Appended once.
+   */
+  addInjectedMessage: (runId: string, sessionKey: string, message: ChatMessage) => void;
   abortRun: (runId: string) => void;
   clearMessages: () => void;
 
@@ -100,6 +107,11 @@ interface ChatState {
   updateToolCallPartial: (id: string, partialResult: string) => void;
   updateToolCallResult: (id: string, result: string, status?: "completed" | "error") => void;
   clearToolCalls: () => void;
+}
+
+/** Run ids of gateway-injected messages (see `addInjectedMessage`). */
+export function isInjectedRunId(runId: string): boolean {
+  return runId.startsWith("inject-");
 }
 
 let msgCounter = 0;
@@ -221,6 +233,18 @@ export const useChatStore = create<ChatState>((set, get) => ({
         ? Object.fromEntries([...runEntries, [runId, finalMessage.id]])
         : s.runMessages;
       return { activeRun: null, messages: newMessages, pendingRunCosts: restPending, runMessages };
+    }),
+
+  addInjectedMessage: (runId, sessionKey, message) =>
+    set((s) => {
+      if (!isInjectedRunId(runId) || sessionKey !== s.sessionKey) return s;
+      // A repeated broadcast of the same message is shown once.
+      if (s.runMessages[runId]) return s;
+      const runEntries = Object.entries(s.runMessages).slice(-49);
+      return {
+        messages: [...s.messages, message],
+        runMessages: Object.fromEntries([...runEntries, [runId, message.id]]),
+      };
     }),
 
   abortRun: (runId) =>
