@@ -313,7 +313,7 @@ dependencies = [
 
 [[package]]
 name = "bitterbot-desktop"
-version = "1.14.3"
+version = "1.15.0"
 dependencies = [
  "env_logger",
  "libc",

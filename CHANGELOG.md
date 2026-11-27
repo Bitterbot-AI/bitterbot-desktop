@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.15.0](https://github.com/Bitterbot-AI/bitterbot-desktop/compare/v1.14.3...v1.15.0) (2026-11-27)
+
+
+### Features
+
+* **cron:** scheduled jobs learn from the owner's next message, announce what changed and roll back on a contradiction ([5aaaf15](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/5aaaf1506b9bfedb2d193114eaca534fed1eef1d))
+* **memory:** judge harness-evolution candidates by replay instead of prediction (still off by default) ([5aaaf15](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/5aaaf1506b9bfedb2d193114eaca534fed1eef1d))
+* **memory:** standing practices learned from the owner's follow-ups, with a yes/no offer, task-type scope and a Practices list in the Memory tab ([5aaaf15](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/5aaaf1506b9bfedb2d193114eaca534fed1eef1d))
+* **tts:** speak through the OpenAI Realtime API ahead of the speech model shutdown ([#396](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/396)) ([a0d01b1](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/a0d01b11fae1a73c482f95d00ab4f8df251d737d))
+
+
+### Bug Fixes
+
+* **chat:** show generated reply notes such as "Memory updated" in the desktop and browser chat ([5aaaf15](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/5aaaf1506b9bfedb2d193114eaca534fed1eef1d))
+* **deep-recall:** pick the sub-model for the provider whose key is set ([#394](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/394)) ([5ad0892](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/5ad089213f406799e3aa438cbb00f365a40a4d0c))
+* **media:** default OpenAI transcription to gpt-transcribe ahead of the model shutdown ([#395](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/395)) ([aaebb1f](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/aaebb1f61352768fb81e0ba6bcf1d313fc13857e)), closes [#391](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/391)
+* **memory:** accept correction-pass model answers that add prose after the JSON ([5aaaf15](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/5aaaf1506b9bfedb2d193114eaca534fed1eef1d))
+* **memory:** name the wiki page to retire explicitly in the semantic lint ([#408](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/408)) ([ec2ea63](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/ec2ea63647d941dc4ad9233d6ca5ed9306a16c01)), closes [#400](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/400)
+* **skills:** say wallet spending caps cannot be approved past ([#398](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/398)) ([f28f894](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/f28f89405aa8bb1fe687a66b061b6f4a51ab09e2)), closes [#390](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/390)
+* **wallet:** stop telling the agent and users that gas is sponsored ([#407](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/407)) ([9e0c432](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/9e0c432d1fd7e131c6dc8d8297d10b2305c318e4)), closes [#399](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/399)
+
 ## [1.14.3](https://github.com/Bitterbot-AI/bitterbot-desktop/compare/v1.14.2...v1.14.3) (2026-11-22)
 
 
