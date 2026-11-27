@@ -73,6 +73,10 @@ export const FIELD_HELP: Record<string, string> = {
     "LLM-scored marketplace pricing for crystallized skills (token spend when a model is configured).",
   "agents.defaults.harnessEvolve.enabled":
     "Let dream cycles propose harness-policy overlays (PLAN-25). Experimental.",
+  "agents.defaults.harnessEvolve.evaluation":
+    'How a candidate harness policy is judged: "replay" (default) runs both policies on verifiable tasks in a scratch workspace and scores them with the task checker; "predicted" asks one model call to guess outcomes and executes nothing.',
+  "agents.defaults.harnessEvolve.maxTrialTurnsPerCycle":
+    "Ceiling on trial agent turns one harness replay cycle may dispatch (default: 40). Each paired trial costs two turns; 0 disables replay trials.",
   "memory.architectEvolution.enabled":
     "Learn extraction rules from failures and inject them into future extractions (HORMA). Experimental.",
   "memory.curiosity.enabled":

@@ -42,6 +42,8 @@ export const FIELD_LABELS: Record<string, string> = {
   "skills.skillSeekers.trending.enabled": "Skill Seekers Trending Sweep",
   "skills.marketability.predictor.enabled": "Skill Marketability Predictor",
   "agents.defaults.harnessEvolve.enabled": "Harness Evolution",
+  "agents.defaults.harnessEvolve.evaluation": "Harness Evolution Evaluation",
+  "agents.defaults.harnessEvolve.maxTrialTurnsPerCycle": "Harness Replay Trial Turns Per Cycle",
   "memory.architectEvolution.enabled": "Memory Architect Evolution",
   "memory.curiosity.enabled": "Curiosity Engine",
   "memory.curiosity.research.enabled": "Curiosity Research",

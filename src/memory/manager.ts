@@ -14,6 +14,7 @@ import { resolveHarnessPolicy } from "../agents/embedded-runner/harness-policy.j
 import type { ResolvedMemorySearchConfig } from "../agents/memory-search.js";
 import { resolveMemorySearchConfig } from "../agents/memory-search.js";
 import { resolveDefaultModelForAgent } from "../agents/model-selection.js";
+import { resolveSkillValidationToolPolicy } from "../agents/skill-validation-policy.js";
 import { registerSkillsChangeListener } from "../agents/skills/refresh.js";
 import {
   type ComputeEpisode,
@@ -3441,9 +3442,20 @@ export class MemoryIndexManager implements MemorySearchManager {
     // D-D): opt-in via agents.defaults.harnessEvolve.enabled. The baseline
     // resolves the config-derived HarnessPolicy floor that evolved policies
     // overlay.
+    // PLAN-64 Phase 6: candidates are judged by real replay unless the
+    // operator asks for the old prediction. Replay trial turns are validation
+    // sessions, so their model usage lands under `skills/evolution` in the
+    // usage ledger and an exceeded budget in enforce mode pauses them.
+    const harnessEvolveCfg = this.cfg.agents?.defaults?.harnessEvolve;
     this.dreamEngine.setHarnessEvolveContext({
-      enabled: harnessEvolveEnabled(this.cfg.agents?.defaults?.harnessEvolve),
+      enabled: harnessEvolveEnabled(harnessEvolveCfg),
       baseline: () => resolveHarnessPolicy(this.cfg),
+      evaluation: harnessEvolveCfg?.evaluation === "predicted" ? "predicted" : "replay",
+      ...(typeof harnessEvolveCfg?.maxTrialTurnsPerCycle === "number"
+        ? { maxTrialTurnsPerCycle: harnessEvolveCfg.maxTrialTurnsPerCycle }
+        : {}),
+      canReplay: () => this.canRunHarnessReplay(),
+      allowedTools: () => resolveSkillValidationToolPolicy(this.cfg).allow ?? [],
     });
 
     // PLAN-10: Skill Seekers adapter is wired via the async .then() callback
@@ -4288,6 +4300,23 @@ export class MemoryIndexManager implements MemorySearchManager {
    * minHoursBetween). Explicit triggers (`dream.trigger` RPC, CLI, tests)
    * omit it and always run.
    */
+  /**
+   * PLAN-64 Phase 6: may this manager dispatch harness replay trials now?
+   * The trial executor is node-wide and runs as the default agent, so other
+   * managers never replay. Trial spend is `skills/evolution` usage; a budget
+   * in enforce mode that covers it pauses dispatch.
+   */
+  private canRunHarnessReplay(): boolean {
+    if (this.closed || this.syncing || this.agentId !== resolveDefaultAgentId(this.cfg)) {
+      return false;
+    }
+    return !isBackgroundUsagePaused({
+      ledger: getUsageLedger(),
+      cfg: this.cfg,
+      feature: USAGE_FEATURES.skillsEvolution,
+    });
+  }
+
   private canRunFailureLearning(): boolean {
     // Evolution's wiki and gateway executor are node-wide and use the default
     // agent. Other managers must not race it or learn into the wrong identity.

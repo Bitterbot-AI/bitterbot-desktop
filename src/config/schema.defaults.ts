@@ -178,6 +178,12 @@ export const FIELD_DEFAULTS: Record<string, unknown> = {
   "shop.enabled": true,
   // src/plugins/enable.ts:24 — `=== false` disables.
   "plugins.enabled": true,
+  // PLAN-64 Phase 6: src/memory/manager.ts (setHarnessEvolveContext) — anything
+  // but "predicted" resolves to "replay"; DEFAULT_MAX_TRIAL_TURNS_PER_CYCLE in
+  // src/memory/dream-modes/harness-evolve.replay.ts. Only read when
+  // agents.defaults.harnessEvolve.enabled is true.
+  "agents.defaults.harnessEvolve.evaluation": "replay",
+  "agents.defaults.harnessEvolve.maxTrialTurnsPerCycle": 40,
 };
 
 /**
@@ -215,7 +221,8 @@ export const UNSET_MEANS_FALSE: Record<string, string> = {
   "skills.skillSeekers.enabled": "src/agents/tools/skill-seekers-tool.ts:68 — `!== true` refuses.",
   "skills.skillSeekers.trending.enabled":
     "src/memory/manager.ts:3678 — `!== true` skips the sweep.",
-  "agents.defaults.harnessEvolve.enabled": "src/memory/manager.ts:3037 — `?? false`.",
+  "agents.defaults.harnessEvolve.enabled":
+    "src/config/feature-switches.ts harnessEvolveEnabled — only `=== true` enables (wired in src/memory/manager.ts setHarnessEvolveContext).",
   "memory.architectEvolution.enabled": "src/memory/manager.ts:4130 — `=== true`.",
   "memory.curiosity.research.strictEgress":
     "src/memory/curiosity-researcher.ts:75 — DEFAULT_CURIOSITY_RESEARCH.strictEgress is false.",

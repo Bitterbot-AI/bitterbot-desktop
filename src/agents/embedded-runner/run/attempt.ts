@@ -101,6 +101,7 @@ import {
   sanitizeToolsForGoogle,
 } from "../google.js";
 import { loadActiveHarnessPolicy } from "../harness-policy-store.js";
+import { resolveTrialHarnessPolicy } from "../harness-policy-trial.js";
 import { applyToolDescriptionOverrides, renderPromptFragments } from "../harness-policy.js";
 import { getDmHistoryLimitFromSessionKey, limitHistoryTurns } from "../history.js";
 import { log } from "../logger.js";
@@ -419,7 +420,13 @@ export async function runEmbeddedAttempt(
         });
     // PLAN-25: the active harness policy (config baseline + promoted evolution).
     // Behavior-neutral until a policy is promoted (no overrides, no fragments).
-    const harnessPolicy = loadActiveHarnessPolicy(params.config);
+    // PLAN-64 Phase 6: a replay trial (validation session in a registered
+    // scratch workspace) runs under the policy bound to that trial instead.
+    const harnessPolicy =
+      resolveTrialHarnessPolicy({
+        workspaceDir: resolvedWorkspace,
+        sessionKey: params.sessionKey,
+      }) ?? loadActiveHarnessPolicy(params.config);
     const tools = applyToolDescriptionOverrides(
       sanitizeToolsForGoogle({ tools: toolsRaw, provider: params.provider }),
       harnessPolicy,

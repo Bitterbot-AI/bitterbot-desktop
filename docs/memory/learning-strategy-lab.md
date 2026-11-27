@@ -45,6 +45,8 @@ Pause, exhausted dispatch limits and shutdown hold work rather than turning inte
 
 The local `failure_learning_cycles`, `failure_experiments` and `failure_experiment_verdicts` tables contain reservations, failure references, proposal hashes and gate receipts. Inspect `service.status().automaticExperiments` for the latest 20 cycles and experiments; the existing `skill-wiki/iterations.jsonl`, staging metadata, impact trail and canary ledger retain detailed pipeline evidence. Opening status does not dispatch work. An unfinished proposal may retry at the next cadence, at most three attempts for the same sampled failure batch. Maintenance parse failures retain the existing three-attempt policy. Once staged, a candidate resumes through gate housekeeping rather than proposal generation. Dead-process recovery marks interrupted work without erasing its dispatch reservations; a live owner is never stolen. Ledger capacity exhaustion stops new work explicitly.
 
+Harness evolution (an opt-in dream mode, off by default) reuses the same scratch-workspace trial sessions and task checkers to compare two harness policies by re-execution, with its own durable trial-turn ledger; see [Dream engine](/memory/dream-engine#harness-evolution-mode-opt-in). It does not go through this coordinator and cannot promote a skill.
+
 The integration tests use scripted executors through the real sampler, staging, scratch-workspace runner and task gate. They prove the orchestration and promotion boundaries, not additional model improvement or user benefit. The research results below retain their original failed qualification verdicts.
 
 ## Manual strategy experiments

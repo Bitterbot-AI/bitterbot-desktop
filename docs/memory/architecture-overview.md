@@ -224,10 +224,10 @@ flowchart TB
 
 **Retired in PLAN-45 Phase 1 (2026-09-05).** `skill-mutation-pareto.ts`, `dream-slow-update.ts`, and `prompt-optimization.ts` were deleted with the `mutation` / `research` dream modes. Two files survive with narrower jobs:
 
-| File                                      | Purpose                                                                                      |
-| ----------------------------------------- | -------------------------------------------------------------------------------------------- |
-| `src/memory/experiment-sandbox.ts`        | Paired LLM judge + `bootstrapPairedCI` used only by harness-evolve (PLAN-25); gates no skill |
-| `src/memory/skill-execution-selection.ts` | Deterministic SHA-1 held-out partition (`isHeldOut`, `hashBucket`) shared by harness-evolve  |
+| File                                      | Purpose                                                                                                                                                                         |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/memory/experiment-sandbox.ts`        | Paired LLM judge (a prediction; `evaluation: "predicted"`) + `bootstrapPairedCI` used only by harness-evolve (PLAN-25), whose default evaluation is real replay; gates no skill |
+| `src/memory/skill-execution-selection.ts` | Deterministic SHA-1 held-out partition (`isHeldOut`, `hashBucket`) shared by harness-evolve                                                                                     |
 
 `skill_text_history` was orphaned (no reader, no writer) and is dropped in v67 (PLAN-46 dead-code pass). `mutation_queue` was dropped in v58.
 

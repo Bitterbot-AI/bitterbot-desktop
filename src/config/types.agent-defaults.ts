@@ -361,8 +361,17 @@ export type AgentDefaultsConfig = {
 export type AgentCompactionMode = "default" | "safeguard";
 
 export type AgentHarnessEvolveConfig = {
-  /** Kill switch for the harness_evolve dream mode (PLAN-25). Default: true. */
+  /** Opt-in switch for the harness_evolve dream mode (PLAN-25). Default: false. */
   enabled?: boolean;
+  /**
+   * PLAN-64 Phase 6: how a candidate policy is judged. `replay` (default)
+   * executes both policies on verifiable tasks linked to past executions, in a
+   * scratch workspace, and scores them with the task checker. `predicted` asks
+   * one model call to guess outcomes; nothing is executed.
+   */
+  evaluation?: "replay" | "predicted";
+  /** Ceiling on trial agent turns a replay cycle may dispatch. Default: 40. */
+  maxTrialTurnsPerCycle?: number;
 };
 
 export type AgentCompactionConfig = {

@@ -140,6 +140,8 @@ export const AgentDefaultsSchema = z
     harnessEvolve: z
       .object({
         enabled: z.boolean().optional(),
+        evaluation: z.union([z.literal("replay"), z.literal("predicted")]).optional(),
+        maxTrialTurnsPerCycle: z.number().int().min(0).max(1000).optional(),
       })
       .strict()
       .optional(),

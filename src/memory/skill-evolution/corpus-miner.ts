@@ -37,7 +37,7 @@ const MAX_DRAFTS_PER_TRACE = 2;
  * remote shells) is refused outright — the injection scanner's patterns
  * do not cover a bare `curl` with a query-string payload.
  */
-const NETWORK_VERB_RE =
+export const NETWORK_VERB_RE =
   /\b(curl|wget|fetch|ssh|scp|sftp|nc|ncat|netcat|telnet|rsync|ftp|pip\s+install|npm\s+install|apt(-get)?\s+install)\b|https?:\/\//i;
 
 export function pendingCorpusPath(opts: ImpactTrailOptions = {}): string {
