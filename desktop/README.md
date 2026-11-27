@@ -40,6 +40,21 @@ pnpm build              # production build → dist-renderer/
 pnpm preview            # preview the production build locally
 ```
 
+## Look and feel checks
+
+Two tools keep restyling work honest (PLAN-65).
+
+**Decorative effects.** `node desktop/scripts/check-decorative-effects.mjs` counts gradients, glass blur, coloured glow shadows and bounce or shimmer animations in `renderer/src`. `pnpm lint` runs it with `--max 92`, the count when the check was added, so the number can go down and not up. Lower the limit as views are converted. `--list` prints every hit; `--enforce components/chat,components/layout` fails on any hit under those directories. A line can opt out with a `decorative-ok: <reason>` comment where colour or motion carries meaning.
+
+**Screenshots.** `pnpm ui:screenshots` builds the renderer, serves it from a local stand-in gateway that answers from `desktop/scripts/ui-screenshots/fixtures.mjs`, and captures a fixed set of screens in light and dark into `desktop/.ui-screenshots/` (ignored by git). No real gateway is contacted. Use it for before and after images on a UI pull request; it is not a pixel-diff gate.
+
+```bash
+pnpm ui:screenshots                       # build, then capture everything
+pnpm ui:screenshots --no-build --only chat-empty,chat-conversation --theme dark
+```
+
+It needs a Chromium: set `BITTERBOT_UI_CHROME_PATH`, or run `pnpm exec playwright install chromium`. Methods the fixtures do not answer are refused and listed at the end of the run, so a view that shows "not available" needs a fixture.
+
 ## Native Desktop App
 
 See [TAURI.md](TAURI.md) for the Tauri native wrapper (system webview + supervised gateway).
