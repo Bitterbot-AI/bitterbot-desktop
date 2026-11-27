@@ -115,6 +115,25 @@ export type GCCRFModeInfluence = {
   strategic: number;
 };
 
+/** PLAN-25 / PLAN-64 Phase 6: what the manager wires for the harness_evolve mode. */
+export interface HarnessEvolveContext {
+  /** Opt-in switch (`agents.defaults.harnessEvolve.enabled`). */
+  enabled: boolean;
+  /** Config-derived HarnessPolicy floor that evolved policies overlay. */
+  baseline: () => HarnessPolicy;
+  /** `replay` (default) executes; `predicted` is one model's guess. */
+  evaluation?: "replay" | "predicted";
+  maxTrialTurnsPerCycle?: number;
+  /**
+   * True when this manager may dispatch replay trials right now: default
+   * agent, not closing or syncing, and the usage budget is not pausing the
+   * lane. Checked before the cycle and before every paired trial.
+   */
+  canReplay?: () => boolean;
+  /** The validation session's tool allow-list (the scratch runner's tools). */
+  allowedTools?: () => string[];
+}
+
 export class DreamEngine {
   private failureLearningHost: {
     service: () => ProceduralLearning | null;
@@ -396,11 +415,11 @@ export class DreamEngine {
   // PLAN-25: context for the harness_evolve mode. `baseline` resolves the
   // config-derived HarnessPolicy floor; `enabled` is the kill switch. Unset =>
   // the mode is inert (used by tests that don't wire it).
-  private harnessEvolveCtx: { enabled: boolean; baseline: () => HarnessPolicy } | null = null;
+  private harnessEvolveCtx: HarnessEvolveContext | null = null;
   private harnessEvolveRuns = 0;
 
   /** Wire the harness-evolution context (PLAN-25). Called by MemoryManager. */
-  setHarnessEvolveContext(ctx: { enabled: boolean; baseline: () => HarnessPolicy }): void {
+  setHarnessEvolveContext(ctx: HarnessEvolveContext): void {
     this.harnessEvolveCtx = ctx;
   }
 
@@ -1798,6 +1817,12 @@ export class DreamEngine {
     try {
       const mod = await import("./dream-modes/harness-evolve.js");
       this.harnessEvolveRuns += 1;
+      // PLAN-64 Phase 6: replay runs real trial turns through the skill task
+      // gate's executor (gateway self-loopback, validation session, scratch
+      // workspace). Without it, replay refuses to promote and says so.
+      const evaluation = ctx.evaluation ?? "replay";
+      const replayAllowed = evaluation === "replay" && (ctx.canReplay?.() ?? false);
+      const agentTurn = replayAllowed ? await this.buildEvolutionAgentTurn() : undefined;
       const result = await mod.runHarnessEvolve({
         db: this.db,
         cycleId,
@@ -1805,6 +1830,15 @@ export class DreamEngine {
         llmCall,
         nowMs: Date.now(),
         cycleIndex: this.harnessEvolveRuns,
+        evaluation,
+        replay: {
+          ...(agentTurn ? { agentTurn } : {}),
+          canDispatch: () => ctx.canReplay?.() ?? false,
+          ...(ctx.maxTrialTurnsPerCycle != null
+            ? { maxTrialTurns: ctx.maxTrialTurnsPerCycle }
+            : {}),
+          ...(ctx.allowedTools ? { allowedTools: ctx.allowedTools() } : {}),
+        },
         maxCandidates: this.config.modes.harness_evolve?.maxChunks
           ? Math.min(4, this.config.modes.harness_evolve.maxChunks)
           : 4,

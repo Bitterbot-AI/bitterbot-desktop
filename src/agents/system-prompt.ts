@@ -501,6 +501,13 @@ export function buildAgentSystemPrompt(params: {
    */
   canonicalFacts?: string;
   /**
+   * PLAN-64 Phase 1: pre-rendered Standing Practices block
+   * (resolvePracticesBlock). Depends on the turn's task type, so it is
+   * rendered after the cache boundary. Same independence contract as
+   * canonicalFacts; never on guest turns.
+   */
+  practices?: string;
+  /**
    * PLAN-34 Phase 2b: pre-rendered Research Findings block
    * (resolveResearchFindingsBlock) — same determinism contract as
    * canonicalFacts: never gated on endocrine resolution.
@@ -787,6 +794,10 @@ export function buildAgentSystemPrompt(params: {
 
   // ---- VOLATILE HALF (below the cache boundary): may change every call ----
   const volatile: string[] = [
+    // PLAN-64 Phase 1: the owner's standing practices for this kind of turn
+    // (the resolver returns undefined when none apply or the turn is not the
+    // owner's). Turn-dependent, hence below the boundary.
+    ...(params.practices && !params.guestTurn ? [params.practices, ""] : []),
     // PLAN-34 Phase 2b: idle-research findings (full prompt mode only; the
     // resolver returns undefined otherwise), same determinism contract.
     ...(params.researchFindings ? [params.researchFindings, ""] : []),

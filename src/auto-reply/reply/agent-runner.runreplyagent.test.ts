@@ -30,6 +30,8 @@ const state = vi.hoisted(() => ({
   runCliAgentMock: vi.fn(),
   // PLAN-55 Phase 1: the correction capture hook; null = no line.
   correctionLineMock: vi.fn(async (_params: unknown): Promise<string | null> => null),
+  // The line's hand-off confirmation (what records a practice offer).
+  lineDeliveredMock: vi.fn(async () => {}),
   steeredMock: vi.fn((_sessionId: string, _body: string) => {}),
 }));
 
@@ -80,7 +82,10 @@ vi.mock("./agent-runner-memory.js", async () => {
   );
   return {
     ...actual,
-    runCorrectionCaptureAfterTurn: (params: unknown) => state.correctionLineMock(params),
+    runCorrectionCaptureAfterTurn: async (params: unknown) => {
+      const text = await state.correctionLineMock(params);
+      return text ? { text, markDelivered: state.lineDeliveredMock } : null;
+    },
     rememberSteeredUserTurn: (sessionId: string, body: string) =>
       state.steeredMock(sessionId, body),
   };
@@ -96,6 +101,7 @@ beforeEach(() => {
   state.runCliAgentMock.mockReset();
   state.correctionLineMock.mockReset();
   state.correctionLineMock.mockResolvedValue(null);
+  state.lineDeliveredMock.mockReset();
   state.steeredMock.mockReset();
   vi.stubEnv("BITTERBOT_TEST_FAST", "1");
 });
@@ -1217,6 +1223,55 @@ describe("runReplyAgent correction confirmation line", () => {
     expect(params.replyText).toBe("Got it.");
     expect(params.isHeartbeat).toBe(false);
     expect(typeof params.runStartedAt).toBe("number");
+    // Appended to the payload the dispatcher sends: that is the hand-off.
+    expect(state.lineDeliveredMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("PLAN-64: a surface that shows notes itself takes the line; the payload text stays the model's", async () => {
+    state.runEmbeddedPiAgentMock.mockResolvedValue({
+      payloads: [{ text: "Clones: 12." }],
+      meta: {},
+    });
+    const line =
+      "You have asked for npm downloads after repo clone metrics twice. Include it every time? (yes / no)";
+    state.correctionLineMock.mockResolvedValue(line);
+    const deliverGeneratedNote = vi.fn(async (_text: string) => true);
+    const { run } = createMinimalRun({ opts: { deliverGeneratedNote } });
+    const res = await run();
+    const payload = (Array.isArray(res) ? res[0] : res) as { text?: string };
+    expect(payload.text).toBe("Clones: 12.");
+    expect(deliverGeneratedNote.mock.calls).toEqual([[line]]);
+    expect(state.lineDeliveredMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("PLAN-64: a line the surface could not show is not confirmed (no offer is armed) and not appended", async () => {
+    state.runEmbeddedPiAgentMock.mockResolvedValue({
+      payloads: [{ text: "Clones: 12." }],
+      meta: {},
+    });
+    state.correctionLineMock.mockResolvedValue("Include it every time? (yes / no)");
+    for (const deliverGeneratedNote of [
+      vi.fn(async (_text: string) => false),
+      vi.fn(async (_text: string): Promise<boolean> => {
+        throw new Error("transcript gone");
+      }),
+    ]) {
+      const { run } = createMinimalRun({ opts: { deliverGeneratedNote } });
+      const res = await run();
+      const payload = (Array.isArray(res) ? res[0] : res) as { text?: string };
+      expect(payload.text).toBe("Clones: 12.");
+      expect(deliverGeneratedNote).toHaveBeenCalledTimes(1);
+    }
+    expect(state.lineDeliveredMock).not.toHaveBeenCalled();
+  });
+
+  it("PLAN-64: with no payload, the surface still gets the line and nothing is returned for it", async () => {
+    state.runEmbeddedPiAgentMock.mockResolvedValue({ payloads: [], meta: {} });
+    state.correctionLineMock.mockResolvedValue("Memory updated: deploy endpoint = api2.acme.com");
+    const deliverGeneratedNote = vi.fn(async (_text: string) => true);
+    const { run } = createMinimalRun({ opts: { deliverGeneratedNote } });
+    expect(await run()).toBeUndefined();
+    expect(deliverGeneratedNote).toHaveBeenCalledTimes(1);
   });
 
   it("review item 9: a turn with no payload (block-streamed, delivered directly) still delivers the line on its own", async () => {

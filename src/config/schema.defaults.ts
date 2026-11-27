@@ -63,6 +63,20 @@ export const FIELD_DEFAULTS: Record<string, unknown> = {
   "memory.correction.enabled": true,
   // src/memory/correction-capture.ts (runCorrectionCapture) — `confirm !== false` appends the line.
   "memory.correction.confirm": true,
+  // src/config/feature-switches.ts practicesEnabled() — only `=== false` turns off practice capture
+  // (src/memory/correction-capture.ts), task typing and the prompt block (src/agents/practices-block.ts).
+  "memory.practices.enabled": true,
+  // src/config/feature-switches.ts practiceFollowUpsEnabled() / practiceOffersEnabled() — only
+  // `=== false` turns off the follow-up check and the offer line (src/memory/practice-followup-turn.ts).
+  "memory.practices.followUps.enabled": true,
+  "memory.practices.offers.enabled": true,
+  // src/config/feature-switches.ts practiceAttributionEnabled() — only `=== false` turns off the
+  // "Applied: ..." line (src/auto-reply/reply/agent-runner-memory.ts resolvePracticeAttribution).
+  "memory.practices.attribution.enabled": true,
+  // src/config/feature-switches.ts practiceJobsEnabled() — only `=== false` turns off the
+  // announcement record and the canary line (src/cron/job-practices.ts) and the job link of the
+  // owner's next message (src/auto-reply/reply/agent-runner-memory.ts).
+  "memory.practices.jobs.enabled": true,
   // src/memory/correction-capture.ts, src/memory/manager.ts runSessionExtraction,
   // src/memory/manager-sync-ops.ts syncSessionFiles — only `=== "off"` keeps conversations out.
   "session.memory": "on",
@@ -164,6 +178,12 @@ export const FIELD_DEFAULTS: Record<string, unknown> = {
   "shop.enabled": true,
   // src/plugins/enable.ts:24 — `=== false` disables.
   "plugins.enabled": true,
+  // PLAN-64 Phase 6: src/memory/manager.ts (setHarnessEvolveContext) — anything
+  // but "predicted" resolves to "replay"; DEFAULT_MAX_TRIAL_TURNS_PER_CYCLE in
+  // src/memory/dream-modes/harness-evolve.replay.ts. Only read when
+  // agents.defaults.harnessEvolve.enabled is true.
+  "agents.defaults.harnessEvolve.evaluation": "replay",
+  "agents.defaults.harnessEvolve.maxTrialTurnsPerCycle": 40,
 };
 
 /**
@@ -201,7 +221,8 @@ export const UNSET_MEANS_FALSE: Record<string, string> = {
   "skills.skillSeekers.enabled": "src/agents/tools/skill-seekers-tool.ts:68 — `!== true` refuses.",
   "skills.skillSeekers.trending.enabled":
     "src/memory/manager.ts:3678 — `!== true` skips the sweep.",
-  "agents.defaults.harnessEvolve.enabled": "src/memory/manager.ts:3037 — `?? false`.",
+  "agents.defaults.harnessEvolve.enabled":
+    "src/config/feature-switches.ts harnessEvolveEnabled — only `=== true` enables (wired in src/memory/manager.ts setHarnessEvolveContext).",
   "memory.architectEvolution.enabled": "src/memory/manager.ts:4130 — `=== true`.",
   "memory.curiosity.research.strictEgress":
     "src/memory/curiosity-researcher.ts:75 — DEFAULT_CURIOSITY_RESEARCH.strictEgress is false.",

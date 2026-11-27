@@ -137,6 +137,24 @@ const MemorySchema = z
         z.unknown(),
       ])
       .optional(),
+    // PLAN-64 Phase 1: standing practices (capture, task typing, prompt block).
+    practices: z
+      .union([
+        z
+          .object({
+            enabled: z.boolean().optional(),
+            // PLAN-64 Phase 1b: follow-up learning and the practice offer.
+            followUps: z.object({ enabled: z.boolean().optional() }).passthrough().optional(),
+            offers: z.object({ enabled: z.boolean().optional() }).passthrough().optional(),
+            // PLAN-64 Phase 3: the use-time attribution line.
+            attribution: z.object({ enabled: z.boolean().optional() }).passthrough().optional(),
+            // PLAN-64 Phase 5: scheduled jobs that learn from the owner's corrections.
+            jobs: z.object({ enabled: z.boolean().optional() }).passthrough().optional(),
+          })
+          .passthrough(),
+        z.unknown(),
+      ])
+      .optional(),
   })
   // Memory subsystems (dream, consolidation, digest, requestFrequency, etc.)
   // are typed in src/config/types.memory.ts but haven't all been mirrored into zod.

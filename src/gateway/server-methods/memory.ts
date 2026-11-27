@@ -5,17 +5,30 @@
  * memory.forgetPreview (read) shows what a forget or an edit would also
  * change; memory.forget / memory.edit take `preview: true` and the
  * previewed `planHash`; memory.exportDownload hands out a one-time download
- * link; memory.import restores an export.
+ * link; memory.import restores an export. PLAN-64 Phase 1: memory.practices
+ * (read) lists standing practices; memory.savePractice, memory.editPractice,
+ * memory.setPracticeScope, memory.retirePractice and memory.unretirePractice
+ * change them (admin). PLAN-64 Phase 1b: memory.practices also returns event
+ * counters; memory.mergeTaskTypes folds one recurring task type into another
+ * (admin). PLAN-64 Phase 3: memory.practices also returns, per practice, the
+ * scope in words, the saved date and the owner's evidence lines, and can
+ * list the task types that are not recurring yet.
  */
 
 import os from "node:os";
 import path from "node:path";
-import { resolveDefaultAgentId } from "../../agents/agent-scope.js";
+import { resolveAgentWorkspaceDir, resolveDefaultAgentId } from "../../agents/agent-scope.js";
+import { resolveActiveProjectName } from "../../agents/canonical-facts-block.js";
 import { loadConfig } from "../../config/config.js";
+import { resolveSessionTranscriptsDirForAgent } from "../../config/sessions/paths.js";
+import { jobScopeLabel, readJobsByScopeName } from "../../cron/job-practices.js";
+import { describePracticeScope } from "../../memory/correction-capture.js";
 import { getMemorySearchManager } from "../../memory/index.js";
 import type { MemoryIndexManager } from "../../memory/manager.js";
 import { MemoryImportRefused, parseMemoryExport } from "../../memory/memory-import.js";
 import { OwnerEditRefused } from "../../memory/owner-controls.js";
+import { createPracticeEvidenceResolver } from "../../memory/practice-evidence.js";
+import { PRACTICE_STATUSES, type PracticeStatus } from "../../memory/practices.js";
 import { normalizeControlUiBasePath } from "../control-ui-shared.js";
 import { mintMemoryExportToken } from "../memory-export-http.js";
 import { ErrorCodes, errorShape } from "../protocol/index.js";
@@ -264,6 +277,225 @@ export const memoryHandlers: GatewayRequestHandlers = {
     try {
       const m = await memoryManager(str(params.agentId));
       respond(true, { ok: await m.ownerUnretireFact(str(params.key)) });
+    } catch (err) {
+      fail(respond, err);
+    }
+  },
+
+  /**
+   * PLAN-64 Phase 1: the owner's standing practices, every status by default
+   * (candidates and retired ones included). `status` narrows to one of
+   * candidate | active | retired | suppressed. `appliedCount` counts runs
+   * whose prompt included the practice, not answers that followed it. Also
+   * returns the recurring task types, so a `task:<slug>` scope can be shown
+   * by its label. PLAN-64 Phase 3: each practice also carries `scopeLabel`,
+   * `savedAt` and `evidence` (ref and the owner's line), each task type its
+   * `recurring` flag and one `example` request, and
+   * `includePendingTaskTypes: true` adds the types that are not recurring yet.
+   */
+  "memory.practices": async ({ params, respond }) => {
+    try {
+      const cfg = loadConfig();
+      const agentId = str(params.agentId) || resolveDefaultAgentId(cfg);
+      const m = await memoryManager(agentId);
+      const status = (PRACTICE_STATUSES as readonly string[]).includes(str(params.status))
+        ? (str(params.status) as PracticeStatus)
+        : undefined;
+      // PLAN-64 Phase 1b: event counts (prompt inclusions, repeats, offers
+      // and the owner's answers), per practice and overall.
+      const counters = m.practiceCounters();
+      const zero = {
+        applied: 0,
+        repeats: 0,
+        notFollowed: 0,
+        offers: 0,
+        confirmed: 0,
+        declined: 0,
+      };
+      // PLAN-64 Phase 5: a `job:` practice is shown by its job's name (the
+      // id when the job no longer exists).
+      const jobs = await readJobsByScopeName(cfg);
+      // PLAN-64 Phase 3: what the Memory tab shows without deriving it. The
+      // task types that are not recurring yet are listed only on request
+      // (`includePendingTaskTypes`), for the merge action.
+      const allTypes = m.taskTypes().list();
+      const labels = new Map(allTypes.map((t) => [t.slug, t.label]));
+      const evidenceOf = createPracticeEvidenceResolver({
+        sessionsDir: resolveSessionTranscriptsDirForAgent(agentId),
+      });
+      const store = m.practices();
+      const practices = [];
+      for (const p of m.ownerListPractices(status ? { statuses: [status] } : {})) {
+        const taskLabel = p.scope.startsWith("task:")
+          ? labels.get(p.scope.slice("task:".length))?.trim() || undefined
+          : undefined;
+        practices.push({
+          ...p,
+          counts: counters.byPractice.get(p.id) ?? zero,
+          // "repo stats", "project acme", the scheduled job's name, "everything".
+          scopeLabel: jobScopeLabel(p.scope, jobs) ?? describePracticeScope(p.scope, taskLabel),
+          // When it became a standing instruction (saved, or confirmed by the owner).
+          savedAt: store.savedAt(p.id) ?? p.createdAt,
+          // The owner's own lines behind it, newest last; text is null when
+          // the transcript line can no longer be read.
+          evidence: await evidenceOf(p.evidenceRefs),
+        });
+      }
+      respond(true, {
+        practices,
+        counters: counters.overall,
+        // The project a `project:<name>` scope would match for this agent
+        // (its workspace folder), or null in the default workspace.
+        activeProject: resolveActiveProjectName(resolveAgentWorkspaceDir(cfg, agentId)),
+        // The scheduled jobs a practice can be scoped to (isolated jobs only:
+        // a `job:` practice is given to the job's own session).
+        jobs: [...jobs.entries()]
+          .filter(([, job]) => job.isolated)
+          .map(([scopeName, job]) => ({ scope: `job:${scopeName}`, name: job.name ?? job.jobId })),
+        taskTypes: allTypes
+          .filter((t) => t.recurring || params.includePendingTaskTypes === true)
+          .map((t) => ({
+            slug: t.slug,
+            label: t.label,
+            occurrences: t.occurrences,
+            distinctDays: t.distinctDays,
+            lastSeen: t.lastSeen,
+            recurring: t.recurring,
+            // A type that is not recurring yet has no label; one of its
+            // requests says what it is.
+            example: t.exemplars[0] ?? null,
+          })),
+      });
+    } catch (err) {
+      fail(respond, err);
+    }
+  },
+
+  /**
+   * Add a practice as the owner: active at once, at `scope` (`global` by
+   * default; `project:<name>`, `person:<name>`, `task:<slug>` or
+   * `job:<cronJobId>`). Stating a practice the owner had retired brings it back.
+   */
+  "memory.savePractice": async ({ params, respond }) => {
+    try {
+      const m = await memoryManager(str(params.agentId));
+      const result = await m.ownerSavePractice({
+        statement: str(params.statement),
+        scope: str(params.scope) || undefined,
+        evidenceRef: str(params.evidence) || undefined,
+        origin: "owner_ui",
+      });
+      if (!result.ok) {
+        respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, result.reason));
+        return;
+      }
+      respond(true, result);
+    } catch (err) {
+      fail(respond, err);
+    }
+  },
+
+  /**
+   * PLAN-64 Phase 1b: fold task type `from` into `into` (word-overlap typing
+   * can split one task into several types). Practices scoped to `from` move
+   * to `into`. Audited.
+   */
+  "memory.mergeTaskTypes": async ({ params, respond }) => {
+    try {
+      const m = await memoryManager(str(params.agentId));
+      const result = await m.ownerMergeTaskTypes(str(params.from), str(params.into));
+      if (!result.ok) {
+        respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, result.reason));
+        return;
+      }
+      respond(true, {
+        ok: true,
+        taskType: {
+          slug: result.type.slug,
+          label: result.type.label,
+          occurrences: result.type.occurrences,
+          distinctDays: result.type.distinctDays,
+          lastSeen: result.type.lastSeen,
+        },
+      });
+    } catch (err) {
+      fail(respond, err);
+    }
+  },
+
+  /** Reword a practice. */
+  "memory.editPractice": async ({ params, respond }) => {
+    try {
+      const m = await memoryManager(str(params.agentId));
+      const result = await m.ownerEditPractice(str(params.id), str(params.statement));
+      if (!result.ok) {
+        respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, result.reason));
+        return;
+      }
+      respond(true, result);
+    } catch (err) {
+      fail(respond, err);
+    }
+  },
+
+  /** Widen or narrow where a practice applies (logged as widened or narrowed). */
+  "memory.setPracticeScope": async ({ params, respond }) => {
+    try {
+      const m = await memoryManager(str(params.agentId));
+      const result = await m.ownerSetPracticeScope(str(params.id), str(params.scope));
+      if (!result.ok) {
+        respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, result.reason));
+        return;
+      }
+      respond(true, result);
+    } catch (err) {
+      fail(respond, err);
+    }
+  },
+
+  /**
+   * Retire a practice. Sticky: capture cannot store a near-identical one
+   * again; memory.unretirePractice or the owner stating it again can.
+   */
+  "memory.retirePractice": async ({ params, respond }) => {
+    try {
+      const m = await memoryManager(str(params.agentId));
+      respond(true, { ok: await m.ownerRetirePractice(str(params.id)) });
+    } catch (err) {
+      fail(respond, err);
+    }
+  },
+
+  /** Bring a retired or declined practice back, or activate a candidate. */
+  "memory.unretirePractice": async ({ params, respond }) => {
+    try {
+      const m = await memoryManager(str(params.agentId));
+      respond(true, { ok: await m.ownerUnretirePractice(str(params.id)) });
+    } catch (err) {
+      fail(respond, err);
+    }
+  },
+
+  /**
+   * PLAN-64 Phase 3: the owner's yes or no to a candidate practice, from the
+   * Memory tab. The same change a bare "yes" or "no" to the offer line
+   * makes: yes activates it at the owner tier (counted as `confirmed`), no
+   * sets it to `suppressed` for good (counted as `declined`). `ok` is false
+   * when the practice is not a candidate.
+   */
+  "memory.answerPracticeOffer": async ({ params, respond }) => {
+    try {
+      const answer = str(params.answer).toLowerCase();
+      if (answer !== "yes" && answer !== "no") {
+        respond(
+          false,
+          undefined,
+          errorShape(ErrorCodes.INVALID_REQUEST, 'answer must be "yes" or "no"'),
+        );
+        return;
+      }
+      const m = await memoryManager(str(params.agentId));
+      respond(true, { ok: await m.answerPracticeOffer(str(params.id), answer) });
     } catch (err) {
       fail(respond, err);
     }

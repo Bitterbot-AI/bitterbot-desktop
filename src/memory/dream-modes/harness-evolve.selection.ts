@@ -26,7 +26,7 @@ export function listGlobalHeldOutExecutions(
   const fraction = options.fraction ?? DEFAULT_HELD_OUT_FRACTION;
   const limit = options.limit ?? 24;
   const scanLimit = options.scanLimit ?? Math.max(limit * 20, 400);
-  let rows: Array<{
+  type Row = {
     id: string;
     skill_crystal_id: string;
     session_id: string | null;
@@ -34,19 +34,31 @@ export function listGlobalHeldOutExecutions(
     success: number | null;
     reward_score: number | null;
     error_type: string | null;
-  }>;
-  try {
-    rows = db
+    run_id?: string | null;
+    tool_name?: string | null;
+  };
+  const select = (extra: string): Row[] =>
+    db
       .prepare(
-        `SELECT id, skill_crystal_id, session_id, completed_at, success, reward_score, error_type
+        `SELECT id, skill_crystal_id, session_id, completed_at, success, reward_score, error_type${extra}
          FROM skill_executions
          WHERE completed_at IS NOT NULL
          ORDER BY started_at DESC
          LIMIT ?`,
       )
-      .all(scanLimit) as typeof rows;
+      .all(scanLimit) as unknown as Row[];
+  let rows: Row[];
+  try {
+    // run_id / tool_name arrived in later migrations; a store without them
+    // still lists executions (they are then never replayable, which is the
+    // fail-closed answer).
+    rows = select(", run_id, tool_name");
   } catch {
-    return []; // table absent on a fresh install — loop stays inert
+    try {
+      rows = select("");
+    } catch {
+      return []; // table absent on a fresh install — loop stays inert
+    }
   }
 
   const out: HeldOutExecution[] = [];
@@ -62,6 +74,8 @@ export function listGlobalHeldOutExecutions(
       rewardScore: r.reward_score,
       errorType: r.error_type,
       contextJson: "{}",
+      runId: r.run_id ?? null,
+      toolName: r.tool_name ?? null,
     });
   }
   return out;

@@ -738,6 +738,30 @@ Accepted and ignored. Every agent runs the owned runtime under `src/agents/runti
 
 A value of `"pi"` logs one warning per process (`the pi engine was removed; <agent or agents.defaults> runs the owned runtime`) and has no other effect. The session file format did not change with the engine, so transcripts written by either engine are read the same way.
 
+### `agents.defaults.harnessEvolve`
+
+Harness evolution, an opt-in dream mode that proposes small edits to the harness policy (appended prompt fragments and tool descriptions) and promotes one only when it measurably helps. **Off by default.** See [Dream engine](/memory/dream-engine#harness-evolution-mode-opt-in).
+
+```json5
+{
+  agents: {
+    defaults: {
+      harnessEvolve: {
+        enabled: false, // default: false
+        evaluation: "replay", // "replay" | "predicted" (default: "replay")
+        maxTrialTurnsPerCycle: 40, // default: 40
+      },
+    },
+  },
+}
+```
+
+- `enabled`: only `true` turns the mode on.
+- `evaluation`: how a candidate policy is judged.
+  - `"replay"` runs both the baseline and the candidate policy as real agent turns on verifiable tasks linked to past executions, in a scratch workspace with the validation tool allow-list, and scores each answer with the task's checker. Executions that cannot be re-run without side effects, or that have no checker, are excluded. With fewer than five replayable executions nothing is promoted and a dream insight says why.
+  - `"predicted"` asks one model call to guess the outcome for each policy. Nothing is executed. Promotions made this way are labelled as predictions in insights, logs and provenance.
+- `maxTrialTurnsPerCycle`: ceiling on trial agent turns one replay cycle may dispatch (integer, 0 to 1000). Each paired trial costs two turns. Turns are reserved durably before dispatch, so a restart cannot spend them twice. `0` means replay dispatches no trials and therefore promotes nothing. This is a dispatch count, not a dollar limit: trial usage is recorded under the `skills/evolution` usage feature and is paused by a matching budget in `usage.budgets.mode: "enforce"`.
+
 ### `agents.defaults.contextPruning`
 
 Accepted and has no effect. With `mode: "cache-ttl"` the runtime still appends a cache-TTL timestamp entry to the session, but nothing acts on that entry, so nothing is pruned: old tool outputs are handled by compaction (`compaction.offload.toolOutputStubs`, above). The key stays in the schema this release so existing configs parse, warns at load, and will be removed next release; `bitterbot doctor --fix` removes it. See [Session pruning](/concepts/session-pruning).

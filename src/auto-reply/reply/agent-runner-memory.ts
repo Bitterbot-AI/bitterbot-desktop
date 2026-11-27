@@ -1,11 +1,19 @@
 import crypto from "node:crypto";
 import { resolveAgentModelFallbacksOverride } from "../../agents/agent-scope.js";
 import { resolveActiveProjectName } from "../../agents/canonical-facts-block.js";
+import { resolveUserTimezone } from "../../agents/date-time.js";
 import { runEmbeddedPiAgent } from "../../agents/embedded.js";
 import { runWithModelFallback } from "../../agents/model-fallback.js";
 import { isCliProvider } from "../../agents/model-selection.js";
 import { resolveSandboxConfigForAgent, resolveSandboxRuntimeStatus } from "../../agents/sandbox.js";
 import type { BitterbotConfig } from "../../config/config.js";
+import {
+  practiceAttributionEnabled,
+  practiceFollowUpsEnabled,
+  practiceJobsEnabled,
+  practiceOffersEnabled,
+  practicesEnabled,
+} from "../../config/feature-switches.js";
 import {
   resolveAgentIdFromSessionKey,
   type SessionEntry,
@@ -19,6 +27,8 @@ import {
   resolveCorrectionSkipReason,
   runCorrectionCapture,
 } from "../../memory/correction-capture.js";
+import { classifySessionKeyTrust } from "../../memory/session-trust.js";
+import { isCronSessionKey } from "../../sessions/session-key-utils.js";
 import type { TemplateContext } from "../templating.js";
 import type { VerboseLevel } from "../thinking.js";
 import type { GetReplyOptions } from "../types.js";
@@ -235,11 +245,133 @@ export function takeSteeredUserTurns(sessionId: string): string[] {
   return list;
 }
 
+/** The slice of the memory manager the attribution line reads. */
+type AttributionManager = {
+  practices?: () => import("../../memory/practices.js").PracticesStore;
+  taskTypes?: () => { get: (slug: string) => { label: string } | null };
+};
+
+/**
+ * PLAN-64 Phase 3: the generated "Applied: ..." line for a reply whose
+ * prompt carried a scoped practice through a real scope match, or null.
+ * Direct chats of the owner only: never a heartbeat, a cron job's session, a
+ * group, a guest or a subagent, and never a turn that produced no reply
+ * text. The caller drops it when the reply already carries a "Memory
+ * updated", "Practice saved" or offer line. Reads the manager only when one
+ * is already open (the prompt path opened it to render the practice). No
+ * model call. Never throws.
+ */
+export async function resolvePracticeAttribution(params: {
+  cfg: BitterbotConfig;
+  followupRun: FollowupRun;
+  sessionKey?: string;
+  replyText: string;
+  isHeartbeat: boolean;
+  chatType?: string;
+  runStartedAt: number;
+  /** The manager the caller already holds; peeked otherwise. */
+  manager?: AttributionManager | null;
+}): Promise<string | null> {
+  try {
+    const run = params.followupRun.run;
+    const sessionKey = params.sessionKey ?? run.sessionKey;
+    if (
+      !practiceAttributionEnabled(params.cfg.memory?.practices) ||
+      params.isHeartbeat ||
+      run.senderIsOwner !== true ||
+      !sessionKey ||
+      isCronSessionKey(sessionKey) ||
+      classifySessionKeyTrust(sessionKey) !== "first_party" ||
+      (params.chatType && params.chatType.toLowerCase() !== "direct") ||
+      !params.replyText.trim() ||
+      !run.sessionFile
+    ) {
+      return null;
+    }
+    let manager = params.manager;
+    if (manager === undefined) {
+      const { peekMemorySearchManager } = await import("../../memory/index.js");
+      manager = (await peekMemorySearchManager({ cfg: params.cfg, agentId: run.agentId }))
+        .manager as unknown as AttributionManager | null;
+    }
+    const store = manager?.practices?.();
+    if (!store) {
+      return null;
+    }
+    const { resolveAttributionLine } = await import("../../memory/practice-attribution.js");
+    return resolveAttributionLine(store, {
+      sessionFile: run.sessionFile,
+      replyText: params.replyText,
+      since: params.runStartedAt,
+      taskLabel: (slug) => manager?.taskTypes?.().get(slug)?.label,
+      timeZone: resolveUserTimezone(params.cfg.agents?.defaults?.userTimezone),
+    });
+  } catch (err) {
+    logVerbose(`practice attribution failed: ${String(err)}`);
+    return null;
+  }
+}
+
+/**
+ * The generated one-line note of a turn ("Memory updated", a practice offer,
+ * "Practice saved", "Applied: ..."): system text, never the model's words.
+ */
+export type GeneratedTurnLine = {
+  text: string;
+  /**
+   * Call once the line was handed to a delivery path that shows it (appended
+   * to a payload the dispatcher sends, or accepted by the surface's
+   * `deliverGeneratedNote`). Only then is a practice offer in the line
+   * recorded and a bare yes or no armed as its answer. Never throws.
+   */
+  markDelivered: () => Promise<void>;
+};
+
+const plainLine = (text: string | null): GeneratedTurnLine | null =>
+  text ? { text, markDelivered: async () => {} } : null;
+
+/**
+ * Hand a turn's generated line to its surface. A surface that shows the
+ * line as a message of its own (`deliverGeneratedNote`, the desktop and
+ * webchat path) takes it here, and null is returned so nothing is appended
+ * to the reply payloads. Any other surface gets the text back to append to
+ * its payload, which the caller hands to the dispatcher. Never throws.
+ */
+export async function handOffGeneratedLine(
+  line: GeneratedTurnLine | null,
+  deliverGeneratedNote: ((text: string) => Promise<boolean> | boolean) | undefined,
+): Promise<string | null> {
+  if (!line) {
+    return null;
+  }
+  if (!deliverGeneratedNote) {
+    await line.markDelivered();
+    return line.text;
+  }
+  try {
+    if (await deliverGeneratedNote(line.text)) {
+      await line.markDelivered();
+    } else {
+      logVerbose("generated line not delivered by the surface; offer not armed");
+    }
+  } catch (err) {
+    logVerbose(`generated line delivery failed: ${String(err)}`);
+  }
+  return null;
+}
+
 /**
  * PLAN-55 Phase 1: the per-turn correction capture, on run completion of a
  * first-party owner turn (the reply runner, the followup runner, and the
  * turns a steered message joined). Returns the one-line "Memory updated"
- * confirmation to append to the reply, or null. Cheap gates run before the
+ * confirmation to append to the reply, or null. PLAN-64 Phase 1b: the same
+ * hook runs follow-up learning around the pass (the follow-up check shares
+ * the pass's one model call; the generated offer and offer-answer lines join
+ * the returned text). PLAN-64 Phase 3: when the turn produced none of those
+ * lines, the reply may carry the practice attribution line instead (those
+ * lines win; a reply never carries both). An offer in the returned line is
+ * recorded only by its `markDelivered` (the caller confirms the hand-off to a
+ * delivery path that shows it). Cheap gates run before the
  * memory manager is touched; the whole pass is bounded by
  * CORRECTION_CAPTURE_TIMEOUT_MS, which also ABORTS the model call (review
  * item 12: a timed-out call must not bill and write later), and never
@@ -255,7 +387,7 @@ export async function runCorrectionCaptureAfterTurn(params: {
   isHeartbeat: boolean;
   chatType?: string;
   runStartedAt: number;
-}): Promise<string | null> {
+}): Promise<GeneratedTurnLine | null> {
   const run = params.followupRun.run;
   // The owner's own words (review item 3): the raw inbound body, never the
   // prompt with its reply/quote/forward blocks, thread history, untrusted
@@ -271,13 +403,17 @@ export async function runCorrectionCaptureAfterTurn(params: {
   if (skipped) {
     // Steered messages stay queued for the next owner completion in this
     // session (a heartbeat completing is not the owner's turn).
-    return null;
+    // With capture switched off or in incognito, stored practices are still
+    // rendered, so the attribution line still applies (its own gates decide).
+    return skipped === "disabled" || skipped === "session-memory-off"
+      ? plainLine(await resolvePracticeAttribution(params))
+      : null;
   }
   const userMessages = [primary, ...takeSteeredUserTurns(run.sessionId)].filter((text) =>
     text.trim(),
   );
   const abort = new AbortController();
-  const work = (async (): Promise<string | null> => {
+  const work = (async (): Promise<GeneratedTurnLine | null> => {
     const { getMemorySearchManager, peekMemorySearchManager } =
       await import("../../memory/index.js");
     // A corrective shape earns the model call and may open the memory
@@ -299,14 +435,68 @@ export async function runCorrectionCaptureAfterTurn(params: {
           correctionLlmCall?: () =>
             | import("../../memory/correction-capture.js").CorrectionLlmCall
             | null;
+          // PLAN-64 Phase 1: practices ride on the same pass.
+          practices?: () => import("../../memory/practices.js").PracticesStore;
+          // PLAN-64 Phase 3: the attribution line shows a task scope by its label.
+          taskTypes?: () => { get: (slug: string) => { label: string } | null };
+          ownerSavePractice?: (
+            input: import("../../memory/owner-controls.js").SavePracticeInput,
+          ) => Promise<import("../../memory/practices.js").PracticeUpsertResult>;
+          ownerSetPracticeScope?: (
+            id: string,
+            scope: string,
+          ) => Promise<import("../../memory/practices.js").PracticeUpsertResult>;
+          resolveCaptureTaskType?: (
+            sessionKey: string | undefined,
+            text: string,
+          ) => { slug: string; label: string } | null;
+          // PLAN-64 Phase 1b: follow-up learning.
+          practiceFollowUpDeps?: () => import("../../memory/practice-followup-turn.js").FollowUpTurnDeps;
+          // PLAN-64 Phase 5: the scheduled job this message follows.
+          takePracticeJobLink?: (
+            sessionKey: string | undefined,
+          ) => import("../../memory/practice-jobs.js").JobLink | null;
+          ownerRollbackPractice?: (
+            id: string,
+            detail: { via: "correction" | "follow_up"; because: "repeated" | "contradicted" },
+          ) => Promise<boolean>;
         }
       | null
       | undefined;
     const store = m?.canonicalFacts?.() ?? null;
-    if (!store) {
-      return null;
+    const practicesOn = practicesEnabled(params.cfg.memory?.practices) && m?.ownerSavePractice;
+    if (!store && !practicesOn) {
+      return plainLine(await resolvePracticeAttribution({ ...params, manager: m ?? null }));
     }
     const lines: string[] = [];
+    let confirmOffer: (() => Promise<boolean>) | null = null;
+    // PLAN-64 Phase 1b: follow-up learning, for the turn's own message (a
+    // steered message is not "the owner's next message" after an answer).
+    const practicesCfg = params.cfg.memory?.practices;
+    // PLAN-64 Phase 5: when this is the owner's next message after a
+    // scheduled job announced its report in this conversation, the turn is
+    // "about that job" (the model still decides what in it is). Taken once:
+    // every owner turn consumes the pending announcement.
+    const jobLink =
+      practicesOn && practiceJobsEnabled(practicesCfg)
+        ? (m?.takePracticeJobLink?.(params.sessionKey ?? run.sessionKey) ?? null)
+        : null;
+    const followDeps =
+      practicesOn && (practiceFollowUpsEnabled(practicesCfg) || practiceOffersEnabled(practicesCfg))
+        ? (m?.practiceFollowUpDeps?.() ?? null)
+        : null;
+    const followUps = followDeps ? await import("../../memory/practice-followup-turn.js") : null;
+    const followTurn =
+      followDeps && followUps
+        ? await followUps.beginFollowUpTurn(followDeps, {
+            cfg: params.cfg,
+            sessionKey: params.sessionKey ?? run.sessionKey,
+            sessionId: run.sessionId,
+            userMessage: primary,
+            jobLink,
+          })
+        : null;
+    let primaryCapture: Awaited<ReturnType<typeof runCorrectionCapture>> | null = null;
     // One pass (at most one model call) per owner message; the run's own
     // agent writes are reported once, with the first.
     let since = params.runStartedAt;
@@ -326,19 +516,92 @@ export async function runCorrectionCaptureAfterTurn(params: {
         chatType: params.chatType,
         runStartedAt: since,
         store,
+        // The job link belongs to the turn's own message, not to a
+        // message steered into it.
+        job: userMessage === primary && !primaryCapture ? jobLink : null,
+        practices: practicesOn
+          ? {
+              ...(jobLink && userMessage === primary && !primaryCapture
+                ? {
+                    cronJobId: jobLink.jobId,
+                    rollback: m.ownerRollbackPractice
+                      ? (id, detail) => m.ownerRollbackPractice!(id, detail)
+                      : null,
+                  }
+                : {}),
+              save: (input) => m.ownerSavePractice!(input),
+              store: m.practices?.() ?? null,
+              setScope: m.ownerSetPracticeScope
+                ? (id, scope) => m.ownerSetPracticeScope!(id, scope)
+                : null,
+              taskType:
+                m.resolveCaptureTaskType?.(params.sessionKey ?? run.sessionKey, userMessage) ??
+                null,
+            }
+          : null,
+        followUp: userMessage === primary && !primaryCapture ? followTurn?.gapContext : null,
         pinAsOwner: m?.ownerPinFact ? (input) => m.ownerPinFact!(input) : null,
         llmCall: m?.correctionLlmCall?.() ?? null,
         signal: abort.signal,
       });
       since = Date.now();
+      if (userMessage === primary && !primaryCapture) {
+        primaryCapture = result;
+      }
       if (result.line) {
         lines.push(result.line);
       }
+      // PLAN-64 Phase 5: a job practice the owner repeated or rejected
+      // right after its first run was retired; say so in a generated line.
+      const direct = !params.chatType || params.chatType.toLowerCase() === "direct";
+      for (const rolled of direct ? result.practices.filter((p) => p.op === "rollback") : []) {
+        const { formatRollbackLine } = await import("../../memory/practice-jobs.js");
+        lines.push(formatRollbackLine(rolled.statement));
+      }
     }
-    return lines.length > 0 ? lines.join("\n") : null;
+    if (followDeps && followUps && followTurn && !abort.signal.aborted) {
+      if (followTurn.answerLine) {
+        lines.push(followTurn.answerLine);
+      }
+      const finished = await followUps.finishFollowUpTurn(followDeps, followTurn, {
+        cfg: params.cfg,
+        sessionKey: params.sessionKey ?? run.sessionKey,
+        sessionId: run.sessionId,
+        sessionFile: run.sessionFile,
+        userMessage: primary,
+        replyText: params.replyText,
+        chatType: params.chatType,
+        activeProject: resolveActiveProjectName(run.workspaceDir),
+        followUp: primaryCapture?.followUp ?? null,
+        captured: primaryCapture?.practices ?? [],
+        jobLink,
+      });
+      if (finished.rollbackLine) {
+        lines.push(finished.rollbackLine);
+      }
+      if (finished.offerLine) {
+        lines.push(finished.offerLine);
+        confirmOffer = finished.confirmOffer;
+      }
+    }
+    if (lines.length > 0) {
+      const confirm = confirmOffer;
+      return {
+        text: lines.join("\n"),
+        markDelivered: async () => {
+          await confirm?.();
+        },
+      };
+    }
+    // PLAN-64 Phase 3: nothing else to say, so the reply may name the
+    // practice its prompt carried. Not after an abort: a timed-out pass
+    // sends no line, and a line that is not sent must not be counted.
+    return abort.signal.aborted
+      ? null
+      : plainLine(await resolvePracticeAttribution({ ...params, manager: m ?? null }));
   })();
   let timer: NodeJS.Timeout | undefined;
-  const timeout = new Promise<string | null>((resolve) => {
+  const timeout = new Promise<GeneratedTurnLine | null>((resolve) => {
     timer = setTimeout(() => {
       logVerbose("correction capture timed out; model call aborted, reply sent without a line");
       abort.abort(new Error("correction capture timed out"));

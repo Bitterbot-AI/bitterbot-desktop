@@ -64,6 +64,23 @@ describe("runHarnessSlowUpdate (PLAN-25 auto-quarantine)", () => {
     expect(rollback).not.toHaveBeenCalled();
   });
 
+  it("does not roll back on fewer scored pairs than the minimum (PLAN-64 Phase 6)", async () => {
+    const rollback = vi.fn(async () => null);
+    const fewLosses: ScorePairFn = async (_a, _b, sel) =>
+      sel.slice(0, 3).map((e) => ({ taskId: e.id, aPassed: true, bPassed: false }));
+    const res = await runHarnessSlowUpdate({
+      live: frag("live"),
+      history: [{ version: 3, policy: frag("v3") }],
+      selectionSet: selection(12),
+      scorePair: fewLosses,
+      rollback,
+      options: { random: seeded, bootstrapIterations: 500 },
+    });
+    expect(res.rolledBackTo).toBeNull();
+    expect(res.comparisons).toEqual([]);
+    expect(rollback).not.toHaveBeenCalled();
+  });
+
   it("is inert with insufficient data or empty history", async () => {
     const rollback = vi.fn(async () => null);
     const res = await runHarnessSlowUpdate({

@@ -69,7 +69,23 @@ export interface HarnessPolicyProvenance {
   };
   /** Held-out skill_executions ids the gate judged against. */
   heldOutIds?: string[];
+  /**
+   * PLAN-64 Phase 6: how the outcome was judged. `replay` means both policies
+   * were executed on verifiable tasks; `predicted` means one model call guessed
+   * pass or fail and nothing was executed.
+   */
+  evaluation?: "replay" | "predicted";
+  /** Paired trials actually executed and verified (0 for a prediction). */
+  nExecuted?: number;
+  /** Replay-ledger ids of the trial turns behind the outcome (`harness_replay_trials.id`). */
+  trialIds?: string[];
 }
+
+/** The evaluation evidence a mutation event carries into provenance. */
+export type HarnessPolicyEvaluationEvidence = Pick<
+  HarnessPolicyProvenance,
+  "evaluation" | "nExecuted" | "trialIds"
+>;
 
 const PROVENANCE_FILE = "provenance.jsonl";
 const PROVENANCE_MAX_BYTES = 512_000;
@@ -273,6 +289,7 @@ export async function rollbackPolicy(
   version: number,
   reason: string,
   opts: { configDir?: string } = {},
+  evidence: HarnessPolicyEvaluationEvidence = {},
 ): Promise<HarnessPolicy | null> {
   const roots = resolveHarnessPolicyRoots(opts);
   const target = await readPolicyFile(path.join(roots.archiveDir, `v${version}`, POLICY_FILE));
@@ -283,7 +300,7 @@ export async function rollbackPolicy(
   await archiveLive(roots, `pre-rollback snapshot (target v${version}: ${reason})`, {});
   const restored: HarnessPolicy = { ...target, provenance: "evolved" };
   await atomicWrite(path.join(roots.liveDir, POLICY_FILE), JSON.stringify(restored, null, 2));
-  await appendHarnessPolicyProvenance({ event: "rollback", version, reason }, opts);
+  await appendHarnessPolicyProvenance({ event: "rollback", version, reason, ...evidence }, opts);
   log.info(`rolled back harness policy to v${version} (${reason})`);
   return restored;
 }

@@ -27,6 +27,22 @@
  *    writes during the turn, and agent supersedes or retires that were held
  *    for the owner (`pending_supersede` / `pending_retire`).
  *
+ * PLAN-64 Phase 1: the same single call may also return `practices`
+ * (standing behavioural instructions, "include npm downloads too"). A
+ * practice reaches the owner tier, and so becomes active, only when the
+ * model marked it explicit AND a majority of its content words are in the
+ * owner's own prose; otherwise it is stored as a candidate at tier
+ * `extraction`, which is never rendered. Its scope is the narrowest the
+ * turn supports (resolvePracticeScope). Off with `memory.practices.enabled
+ * = false`.
+ *
+ * PLAN-64 Phase 1b: when the caller says this turn follows a recurring-task
+ * answer (`followUp`), the follow-up check (practice-followups.ts) rides on
+ * the same call as one more prompt section, or is the turn's one call when
+ * the pre-filter did not fire. Still at most one model call per owner turn.
+ * A captured explicit practice that nearly matches a practice already
+ * active for the turn writes a `repeat` event on it.
+ *
  * Skipped: heartbeats, cron, subagents, A2A, circles, group/channel chats
  * and guests (classifySessionKeyTrust), non-owner senders, the slug
  * generator and isolated cron runs (they never reach the hook),
@@ -38,22 +54,47 @@
  */
 
 import type { BitterbotConfig } from "../config/config.js";
-import { conversationMemoryEnabled, correctionCaptureEnabled } from "../config/feature-switches.js";
+import {
+  conversationMemoryEnabled,
+  correctionCaptureEnabled,
+  practicesEnabled,
+} from "../config/feature-switches.js";
 import { USAGE_FEATURES } from "../infra/usage-features.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { isCronSessionKey } from "../sessions/session-key-utils.js";
 import {
   type CanonicalFactsStore,
   normalizeCanonicalScope,
+  normalizeScope,
   normalizeScopeName,
 } from "./canonical-facts.js";
-import type { OwnerPinInput, OwnerPinResult } from "./owner-controls.js";
+import type { OwnerPinInput, OwnerPinResult, SavePracticeInput } from "./owner-controls.js";
+import { isProhibition } from "./practice-attribution.js";
+import {
+  buildFollowUpGapPrompt,
+  buildFollowUpPromptSection,
+  type FollowUpContext,
+  type FollowUpGap,
+  areGapStatementsMatching,
+  isGapGrounded,
+  parseFollowUpGap,
+} from "./practice-followups.js";
+import type { JobLink } from "./practice-jobs.js";
+import {
+  arePracticesNearDuplicate,
+  type Practice,
+  type PracticesStore,
+  type PracticeUpsertResult,
+} from "./practices.js";
 import {
   buildCorrectionExtractionPrompt,
   type CorrectionFact,
+  type CorrectionPractice,
+  parseCorrectionPractices,
   parseCorrectionResponse,
 } from "./session-extractor.js";
 import { classifySessionKeyTrust } from "./session-trust.js";
+import { contentWords, stripMessageEnvelope } from "./task-types.js";
 
 const log = createSubsystemLogger("memory/correction");
 
@@ -160,6 +201,46 @@ export const CORRECTION_PREFILTER_PATTERNS: ReadonlyArray<{
     name: "everywhere",
     rx: /\b(everywhere|globally|for all projects|in every project|apply (that|this|it) everywhere)\b/i,
   },
+  // ── PLAN-64 Phase 1: behavioural phrasings the Phase 0 replay found the
+  // list above misses. Each is an imperative addressed to the assistant;
+  // the `unless` guards keep narration ("I had to stop working") and
+  // questions ("should I stop using npm?") from earning a model call.
+  // "stop asking", "please stop apologizing", "can you stop adding emojis".
+  {
+    name: "stop-verbing",
+    rx: /(^|[.!?,;:]\s+|\b(?:please|just|and|you can|you should|you need to|you must|can you|could you|would you|(?:told|asked|want|need) you to)\s+)stop\s+(?!(?:every|any|some|no)thing\b)[a-z]+ing\b/im,
+    unless:
+      /\b(should|shall|can|could|did|does|do|will|would|when|why|how)\s+(i|we|it|they|he|she|the\s+\w+)\s+(\w+\s+)?stop\b|\b(i|we|it|they|he|she)\s+((had|have|need|want|tried|try|decided|plan|will|would|should|could|can|can'?t|cannot|must|might|may|did|didn'?t|won'?t|never)\s+)?(to\s+)?stop\s+[a-z]+ing\b/i,
+  },
+  // "don't worry about the reputation score".
+  {
+    name: "dont-worry-about",
+    rx: /\b(don'?t|do not|no need to|never)\s+worry\s+about\b/i,
+    unless: /\b(i|we|they|he|she)\s+(really\s+|usually\s+)?(don'?t|do not|never)\s+worry\b/i,
+  },
+  // "no need to <instruction verb>": "no need to include the table".
+  {
+    name: "no-need-to",
+    rx: new RegExp(String.raw`\bno need to\s+(\w+ly\s+)?${INSTRUCTION_VERB}\b`, "i"),
+    unless: /\b(is|was|if|whether)\s+there('?s| is| was)?\s+no need\b|\bno need to\b[^.!?\n]*\?/i,
+  },
+  // "give me X too", "include the npm downloads as well", "show views every time".
+  {
+    name: "give-too",
+    rx: /(^|[.!?]\s+|\b(?:please|just|and|also|can you|could you|would you|you should|you can)\s+)(give|show|include|add)\b[^.!?\n]{2,120}?(\b(too|as well)\s*([.!?,;]|$)|\b(every|each) time\b)/im,
+    unless:
+      /\b(too|as well)\s+(much|many|long|short|few|little|late|early|big|small|hard|soon|often)\b/i,
+  },
+  // "you should <instruction verb>": "you should check the docs first".
+  {
+    name: "you-should",
+    rx: new RegExp(
+      String.raw`\byou\s+(should|shouldn'?t|should not|ought to)\s+(\w+ly\s+)?(not\s+)?${INSTRUCTION_VERB}\b`,
+      "i",
+    ),
+    unless:
+      /\b(what|which|how|why|where|when|whether|if|think|sure)\s+(do\s+you\s+think\s+)?you\s+should\b|\byou\s+should(n'?t| not)?\s+be\s+(able|fine|good|ok|okay|all set|set|getting|seeing|receiving|hearing)\b|\byou\s+should\b[^.!?\n]*\?/i,
+  },
 ];
 
 /** The "everywhere" shape, also consulted when deciding a fact's scope. */
@@ -218,7 +299,9 @@ export function stripNonProse(text: string): string {
 
 /** The name of the first pattern that matches the prose of `text`, or null. */
 export function matchesCorrectionPrefilter(text: string): string | null {
-  const prose = stripNonProse(text);
+  // Typographic apostrophes ("don’t") read as plain ones for every pattern.
+  // The channel's timestamp envelope is not the start of the owner's sentence.
+  const prose = stripMessageEnvelope(stripNonProse(text)).replace(/[\u2018\u2019]/g, "'");
   if (!prose.trim()) {
     return null;
   }
@@ -228,6 +311,32 @@ export function matchesCorrectionPrefilter(text: string): string | null {
     }
   }
   return null;
+}
+
+/** The shapes that make a follow-up an explicit standing instruction ("give me X too"). */
+const EXPLICIT_INSTRUCTION_PATTERNS: ReadonlySet<string> = new Set([
+  "always",
+  "from-now-on",
+  "give-too",
+]);
+
+/**
+ * PLAN-64 Phase 1b: is this message an explicit instruction to do something
+ * every time ("give me X too", "always include X", "from now on ...")? One
+ * such follow-up is enough to offer the practice; anything else needs two
+ * sightings.
+ */
+export function isExplicitStandingInstruction(text: string): boolean {
+  const prose = stripMessageEnvelope(stripNonProse(text)).replace(/[\u2018\u2019]/g, "'");
+  if (!prose.trim()) {
+    return false;
+  }
+  return CORRECTION_PREFILTER_PATTERNS.some(
+    (pattern) =>
+      EXPLICIT_INSTRUCTION_PATTERNS.has(pattern.name) &&
+      pattern.rx.test(prose) &&
+      !(pattern.unless && pattern.unless.test(prose)),
+  );
 }
 
 export type CorrectionTier = "owner" | "extraction";
@@ -251,6 +360,53 @@ export type HeldSupersede = {
   proposedValue: string;
 };
 
+/** A practice the pass stored (or widened) this turn. */
+export type PracticeWrite = {
+  id: string;
+  statement: string;
+  scope: string;
+  status: Practice["status"];
+  /**
+   * `widen`: an existing practice was made global by the owner's "everywhere".
+   * `rollback` (PLAN-64 Phase 5): an existing job practice was retired because
+   * the owner repeated or contradicted it right after the first run with it;
+   * `statement` is that practice's and `status` is `retired`.
+   */
+  op: "add" | "strengthen" | "promote" | "widen" | "rollback";
+  tier: CorrectionTier;
+  /** The task type's plain label, for the confirmation line. */
+  taskLabel?: string;
+  /** PLAN-64 Phase 1b: the already active practice this one repeated, when it did. */
+  repeatOf?: string;
+};
+
+/** What the pass needs to store practices (PLAN-64 Phase 1); absent disables it. */
+export type PracticeCaptureDeps = {
+  /** The practices writer (manager.ownerSavePractice, serialised on the maintenance mutex). */
+  save: (input: SavePracticeInput) => Promise<PracticeUpsertResult>;
+  /** Widen by "everywhere": needs to find and re-scope the practice just stored. */
+  store?: PracticesStore | null;
+  setScope?: ((id: string, scope: string) => Promise<PracticeUpsertResult>) | null;
+  /** The recurring task type of this turn or of the owner turn just before it. */
+  taskType?: { slug: string; label: string } | null;
+  /**
+   * The cron job this turn is about: the job whose announced report this
+   * message follows (PLAN-64 Phase 5, with `CorrectionCaptureInput.job`). A
+   * practice is scoped to it only when the model marks it as about the report.
+   */
+  cronJobId?: string | null;
+  /**
+   * PLAN-64 Phase 5: retire a job practice with reason `rolled_back`
+   * (audited, serialised). Absent: nothing is ever rolled back.
+   */
+  rollback?:
+    | ((
+        practiceId: string,
+        opts: { via: "correction" | "follow_up"; because: "repeated" | "contradicted" },
+      ) => Promise<boolean>)
+    | null;
+};
+
 export type CorrectionCaptureInput = {
   cfg: BitterbotConfig;
   sessionKey?: string;
@@ -268,6 +424,20 @@ export type CorrectionCaptureInput = {
   /** When the run started: agent writes and holds since then are reported. */
   runStartedAt: number;
   store: CanonicalFactsStore | null | undefined;
+  /** PLAN-64 Phase 1: practice capture; ignored when `memory.practices.enabled` is false. */
+  practices?: PracticeCaptureDeps | null;
+  /**
+   * PLAN-64 Phase 1b: this turn follows a recurring-task answer whose one
+   * gap check is still unspent. The check is made here so it shares the
+   * turn's single model call. Ignored without `practices`.
+   */
+  followUp?: FollowUpContext | null;
+  /**
+   * PLAN-64 Phase 5: this turn is the owner's next message after a scheduled
+   * job announced its report. The model is asked, in the same call, which
+   * practices are about that report. Ignored without `practices`.
+   */
+  job?: JobLink | null;
   /** The owner tier's writer (manager.ownerPinFact, which serialises on the maintenance mutex). */
   pinAsOwner: ((input: OwnerPinInput) => Promise<OwnerPinResult>) | null | undefined;
   /** The cheap-model lane (manager.correctionLlmCall); null disables the model call. */
@@ -286,6 +456,12 @@ export type CorrectionCaptureResult = {
   llmCalls: number;
   writes: CorrectionWrite[];
   held: HeldSupersede[];
+  /** PLAN-64 Phase 1: practices stored or widened this turn (candidates included). */
+  practices: PracticeWrite[];
+  /** PLAN-64 Phase 1b: the follow-up classification, when one was asked for and usable. */
+  followUp: FollowUpGap | null;
+  /** The follow-up check was sent to the model on this turn (its one chance). */
+  followUpChecked: boolean;
   /** The "Memory updated" line for the reply, or null. */
   line: string | null;
 };
@@ -500,6 +676,26 @@ function describeScope(scope: string): string | null {
   return null;
 }
 
+/** Where a practice applies, in plain words: "repo stats", "project acme", "everything". */
+export function describePracticeScope(scope: string, taskLabel?: string): string {
+  const normalized = normalizeScope(scope) ?? "global";
+  const name = normalized.slice(normalized.indexOf(":") + 1).replace(/-/g, " ");
+  if (normalized.startsWith("task:")) {
+    return taskLabel?.trim() || name;
+  }
+  if (normalized.startsWith("job:")) {
+    // A caller that knows the job passes its name ("the Repo stats report").
+    return taskLabel?.trim() || "this scheduled job";
+  }
+  if (normalized.startsWith("project:")) {
+    return `project ${name}`;
+  }
+  if (normalized.startsWith("person:")) {
+    return name;
+  }
+  return "everything";
+}
+
 /** Cut on code points so a surrogate pair is never split. */
 function truncateLine(line: string, max: number): string {
   const points = Array.from(line);
@@ -514,10 +710,13 @@ function truncateLine(line: string, max: number): string {
 export function formatMemoryUpdatedLine(params: {
   writes: CorrectionWrite[];
   held: HeldSupersede[];
+  /** PLAN-64 Phase 1. Only active practices are announced: a candidate changes nothing yet. */
+  practices?: PracticeWrite[];
   chatType?: string;
 }): string | null {
   const { writes, held } = params;
-  if (writes.length === 0 && held.length === 0) {
+  const practices = (params.practices ?? []).filter((p) => p.status === "active");
+  if (writes.length === 0 && held.length === 0 && practices.length === 0) {
     return null;
   }
   const direct = !params.chatType || params.chatType.toLowerCase() === "direct";
@@ -525,6 +724,11 @@ export function formatMemoryUpdatedLine(params: {
   if (!direct) {
     if (writes.length > 0) {
       parts.push(`Memory updated (${writes.length} fact${writes.length === 1 ? "" : "s"})`);
+    }
+    if (practices.length > 0) {
+      parts.push(
+        `${writes.length > 0 ? "" : "Memory updated: "}${practices.length} practice${practices.length === 1 ? "" : "s"} saved`,
+      );
     }
     if (held.length > 0) {
       parts.push(
@@ -547,6 +751,14 @@ export function formatMemoryUpdatedLine(params: {
     });
     parts.push(`Memory updated: ${items.join("; ")}`);
   }
+  for (const practice of practices) {
+    const where = describePracticeScope(practice.scope, practice.taskLabel);
+    parts.push(
+      practice.op === "widen"
+        ? `Practice now applies to ${where}: "${practice.statement}"`
+        : `Practice saved for ${where}: "${practice.statement}"`,
+    );
+  }
   if (held.length > 0) {
     const items = held.map((h) =>
       h.kind === "pending_retire"
@@ -554,7 +766,7 @@ export function formatMemoryUpdatedLine(params: {
         : `${humanizeFactKey(h.key)} ${h.currentValue} -> ${h.proposedValue}`,
     );
     parts.push(
-      `${writes.length > 0 ? "held" : "Memory: held"} for your confirmation: ${items.join("; ")}`,
+      `${writes.length > 0 || practices.length > 0 ? "held" : "Memory: held"} for your confirmation: ${items.join("; ")}`,
     );
   }
   return truncateLine(parts.join("; ").replace(/\s+/g, " "), MAX_LINE_CHARS);
@@ -604,6 +816,9 @@ export async function runCorrectionCapture(
     llmCalls: 0,
     writes: [],
     held: [],
+    practices: [],
+    followUp: null,
+    followUpChecked: false,
     line: null,
   };
   const skipped = resolveCorrectionSkipReason(input);
@@ -611,8 +826,10 @@ export async function runCorrectionCapture(
     result.skipped = skipped;
     return result;
   }
-  const store = input.store;
-  if (!store) {
+  const store = input.store ?? null;
+  const practiceDeps =
+    input.practices && practicesEnabled(input.cfg.memory?.practices) ? input.practices : null;
+  if (!store && !practiceDeps) {
     result.skipped = "no-ledger";
     return result;
   }
@@ -621,44 +838,75 @@ export async function runCorrectionCapture(
 
   try {
     result.prefilter = matchesCorrectionPrefilter(input.userMessage);
-    if (result.prefilter && input.llmCall && input.pinAsOwner) {
-      const facts = await extractWithOneCall(input, result);
-      if (facts.length > 0) {
-        const evidenceRef = await resolveUserMessageEvidenceRef(
-          input.sessionFile,
-          input.userMessage,
-        );
-        for (const fact of facts) {
-          const write = await pinCorrectionFact({ fact, input, store, evidenceRef });
-          if (write) {
-            result.writes.push(write);
-          }
+    // Facts need the ledger and its owner writer; practices need their own.
+    const canPinFacts = Boolean(store && input.pinAsOwner);
+    const followUp = practiceDeps && input.llmCall ? (input.followUp ?? null) : null;
+    if (result.prefilter && input.llmCall && (canPinFacts || practiceDeps)) {
+      const extracted = await extractWithOneCall(input, result, Boolean(practiceDeps), followUp);
+      const facts = canPinFacts ? extracted.facts : [];
+      const practices = practiceDeps ? extracted.practices : [];
+      const evidenceRef =
+        facts.length > 0 || practices.length > 0
+          ? await resolveUserMessageEvidenceRef(input.sessionFile, input.userMessage)
+          : null;
+      for (const fact of facts) {
+        const write = await pinCorrectionFact({ fact, input, store: store!, evidenceRef });
+        if (write) {
+          result.writes.push(write);
         }
       }
+      // "everywhere" as the whole reply, right after a practice was saved
+      // at a narrower scope: the owner widening it. Decided from the stored
+      // row, not the model output, and it replaces that output ("apply that
+      // everywhere" is not itself a practice).
+      const widened = practiceDeps
+        ? await widenRecentPractice({ input, deps: practiceDeps, now })
+        : null;
+      if (widened) {
+        result.practices.push(widened);
+      }
+      for (const practice of widened ? [] : practices) {
+        const write = await saveCapturedPractice({
+          practice,
+          input,
+          deps: practiceDeps!,
+          evidenceRef,
+        });
+        if (write) {
+          result.practices.push(write);
+        }
+      }
+    } else if (followUp) {
+      // No corrective shape: the follow-up check is this turn's one call.
+      await classifyFollowUpAlone(input, result, followUp);
     }
-    // The model path: what the agent pinned itself during this run, and what
-    // it tried to replace or retire and was held on.
-    const own = new Set(result.writes.map((w) => w.key));
-    result.writes.push(...collectAgentWritesSince(store, input.runStartedAt, own));
-    result.held = store.listPendingSupersedes({ since: input.runStartedAt }).map((h) => ({
-      key: h.key,
-      kind: h.kind,
-      currentValue: h.currentValue,
-      proposedValue: h.proposedValue,
-    }));
+    if (store) {
+      // The model path: what the agent pinned itself during this run, and what
+      // it tried to replace or retire and was held on.
+      const own = new Set(result.writes.map((w) => w.key));
+      result.writes.push(...collectAgentWritesSince(store, input.runStartedAt, own));
+      result.held = store.listPendingSupersedes({ since: input.runStartedAt }).map((h) => ({
+        key: h.key,
+        kind: h.kind,
+        currentValue: h.currentValue,
+        proposedValue: h.proposedValue,
+      }));
+    }
     if (confirm) {
       result.line = formatMemoryUpdatedLine({
         writes: result.writes,
         held: result.held,
+        practices: result.practices,
         chatType: input.chatType,
       });
     }
   } catch (err) {
     log.warn(`correction capture failed: ${String(err)}`);
   }
-  if (result.writes.length > 0 || result.held.length > 0) {
+  if (result.writes.length > 0 || result.held.length > 0 || result.practices.length > 0) {
     log.info(
-      `correction capture: ${result.writes.length} write(s), ${result.held.length} held ` +
+      `correction capture: ${result.writes.length} write(s), ${result.held.length} held, ` +
+        `${result.practices.length} practice(s) ` +
         `(prefilter ${result.prefilter ?? "miss"}, ${result.llmCalls} call(s), ${Date.now() - now}ms)`,
     );
   }
@@ -668,21 +916,352 @@ export async function runCorrectionCapture(
 async function extractWithOneCall(
   input: CorrectionCaptureInput,
   result: CorrectionCaptureResult,
-): Promise<CorrectionFact[]> {
-  const prompt = buildCorrectionExtractionPrompt({
-    userMessage: stripNonProse(input.userMessage),
-    assistantReply: input.assistantReply,
-    project: input.activeProject ?? null,
-  });
+  withPractices: boolean,
+  followUp: FollowUpContext | null,
+): Promise<{ facts: CorrectionFact[]; practices: CorrectionPractice[] }> {
+  const prose = stripNonProse(input.userMessage);
+  const prompt =
+    buildCorrectionExtractionPrompt({
+      userMessage: prose,
+      assistantReply: input.assistantReply,
+      project: input.activeProject ?? null,
+      practices: withPractices,
+    }) +
+    (withPractices && input.job ? buildJobPromptSection(input.job, !followUp) : "") +
+    (followUp ? buildFollowUpPromptSection(followUp, followUpOwnerText(prose)) : "");
   result.llmCalls += 1;
+  result.followUpChecked = Boolean(followUp);
   let raw: string;
   try {
     raw = await input.llmCall!(prompt, { signal: input.signal });
   } catch (err) {
     log.warn(`correction capture LLM call failed: ${String(err)}`);
-    return [];
+    return { facts: [], practices: [] };
   }
-  return parseCorrectionResponse(raw);
+  if (followUp) {
+    result.followUp = parseFollowUpGap(raw);
+  }
+  return {
+    facts: parseCorrectionResponse(raw),
+    practices: withPractices ? parseCorrectionPractices(raw) : [],
+  };
+}
+
+/**
+ * PLAN-64 Phase 5: one more section of the correction prompt when the
+ * message follows a scheduled job's report. It asks for two flags per
+ * practice and changes nothing else about the output. `withReport` is false
+ * when the follow-up section of the same prompt already carries the report.
+ */
+export function buildJobPromptSection(job: JobLink, withReport: boolean): string {
+  const name = job.jobName?.trim() || "scheduled job";
+  const canaries = job.canaries
+    .slice(0, 3)
+    .map((p) => `"${p.statement.replace(/\s+/g, " ").trim()}"`)
+    .join("; ");
+  const correction = canaries
+    ? `
+- Since its previous run that job follows this standing instruction: ${canaries}. For every entry in "practices" also add "correction": true when the user is rejecting or undoing that instruction ("no, drop that", "I did not want X", "stop including X"), false otherwise. When unsure, false.`
+    : "";
+  const report = withReport
+    ? `
+
+The job is asked to do this on every run: ${job.requestText.slice(0, 600)}
+The report it sent: ${job.outputText.slice(0, 2_000)}`
+    : "";
+  return `
+
+## Scheduled job report
+The user message above was the user's next message after the scheduled job "${name}" sent its report.
+- For every entry in "practices" add "about_job": true when the instruction is about that job's report (what it should contain or leave out, or how it should look), false when it is about anything else. When unsure, false.
+- When "about_job" is true, the "statement" says only what the report should contain or how it should look, in the user's words ("Include the unique counts"). Do not name the job, the report or its subject in it: the practice is stored for that job alone.${correction}${report}`;
+}
+
+/** The owner's follow-up as the check sees it: prose, no channel envelope, one line. */
+function followUpOwnerText(prose: string): string {
+  return stripMessageEnvelope(prose).replace(/\s+/g, " ").trim();
+}
+
+async function classifyFollowUpAlone(
+  input: CorrectionCaptureInput,
+  result: CorrectionCaptureResult,
+  followUp: FollowUpContext,
+): Promise<void> {
+  const ownerText = followUpOwnerText(stripNonProse(input.userMessage));
+  if (!ownerText) {
+    return;
+  }
+  result.llmCalls += 1;
+  result.followUpChecked = true;
+  try {
+    result.followUp = parseFollowUpGap(
+      await input.llmCall!(buildFollowUpGapPrompt(followUp, ownerText), { signal: input.signal }),
+    );
+  } catch (err) {
+    log.warn(`follow-up check LLM call failed: ${String(err)}`);
+  }
+}
+
+/** Share of a statement's content words the owner's prose must contain for the owner tier. */
+export const PRACTICE_OWNER_WORD_SHARE = 0.5;
+
+/**
+ * Did the owner say this instruction? True when MORE than half of the
+ * statement's content words (stopwords dropped, lightly stemmed) occur in
+ * the owner's own prose: code, quoted lines, forwarded and pasted blocks
+ * are stripped first, so an instruction inside a pasted email or a tool
+ * result never counts. The practices counterpart of
+ * userMessageContainsValue, and the only gate to the owner tier.
+ */
+export function ownerProseSupportsStatement(userMessage: string, statement: string): boolean {
+  const wanted = contentWords(statement);
+  if (wanted.length < 2) {
+    return false;
+  }
+  const prose = new Set(contentWords(stripNonProse(userMessage)));
+  if (prose.size === 0) {
+    return false;
+  }
+  const present = wanted.filter((word) => prose.has(word)).length;
+  return present / wanted.length > PRACTICE_OWNER_WORD_SHARE;
+}
+
+/**
+ * The scope a captured practice is stored with: the narrowest the turn
+ * supports. The model's scope is a hint and can only narrow to a project or
+ * person the owner's words name.
+ * - "everywhere"/"globally" in the owner's words: global, whatever else;
+ * - a cron context for a job: `job:<id>`;
+ * - a recurring task type on this turn or the owner turn before it:
+ *   `task:<slug>`;
+ * - the model said `project:<x>`, x is the active project and the owner's
+ *   words name it: `project:<x>`;
+ * - the model said `person:<x>` and the owner's words name x: `person:<x>`;
+ * - otherwise global.
+ */
+export function resolvePracticeScope(params: {
+  modelScope: string | undefined;
+  activeProject: string | null | undefined;
+  userMessage: string;
+  taskSlug?: string | null;
+  cronJobId?: string | null;
+}): string {
+  const prose = stripNonProse(params.userMessage);
+  if (EVERYWHERE_RX.test(prose)) {
+    return "global";
+  }
+  const job = params.cronJobId ? normalizeScopeName(params.cronJobId) : null;
+  if (job) {
+    return `job:${job}`;
+  }
+  const task = params.taskSlug ? normalizeScopeName(params.taskSlug) : null;
+  if (task) {
+    return `task:${task}`;
+  }
+  const named = resolveCorrectionScope({
+    modelScope: params.modelScope === "task" ? undefined : params.modelScope,
+    activeProject: params.activeProject,
+    userMessage: params.userMessage,
+  });
+  return named ?? "global";
+}
+
+const SCOPE_ONLY_WORDS = new Set(
+  [
+    "apply",
+    "everywhere",
+    "globally",
+    "global",
+    "always",
+    "project",
+    "chat",
+    "time",
+    "rule",
+  ].flatMap((w) => contentWords(w)),
+);
+
+async function saveCapturedPractice(params: {
+  practice: CorrectionPractice;
+  input: CorrectionCaptureInput;
+  deps: PracticeCaptureDeps;
+  evidenceRef: string | null;
+}): Promise<PracticeWrite | null> {
+  const { practice, input, deps } = params;
+  // "Apply that everywhere" is a scope change, not an instruction: once the
+  // scope words are set aside there must still be something to do.
+  if (contentWords(practice.statement).filter((w) => !SCOPE_ONLY_WORDS.has(w)).length < 2) {
+    log.debug("practice dropped: nothing left besides scope words");
+    return null;
+  }
+  // PLAN-64 Phase 5: the job scope needs the job link AND the model's word
+  // that this instruction is about the report. Anything else is scoped as
+  // on any other turn, so an unrelated instruction sent after a report does
+  // not vanish into the job.
+  const job = input.job ?? null;
+  const jobId = job && deps.cronJobId && practice.aboutJob ? deps.cronJobId : null;
+  const scope = resolvePracticeScope({
+    modelScope: practice.scope,
+    activeProject: input.activeProject,
+    userMessage: input.userMessage,
+    taskSlug: deps.taskType?.slug,
+    cronJobId: jobId,
+  });
+  const ownerAuthored =
+    practice.explicit && ownerProseSupportsStatement(input.userMessage, practice.statement);
+  const tier: CorrectionTier = ownerAuthored ? "owner" : "extraction";
+  // PLAN-64 Phase 5: the run this message follows was the first with a
+  // changed practice (its canary). The owner saying that practice again, or
+  // rejecting it, rolls the change back. A rejection needs an
+  // owner-authored statement, the model's `correction` flag, its `about_job`
+  // flag and the practice's own words in the new statement. A repeat needs
+  // an instruction the model marked as stated directly whose element (the
+  // statement without its generated leading verb) is in the owner's own
+  // prose: the grounding rule of follow-up gaps. Found on a real run: the
+  // model restates "give me the unique counts too every time" as "Include
+  // unique counts every time you report repo traffic", which the stricter
+  // owner-tier rule (the verb counted against the owner) puts at exactly
+  // half. Nothing is activated here, a practice is only taken out.
+  const ownerNamedIt =
+    ownerAuthored ||
+    (practice.explicit &&
+      isGapGrounded(stripMessageEnvelope(stripNonProse(input.userMessage)), practice.statement));
+  let jobRepeatCountedId: string | null = null;
+  if (job && ownerNamedIt && deps.rollback && job.canaries.length > 0) {
+    // The same instruction again: the near-duplicate rule, or one
+    // statement's element contained in the other's ("Include the unique
+    // counts" and "Include unique counts in the traffic report"). The
+    // containment is safe here: the only candidates are the one or two
+    // practices this job's last run was changed by.
+    const same = job.canaries.find((c) =>
+      areGapStatementsMatching(c.statement, practice.statement),
+    );
+    // A contradiction is the owner's own correction about this job whose
+    // polarity is the opposite of the practice ("stop including X" against
+    // "Include X"). The same instruction said again is not one, whatever
+    // the model's `correction` flag says.
+    const opposes = (c: { statement: string }) =>
+      isProhibition(c.statement) !== isProhibition(practice.statement);
+    const candidate =
+      ownerAuthored && practice.correction && practice.aboutJob
+        ? (same ?? job.canaries.find((c) => isGapGrounded(practice.statement, c.statement)))
+        : undefined;
+    const rejected = candidate && opposes(candidate) ? candidate : undefined;
+    const target = rejected ?? same;
+    if (target) {
+      // Only a contradiction takes the practice out. The owner asking for
+      // the same thing again means the change did not do its work, which is
+      // a reason to count it (a repeat), never a reason to remove what they
+      // just asked for a second time.
+      if (!rejected) {
+        deps.store?.recordRepeat(target.id, { sessionRef: params.evidenceRef, via: "correction" });
+        jobRepeatCountedId = target.id;
+      } else if (await deps.rollback(target.id, { via: "correction", because: "contradicted" })) {
+        log.info(`job practice rolled back (contradicted after its first run): ${target.id}`);
+        return {
+          id: target.id,
+          statement: target.statement,
+          scope: target.scope,
+          status: "retired",
+          op: "rollback",
+          tier: "owner",
+        };
+      }
+    }
+  }
+  // PLAN-64 Phase 1b: the owner stating, again, something already active for
+  // this turn is a repeat (they had to say it twice). A counter only.
+  const repeated =
+    ownerAuthored && deps.store
+      ? deps.store
+          .listVisible({
+            activeProject: input.activeProject,
+            taskSlug: deps.taskType?.slug,
+            cronJobId: jobId,
+          })
+          .find((p) => arePracticesNearDuplicate(p.statement, practice.statement))
+      : undefined;
+  if (repeated && repeated.id !== jobRepeatCountedId) {
+    deps.store!.recordRepeat(repeated.id, { sessionRef: params.evidenceRef, via: "correction" });
+  }
+  const res = await deps.save({
+    statement: practice.statement,
+    scope,
+    source: tier,
+    origin: "explicit",
+    evidenceRef: params.evidenceRef,
+    actor: "correction",
+  });
+  if (!res.ok) {
+    log.debug(`practice (${tier}) rejected: ${res.reason}`);
+    return null;
+  }
+  return {
+    id: res.practice.id,
+    statement: res.practice.statement,
+    scope: res.practice.scope,
+    status: res.practice.status,
+    op: res.op,
+    tier,
+    ...(deps.taskType && res.practice.scope === `task:${deps.taskType.slug}`
+      ? { taskLabel: deps.taskType.label }
+      : {}),
+    // "Practice saved for the Repo stats report: ...".
+    ...(job && res.practice.scope.startsWith("job:") ? { taskLabel: job.label } : {}),
+    ...(repeated ? { repeatOf: repeated.id } : {}),
+  };
+}
+
+/** How long after a practice is saved a bare "everywhere" still refers to it. */
+export const PRACTICE_WIDEN_WINDOW_MS = 30 * 60_000;
+const WIDEN_MAX_WORDS = 12;
+
+/**
+ * The owner answers a "Practice saved for repo stats" line with
+ * "everywhere" (or "apply that everywhere"): widen that practice to global.
+ * Deterministic and tight: the message must be short, match the
+ * "everywhere" shape, and exactly one owner-tier practice captured from
+ * this session's transcript in the last PRACTICE_WIDEN_WINDOW_MS must be
+ * narrower than global. Anything else changes nothing.
+ */
+async function widenRecentPractice(params: {
+  input: CorrectionCaptureInput;
+  deps: PracticeCaptureDeps;
+  now: number;
+}): Promise<PracticeWrite | null> {
+  const { input, deps } = params;
+  if (!deps.store || !deps.setScope || !input.sessionFile) {
+    return null;
+  }
+  const prose = stripNonProse(input.userMessage).trim();
+  if (!EVERYWHERE_RX.test(prose) || prose.split(/\s+/).length > WIDEN_MAX_WORDS) {
+    return null;
+  }
+  const ref = `session:${input.sessionFile}`;
+  const recent = deps.store
+    .list({ statuses: ["active"] })
+    .filter(
+      (p) =>
+        p.scope !== "global" &&
+        p.origin === "explicit" &&
+        p.source === "owner" &&
+        params.now - p.updatedAt <= PRACTICE_WIDEN_WINDOW_MS &&
+        p.evidenceRefs.some((r) => r === ref || r.startsWith(`${ref}#`)),
+    );
+  if (recent.length !== 1) {
+    return null;
+  }
+  const res = await deps.setScope(recent[0]!.id, "global");
+  if (!res.ok) {
+    return null;
+  }
+  return {
+    id: res.practice.id,
+    statement: res.practice.statement,
+    scope: res.practice.scope,
+    status: res.practice.status,
+    op: "widen",
+    tier: "owner",
+  };
 }
 
 async function pinCorrectionFact(params: {

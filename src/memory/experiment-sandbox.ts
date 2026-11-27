@@ -13,6 +13,13 @@
  * Its "trials" are LLM-predicted pass/fail over past execution contexts,
  * not re-executions. This module must never gate a skill: it compares two
  * harness policies against a fixed, reproducible trace set and nothing else.
+ *
+ * PLAN-64 Phase 6: this is the `predicted` evaluation
+ * (`agents.defaults.harnessEvolve.evaluation: "predicted"`). It is a
+ * PREDICTION by one model call, and every report of its result (insight,
+ * provenance, log) must say so. The default evaluation is `replay`
+ * (dream-modes/harness-evolve.replay.ts), which executes both policies and
+ * scores them with task checkers through the same `ScorePairFn` contract.
  */
 
 import type { DatabaseSync } from "node:sqlite";

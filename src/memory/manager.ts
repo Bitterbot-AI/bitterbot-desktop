@@ -9,10 +9,12 @@ import {
   resolveAgentWorkspaceDir,
   resolveDefaultAgentId,
 } from "../agents/agent-scope.js";
+import { resolveUserTimezone } from "../agents/date-time.js";
 import { resolveHarnessPolicy } from "../agents/embedded-runner/harness-policy.js";
 import type { ResolvedMemorySearchConfig } from "../agents/memory-search.js";
 import { resolveMemorySearchConfig } from "../agents/memory-search.js";
 import { resolveDefaultModelForAgent } from "../agents/model-selection.js";
+import { resolveSkillValidationToolPolicy } from "../agents/skill-validation-policy.js";
 import { registerSkillsChangeListener } from "../agents/skills/refresh.js";
 import {
   type ComputeEpisode,
@@ -41,9 +43,13 @@ import {
   dreamEngineEnabled,
   harnessEvolveEnabled,
   marketabilityPredictorEnabled,
+  practiceFollowUpsEnabled,
+  practiceJobsEnabled,
+  practicesEnabled,
   skillEvolutionEnabled,
   skillSeekersEnabled,
 } from "../config/feature-switches.js";
+import { getCronEngine } from "../cron/active.js";
 import { isBackgroundUsagePaused } from "../infra/usage-budgets.js";
 import { USAGE_FEATURES } from "../infra/usage-features.js";
 import { getUsageLedger } from "../infra/usage-ledger.js";
@@ -55,7 +61,7 @@ import {
   findExternalUntrustedLineRanges,
 } from "../security/external-content.js";
 import { registerTaskRewardHook } from "../tasks/judge.js";
-import { CanonicalFactsStore } from "./canonical-facts.js";
+import { CanonicalFactsStore, normalizeScopeName } from "./canonical-facts.js";
 import {
   applySupersededMarks,
   CANONICAL_CHANGED_EVENT,
@@ -171,8 +177,31 @@ import {
   pinFact as ownerPinFact,
   retireFact as ownerRetireFact,
   unretireFact as ownerUnretireFact,
+  answerPracticeOffer as ownerAnswerPracticeOffer,
+  editPractice as ownerEditPractice,
+  mergeTaskTypes as ownerMergeTaskTypes,
+  listPractices as ownerListPractices,
+  retirePractice as ownerRetirePractice,
+  rollbackPractice as ownerRollbackPractice,
+  savePractice as ownerSavePractice,
+  type SavePracticeInput,
+  setPracticeScope as ownerSetPracticeScope,
+  unretirePractice as ownerUnretirePractice,
 } from "./owner-controls.js";
 import { PeerReputationManager } from "./peer-reputation.js";
+import { type FollowUpTurnDeps, resolveOfferAnswerBeforeRun } from "./practice-followup-turn.js";
+import { FollowUpStateStore } from "./practice-followups.js";
+import { syncJobExperienceFiles } from "./practice-job-experience.js";
+import {
+  commitJobAnnouncement,
+  type JobAnnouncement,
+  JobAnnouncementStore,
+  type JobLink,
+  type JobRunCanary,
+  prepareJobRun,
+  takeJobLink,
+} from "./practice-jobs.js";
+import { type PracticeListOptions, PracticesStore } from "./practices.js";
 import { truncateAtSentence } from "./proactive-recall.js";
 import { resolveLearningConfig } from "./procedural-learning-contract.js";
 import { ProceduralLearningStore } from "./procedural-learning-store.js";
@@ -213,6 +242,7 @@ import { requireNodeSqlite } from "./sqlite.js";
 import { SurfacingTrial, resolveSurfacingTrialConfig } from "./surfacing-trial.js";
 import { captureNearbyWeakChunks, shouldTriggerCapture } from "./synaptic-tagging.js";
 import { TaskMemoryManager } from "./task-memory.js";
+import { observeOwnerTurn, TaskTypesStore } from "./task-types.js";
 import type {
   MemoryEmbeddingProbeResult,
   MemoryProviderStatus,
@@ -3412,9 +3442,20 @@ export class MemoryIndexManager implements MemorySearchManager {
     // D-D): opt-in via agents.defaults.harnessEvolve.enabled. The baseline
     // resolves the config-derived HarnessPolicy floor that evolved policies
     // overlay.
+    // PLAN-64 Phase 6: candidates are judged by real replay unless the
+    // operator asks for the old prediction. Replay trial turns are validation
+    // sessions, so their model usage lands under `skills/evolution` in the
+    // usage ledger and an exceeded budget in enforce mode pauses them.
+    const harnessEvolveCfg = this.cfg.agents?.defaults?.harnessEvolve;
     this.dreamEngine.setHarnessEvolveContext({
-      enabled: harnessEvolveEnabled(this.cfg.agents?.defaults?.harnessEvolve),
+      enabled: harnessEvolveEnabled(harnessEvolveCfg),
       baseline: () => resolveHarnessPolicy(this.cfg),
+      evaluation: harnessEvolveCfg?.evaluation === "predicted" ? "predicted" : "replay",
+      ...(typeof harnessEvolveCfg?.maxTrialTurnsPerCycle === "number"
+        ? { maxTrialTurnsPerCycle: harnessEvolveCfg.maxTrialTurnsPerCycle }
+        : {}),
+      canReplay: () => this.canRunHarnessReplay(),
+      allowedTools: () => resolveSkillValidationToolPolicy(this.cfg).allow ?? [],
     });
 
     // PLAN-10: Skill Seekers adapter is wired via the async .then() callback
@@ -4259,6 +4300,23 @@ export class MemoryIndexManager implements MemorySearchManager {
    * minHoursBetween). Explicit triggers (`dream.trigger` RPC, CLI, tests)
    * omit it and always run.
    */
+  /**
+   * PLAN-64 Phase 6: may this manager dispatch harness replay trials now?
+   * The trial executor is node-wide and runs as the default agent, so other
+   * managers never replay. Trial spend is `skills/evolution` usage; a budget
+   * in enforce mode that covers it pauses dispatch.
+   */
+  private canRunHarnessReplay(): boolean {
+    if (this.closed || this.syncing || this.agentId !== resolveDefaultAgentId(this.cfg)) {
+      return false;
+    }
+    return !isBackgroundUsagePaused({
+      ledger: getUsageLedger(),
+      cfg: this.cfg,
+      feature: USAGE_FEATURES.skillsEvolution,
+    });
+  }
+
   private canRunFailureLearning(): boolean {
     // Evolution's wiki and gateway executor are node-wide and use the default
     // agent. Other managers must not race it or learn into the wrong identity.
@@ -6870,6 +6928,342 @@ export class MemoryIndexManager implements MemorySearchManager {
         }
       })().catch((err) => log.debug(`import re-embed stopped: ${String(err)}`));
     }
+    return result;
+  }
+
+  // ── PLAN-64 Phase 1: standing practices and recurring task types ────────
+
+  private practicesStore: { db: DatabaseSync; store: PracticesStore } | null = null;
+  private taskTypesStore: { db: DatabaseSync; store: TaskTypesStore } | null = null;
+
+  /**
+   * The practices store, bound to the current database handle (rebuilt
+   * after a reindex swap). Present even when `memory.practices.enabled` is
+   * false, so the owner can still list and retire what was stored; capture,
+   * typing and the prompt block check the switch themselves.
+   */
+  practices(): PracticesStore {
+    if (!this.practicesStore || this.practicesStore.db !== this.db) {
+      this.practicesStore = { db: this.db, store: new PracticesStore(this.db) };
+    }
+    return this.practicesStore.store;
+  }
+
+  taskTypes(): TaskTypesStore {
+    if (!this.taskTypesStore || this.taskTypesStore.db !== this.db) {
+      this.taskTypesStore = {
+        db: this.db,
+        store: new TaskTypesStore(this.db, {
+          // A merged or renamed type takes what was scoped to it along.
+          onMerge: (from, into) => {
+            this.practices().repointTaskScope(from, into);
+            this.followUpState().repointTask(from, into);
+          },
+        }),
+      };
+    }
+    return this.taskTypesStore.store;
+  }
+
+  // ── PLAN-64 Phase 1b: follow-up learning ────────────────────────────────
+
+  private followUpStateStore: { db: DatabaseSync; store: FollowUpStateStore } | null = null;
+
+  /** The persisted per-session link between an answer, a follow-up and an offer. */
+  followUpState(): FollowUpStateStore {
+    if (!this.followUpStateStore || this.followUpStateStore.db !== this.db) {
+      this.followUpStateStore = { db: this.db, store: new FollowUpStateStore(this.db) };
+    }
+    return this.followUpStateStore.store;
+  }
+
+  /** What the per-turn follow-up steps use (practice-followup-turn.ts). */
+  practiceFollowUpDeps(): FollowUpTurnDeps {
+    return {
+      practices: this.practices(),
+      taskTypes: this.taskTypes(),
+      state: this.followUpState(),
+      change: (label, fn) => this.ownerChange(label, fn),
+      answerOffer: (id, answer) => this.answerPracticeOffer(id, answer),
+      jobName: (jobId) => this.cronJobOf(jobId)?.name,
+      rollback: (id, opts) => this.ownerRollbackPractice(id, opts),
+    };
+  }
+
+  /** The owner's bare yes or no to a practice offer (audited, serialised). */
+  async answerPracticeOffer(id: string, answer: "yes" | "no"): Promise<boolean> {
+    const ok = await this.ownerChange("answer-practice-offer", () =>
+      ownerAnswerPracticeOffer(this.db, this.practices(), id, answer),
+    );
+    void this.queueJobExperienceSync();
+    return ok;
+  }
+
+  // ── PLAN-64 Phase 5: scheduled jobs that learn ──────────────────────────
+
+  private jobAnnouncementStore: { db: DatabaseSync; store: JobAnnouncementStore } | null = null;
+  private jobExperienceSync: Promise<unknown> = Promise.resolve();
+
+  /** Which scheduled job was announced where and when (persisted). */
+  jobAnnouncements(): JobAnnouncementStore {
+    if (!this.jobAnnouncementStore || this.jobAnnouncementStore.db !== this.db) {
+      this.jobAnnouncementStore = { db: this.db, store: new JobAnnouncementStore(this.db) };
+    }
+    return this.jobAnnouncementStore.store;
+  }
+
+  /** The cron job behind a `job:` scope name, when the cron engine runs here and has it. */
+  private cronJobOf(jobScopeName: string): { jobId: string; name?: string } | null | undefined {
+    const engine = getCronEngine();
+    if (!engine) {
+      // Unknown (a CLI process, or cron is off): not the same as deleted.
+      return undefined;
+    }
+    return engine.listJobs().find((job) => normalizeScopeName(job.jobId) === jobScopeName) ?? null;
+  }
+
+  /**
+   * The reply path: the scheduled job this owner message follows, or null.
+   * Consumes the pending announcement of the conversation. Null (and
+   * nothing consumed) when `memory.practices.jobs.enabled` is off.
+   */
+  takePracticeJobLink(sessionKey: string | undefined): JobLink | null {
+    if (!sessionKey || !practiceJobsEnabled(this.cfg.memory?.practices)) {
+      return null;
+    }
+    return takeJobLink(
+      { announcements: this.jobAnnouncements(), practices: this.practices() },
+      { sessionKey, lastAnswerAt: this.followUpState().get(sessionKey)?.answeredAt ?? null },
+    );
+  }
+
+  /**
+   * A run of a scheduled job finished with a report: the canary line for it
+   * (or none) and the `not_followed` events. No-op when the switch is off.
+   */
+  practiceJobRunCanary(params: {
+    jobId: string;
+    reply: string;
+    runStartedAt: number;
+  }): JobRunCanary {
+    if (!practiceJobsEnabled(this.cfg.memory?.practices)) {
+      return { line: null, practiceIds: [] };
+    }
+    return prepareJobRun(this.practices(), {
+      ...params,
+      timeZone: resolveUserTimezone(this.cfg.agents?.defaults?.userTimezone),
+    });
+  }
+
+  /** The report was announced: record it and consume the run's canary. */
+  recordPracticeJobAnnouncement(params: {
+    jobId: string;
+    jobName?: string | null;
+    sessionKey: string;
+    destination: string;
+    requestText: string;
+    outputText: string;
+    canary: JobRunCanary;
+  }): JobAnnouncement | null {
+    if (!practiceJobsEnabled(this.cfg.memory?.practices)) {
+      return null;
+    }
+    if (!conversationMemoryEnabled(this.cfg.session)) {
+      // Incognito (`session.memory: "off"`): the run still uses up its
+      // canary, but no excerpt of the report is kept and nothing is linked
+      // (the correction pass does not run on the owner's reply either).
+      this.practices().recordCanary(params.canary.practiceIds);
+      return null;
+    }
+    return commitJobAnnouncement(
+      { announcements: this.jobAnnouncements(), practices: this.practices() },
+      params,
+    );
+  }
+
+  /** Roll a job practice back (retired, reason `rolled_back`; audited, serialised). */
+  async ownerRollbackPractice(
+    id: string,
+    detail: { via: "correction" | "follow_up"; because: "repeated" | "contradicted" },
+  ): Promise<boolean> {
+    const ok = await this.ownerChange("rollback-practice", () =>
+      ownerRollbackPractice(this.db, this.practices(), id, detail),
+    );
+    void this.queueJobExperienceSync();
+    return ok;
+  }
+
+  /**
+   * Rewrite the jobs' EXPERIENCE.md files from the store, after a practice
+   * changed. In the background, one at a time; resolves when this pass is
+   * done. A job the cron engine no longer has loses its file.
+   */
+  queueJobExperienceSync(): Promise<unknown> {
+    this.jobExperienceSync = (this.jobExperienceSync ?? Promise.resolve())
+      .catch(() => undefined)
+      .then(() =>
+        syncJobExperienceFiles({
+          store: this.practices(),
+          agentDir: resolveAgentDir(this.cfg, this.agentId),
+          jobName: (jobId) => this.cronJobOf(jobId)?.name,
+          jobExists: (jobId) => {
+            const job = this.cronJobOf(jobId);
+            return job === undefined ? undefined : job !== null;
+          },
+          timeZone: resolveUserTimezone(this.cfg.agents?.defaults?.userTimezone),
+        }),
+      )
+      .catch((err) => log.debug(`job experience sync failed: ${String(err)}`));
+    return this.jobExperienceSync;
+  }
+
+  /** A scheduled job was deleted: its announcements and its experience file go. */
+  async forgetPracticeJob(jobId: string): Promise<void> {
+    this.jobAnnouncements().deleteForJob(jobId);
+    await this.queueJobExperienceSync();
+  }
+
+  /**
+   * The prompt path: when this owner message is a bare yes or no to the
+   * offer the previous reply carried, apply it and return the note for the
+   * agent. Null on every other turn. No model call.
+   */
+  async resolvePracticeOfferNote(params: {
+    sessionKey?: string;
+    text: string;
+    runId?: string;
+  }): Promise<string | null> {
+    if (!conversationMemoryEnabled(this.cfg.session)) {
+      return null;
+    }
+    return await resolveOfferAnswerBeforeRun(this.practiceFollowUpDeps(), {
+      cfg: this.cfg,
+      ...params,
+    });
+  }
+
+  /** Fold one task type into another as the owner; practices scoped to it move along. */
+  async ownerMergeTaskTypes(fromSlug: string, intoSlug: string) {
+    return await this.ownerChange("merge-task-types", () =>
+      ownerMergeTaskTypes(this.db, this.taskTypes(), fromSlug, intoSlug),
+    );
+  }
+
+  /** Event counts per practice and overall (applied, repeats, offers, confirmed, declined). */
+  practiceCounters() {
+    return this.practices().counters();
+  }
+
+  /**
+   * Count one owner turn against the recurring task types and return the
+   * recurring type it belongs to (or null). Word overlap only, synchronous,
+   * no model call on this path. A type that reaches the threshold on this
+   * turn is named in the background (one cheap call on the correction lane,
+   * or the deterministic fallback when no model is available) and is
+   * returned from the next turn on. No-op when practices are disabled.
+   */
+  observeOwnerTurnTaskType(params: {
+    text: string;
+    sessionKey?: string;
+    turnKey?: string;
+  }): { slug: string; label: string } | null {
+    if (!practicesEnabled(this.cfg.memory?.practices)) {
+      return null;
+    }
+    // Incognito (`session.memory: "off"`): the turn is matched against the
+    // recurring types that exist, but its text is not recorded as an
+    // occurrence or an exemplar.
+    if (!conversationMemoryEnabled(this.cfg.session)) {
+      const type = this.taskTypes().classify(params.text);
+      return type ? { slug: type.slug, label: type.label } : null;
+    }
+    // PLAN-64 Phase 1b: the owner's next turn after a recurring-task answer
+    // may be a follow-up to it; it does not found a type of its own (the
+    // reply path counts it afterwards when the follow-up check says it was a
+    // new topic). The same holds for a turn that matches a recurring type
+    // right after an untyped request: typed now, counted after the check.
+    const followUps = practiceFollowUpsEnabled(this.cfg.memory?.practices);
+    const followUpOf = followUps
+      ? (this.followUpState().pendingAnswer(params.sessionKey)?.taskSlug ?? null)
+      : null;
+    const followsUntypedAnswer =
+      followUps && !followUpOf
+        ? this.followUpState().pendingUntypedAnswer(params.sessionKey) !== null
+        : false;
+    return observeOwnerTurn(
+      this.taskTypes(),
+      { ...params, followUpOf, followsUntypedAnswer },
+      this.correctionLlmCall(),
+    );
+  }
+
+  /**
+   * The task type a captured practice should be scoped to: the recurring
+   * type of this message, else of the owner turn just before it in the
+   * session (in-process memory, or the persisted follow-up state after a
+   * restart; 30 minutes). Read-only.
+   */
+  resolveCaptureTaskType(
+    sessionKey: string | undefined,
+    text: string,
+  ): { slug: string; label: string } | null {
+    if (!practicesEnabled(this.cfg.memory?.practices)) {
+      return null;
+    }
+    const store = this.taskTypes();
+    let type = store.classify(text) ?? store.precedingRecurringType(sessionKey, text);
+    if (!type) {
+      // The in-process lookup is lost on a restart; the persisted state of
+      // the last recurring-task answer is not.
+      const slug = this.followUpState().recentTaskSlug(sessionKey);
+      const persisted = slug ? store.get(slug) : null;
+      type = persisted?.recurring ? persisted : null;
+    }
+    return type ? { slug: type.slug, label: type.label } : null;
+  }
+
+  ownerListPractices(opts: PracticeListOptions = {}) {
+    return ownerListPractices(this.practices(), opts);
+  }
+
+  /** The practices writer (owner tier by default; serialised like every owner change). */
+  async ownerSavePractice(input: SavePracticeInput) {
+    const result = await this.ownerChange("save-practice", () =>
+      ownerSavePractice(this.db, this.practices(), input),
+    );
+    void this.queueJobExperienceSync();
+    return result;
+  }
+
+  async ownerEditPractice(id: string, statement: string) {
+    const result = await this.ownerChange("edit-practice", () =>
+      ownerEditPractice(this.db, this.practices(), id, statement),
+    );
+    void this.queueJobExperienceSync();
+    return result;
+  }
+
+  async ownerSetPracticeScope(id: string, scope: string) {
+    const result = await this.ownerChange("scope-practice", () =>
+      ownerSetPracticeScope(this.db, this.practices(), id, scope),
+    );
+    void this.queueJobExperienceSync();
+    return result;
+  }
+
+  async ownerRetirePractice(id: string): Promise<boolean> {
+    const result = await this.ownerChange("retire-practice", () =>
+      ownerRetirePractice(this.db, this.practices(), id),
+    );
+    void this.queueJobExperienceSync();
+    return result;
+  }
+
+  async ownerUnretirePractice(id: string): Promise<boolean> {
+    const result = await this.ownerChange("unretire-practice", () =>
+      ownerUnretirePractice(this.db, this.practices(), id),
+    );
+    void this.queueJobExperienceSync();
     return result;
   }
 

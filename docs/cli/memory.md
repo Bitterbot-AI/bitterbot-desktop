@@ -1,5 +1,5 @@
 ---
-summary: "CLI reference for `bitterbot memory` (status/index/search, forget/edit/export/import)"
+summary: "CLI reference for `bitterbot memory` (status/index/search, forget/edit/export/import, practices)"
 read_when:
   - You want to index or search semantic memory
   - You’re debugging memory availability or indexing
@@ -42,6 +42,12 @@ bitterbot memory export --out - > memory.json
 bitterbot memory import ~/memory.json --dry-run
 bitterbot memory import ~/memory.json
 ```
+
+## Practices
+
+- `memory practices list [--status <status>] [--json]`: the stored [standing practices](/memory/practices) with scope, status, id and counters (applied, repeats, offers), the totals, and the recurring task types.
+- `memory practices backfill [--apply] [--max-calls <n>] [--json]`: finds candidate practices in existing conversations. It prints how many follow-ups it will examine and the most model calls it will make (default 40) before it starts. A dry run unless `--apply` is given; `--apply` stores candidates only, never active practices. See [Backfill from existing conversations](/memory/practices#backfill-from-existing-conversations).
+- `memory practices merge-types <from> <into>`: folds one recurring task type into another; practices scoped to the first move to the second.
 
 ## Options
 

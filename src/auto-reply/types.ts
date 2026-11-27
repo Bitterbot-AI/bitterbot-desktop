@@ -22,6 +22,15 @@ export type GetReplyOptions = {
   images?: ImageContent[];
   /** Notifies when an agent run actually starts (useful for webchat command handling). */
   onAgentRunStart?: (runId: string) => void;
+  /**
+   * Set by a surface that shows the model's reply from the agent event
+   * stream and ignores the final payload text (the gateway `chat.send` path
+   * of the desktop app and the browser Control UI). The turn's generated
+   * one-line note ("Memory updated", a practice offer, "Practice saved",
+   * "Applied: ...") is then handed here instead of being appended to the
+   * reply payload. Resolve true only when the note was persisted and shown.
+   */
+  deliverGeneratedNote?: (text: string) => Promise<boolean> | boolean;
   onReplyStart?: () => Promise<void> | void;
   /** Called when the typing controller cleans up (e.g., run ended with NO_REPLY). */
   onTypingCleanup?: () => void;

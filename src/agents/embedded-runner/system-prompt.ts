@@ -67,6 +67,8 @@ export function buildEmbeddedSystemPrompt(params: {
   };
   /** PLAN-33: pre-rendered Canonical Facts block (independent of endocrine). */
   canonicalFacts?: string;
+  /** PLAN-64 Phase 1: pre-rendered Standing Practices block (volatile half). */
+  practices?: string;
   /** PLAN-34 Phase 2b: pre-rendered Research Findings block (independent of endocrine). */
   researchFindings?: string;
   /** PLAN-57: pre-rendered `<compute-state>` block (volatile tail). */
@@ -106,6 +108,7 @@ export function buildEmbeddedSystemPrompt(params: {
     memoryCitationsMode: params.memoryCitationsMode,
     endocrineState: params.endocrineState,
     canonicalFacts: params.canonicalFacts,
+    practices: params.practices,
     researchFindings: params.researchFindings,
     computeState: params.computeState,
     selfState: params.selfState,

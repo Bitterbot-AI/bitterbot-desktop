@@ -10,7 +10,7 @@ import {
   formatToolOutput,
 } from "../../lib/message-utils";
 import { useArtifactStore, type ArtifactType } from "../../stores/artifact-store";
-import { useChatStore, nextMsgId } from "../../stores/chat-store";
+import { isInjectedRunId, useChatStore, nextMsgId } from "../../stores/chat-store";
 import { useCoworkStore, type TaskStatus } from "../../stores/cowork-store";
 import { useGatewayStore } from "../../stores/gateway-store";
 import { useUIStore } from "../../stores/ui-store";
@@ -49,6 +49,7 @@ export function ChatView() {
   const appendDelta = useChatStore((s) => s.appendDelta);
   const finalizeRun = useChatStore((s) => s.finalizeRun);
   const abortRun = useChatStore((s) => s.abortRun);
+  const addInjectedMessage = useChatStore((s) => s.addInjectedMessage);
   const addToolCall = useChatStore((s) => s.addToolCall);
   const updateToolCallPartial = useChatStore((s) => s.updateToolCallPartial);
   const updateToolCallResult = useChatStore((s) => s.updateToolCallResult);
@@ -102,6 +103,19 @@ export function ChatView() {
         }
         case "final": {
           const text = extractMessageText(evt.message);
+          if (isInjectedRunId(evt.runId)) {
+            // Not a run of ours: a message the gateway added after the reply
+            // (the generated "Memory updated" / practice line, chat.inject).
+            if (text) {
+              addInjectedMessage(evt.runId, evt.sessionKey, {
+                id: nextMsgId(),
+                role: "assistant",
+                content: text,
+                timestamp: Date.now(),
+              });
+            }
+            break;
+          }
           const thinking = extractThinking(evt.message);
           const toolCalls = extractToolCalls(evt.message);
 
@@ -134,7 +148,7 @@ export function ChatView() {
         }
       }
     },
-    [appendDelta, finalizeRun, abortRun],
+    [appendDelta, finalizeRun, abortRun, addInjectedMessage],
   );
 
   // Cowork task tracking

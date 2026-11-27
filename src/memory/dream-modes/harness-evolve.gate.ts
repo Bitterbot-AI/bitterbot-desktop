@@ -85,6 +85,11 @@ export async function evaluateHarnessCandidate(args: {
     serializePolicyForJudge(candidate),
     selectionSet,
   );
+  // PLAN-64 Phase 6: the bar is on trials actually scored, not on how many
+  // were asked for. A replay that ran out of budget, or a judge that skipped
+  // rows, must not pass on a handful of pairs.
+  if (paired.length < MIN_PAIRED_FOR_BOOTSTRAP)
+    return { accepted: false, reason: "insufficient-data", ...base };
   // Map to the spine's PairedOutcome shape (structural) and reuse its bootstrap.
   const outcomes = paired.map((p) => ({
     executionId: p.taskId,

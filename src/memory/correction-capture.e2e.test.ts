@@ -125,6 +125,18 @@ beforeEach(() => {
   llm.mockReset();
 });
 
+/**
+ * The hook as the reply path uses it on a channel surface: the line's text,
+ * confirmed as handed to delivery (which is what records a practice offer).
+ */
+const captureLine = async (
+  params: Parameters<typeof runCorrectionCaptureAfterTurn>[0],
+): Promise<string | null> => {
+  const line = await runCorrectionCaptureAfterTurn(params);
+  await line?.markDelivered();
+  return line?.text ?? null;
+};
+
 describe("correction capture end-to-end (real manager, real hook, real resolver)", () => {
   it("an owner correction is in the ledger before the next turn and renders on a cold session", async () => {
     const s = await store();
@@ -148,7 +160,7 @@ describe("correction capture end-to-end (real manager, real hook, real resolver)
         ],
       }),
     );
-    const line = await runCorrectionCaptureAfterTurn({
+    const line = await captureLine({
       cfg: cfg as never,
       followupRun: followupRun(),
       sessionKey: SESSION_KEY,
@@ -196,21 +208,21 @@ describe("correction capture end-to-end (real manager, real hook, real resolver)
       runStartedAt: Date.now(),
     };
     expect(
-      await runCorrectionCaptureAfterTurn({
+      await captureLine({
         ...base,
         followupRun: followupRun(),
         isHeartbeat: true,
       }),
     ).toBeNull();
     expect(
-      await runCorrectionCaptureAfterTurn({
+      await captureLine({
         ...base,
         followupRun: followupRun({ senderIsOwner: false }),
       }),
     ).toBeNull();
     const subKey = "agent:main:subagent:abc";
     expect(
-      await runCorrectionCaptureAfterTurn({
+      await captureLine({
         ...base,
         sessionKey: subKey,
         followupRun: followupRun({ sessionKey: subKey }),
@@ -218,7 +230,7 @@ describe("correction capture end-to-end (real manager, real hook, real resolver)
     ).toBeNull();
     const incognito = { ...(cfg as object), session: { memory: "off" } } as never;
     expect(
-      await runCorrectionCaptureAfterTurn({
+      await captureLine({
         ...base,
         cfg: incognito,
         followupRun: followupRun({ config: incognito }),
@@ -261,7 +273,7 @@ describe("correction capture end-to-end (real manager, real hook, real resolver)
 
     // A turn with no corrective shape: no call, but the line still reports
     // what the agent did and what was held.
-    const line = await runCorrectionCaptureAfterTurn({
+    const line = await captureLine({
       cfg: cfg as never,
       followupRun: followupRun(),
       sessionKey: SESSION_KEY,

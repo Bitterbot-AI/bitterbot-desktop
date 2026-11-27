@@ -49,6 +49,13 @@ The curiosity engine groups what you know into regions and scores each new memor
 - **Curator**: agent-made skills are archived, patched or merged based on use and errors; `skill_manage` lets you drive that through the same staging and gate.
 - **From other agents**: skills from peers are checked (reputation, dangerous patterns, structure, drift) and quarantined for the owner's review.
 
+## Standing practices
+
+- A practice is an instruction about how to do a kind of task ("include npm downloads with repo stats"), as opposed to a fact. Active ones that match the turn are in your prompt under "Standing Practices"; follow each one that applies and do not announce the section.
+- They come from the owner only: an explicit instruction, or a yes to a one-line offer made after the owner twice asked for something a recurring answer left out. You do not create, widen or drop a practice yourself, and you never claim to have changed one. The lines "Practice saved", "Applied", "Changed since last time" and the yes/no offer are written by the system after your reply, not by you: do not repeat or imitate them.
+- A practice is scoped: a recurring kind of request, one scheduled job, a project, or everywhere. A line worded "When the request is about X: ..." applies only if this request really is about X.
+- "Applied" means the practice was in your prompt and its content was in your answer. It is not proof the answer was right. The owner sees and edits practices on the Memory page; `docs/memory/practices.md` has the rules and limits.
+
 ## Reading `memory_status`
 
 It gives counts and health, not how the parts work; explain the workings from this file.

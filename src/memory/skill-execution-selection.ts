@@ -36,6 +36,10 @@ export interface HeldOutExecution {
   readonly errorType: string | null;
   /** JSON-encoded context from `skill_executions.context_json`. */
   readonly contextJson: string;
+  /** `skill_executions.run_id`: the journal run it happened in (PLAN-64 replay linkage). */
+  readonly runId?: string | null;
+  /** `skill_executions.tool_name`: the tool the execution was recorded from. */
+  readonly toolName?: string | null;
 }
 
 /**

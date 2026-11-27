@@ -369,22 +369,75 @@ export function normalizeScopeName(raw: string): string | null {
   return SCOPE_NAME_RX.test(slug) ? slug : null;
 }
 
+/** The scope kinds a practice may carry (PLAN-64); facts use the first two only. */
+const SCOPE_KINDS = ["project", "person", "task", "job"] as const;
+export type ScopeKind = (typeof SCOPE_KINDS)[number];
+const FACT_SCOPE_KINDS: ReadonlySet<string> = new Set(["project", "person"]);
+
 /**
- * Normalise a scope string: `global`, `project:<name>` or `person:<name>`
- * (name slugified). Empty/undefined is `global`; anything else is null so a
- * caller can reject it instead of storing a scope nothing will ever match.
+ * The one scope validator (PLAN-55 Phase 1, widened by PLAN-64 Phase 1):
+ * `global`, `project:<name>`, `person:<name>`, `task:<slug>` (a recurring
+ * kind of request) or `job:<cronJobId>`, name slugified. Empty/undefined is
+ * `global`; anything else is null so a caller can reject the write instead
+ * of storing a scope nothing will ever match. `kinds` narrows what is
+ * accepted: the facts ledger passes project and person only.
  */
-export function normalizeCanonicalScope(raw: string | undefined | null): string | null {
+export function normalizeScope(
+  raw: string | undefined | null,
+  kinds: ReadonlySet<string> = new Set<string>(SCOPE_KINDS),
+): string | null {
   const text = (raw ?? "").trim().toLowerCase();
   if (!text || text === CANONICAL_SCOPE_GLOBAL) {
     return CANONICAL_SCOPE_GLOBAL;
   }
-  const m = /^(project|person)\s*:\s*(.+)$/.exec(text);
-  if (!m) {
+  const m = /^(project|person|task|job)\s*:\s*(.+)$/.exec(text);
+  if (!m || !kinds.has(m[1] ?? "")) {
     return null;
   }
   const name = normalizeScopeName(m[2] ?? "");
   return name ? `${m[1]}:${name}` : null;
+}
+
+/**
+ * Normalise a fact's scope: `global`, `project:<name>` or `person:<name>`.
+ * `task:` and `job:` scopes belong to practices (normalizeScope) and are
+ * rejected here: a fact with one would be stored and never rendered.
+ */
+export function normalizeCanonicalScope(raw: string | undefined | null): string | null {
+  return normalizeScope(raw, FACT_SCOPE_KINDS);
+}
+
+/** What a turn offers a scope to match against (PLAN-64 Phase 1). */
+export type ScopeContext = {
+  activeProject?: string | null;
+  /** Slug of the turn's recurring task type, when it has one. */
+  taskSlug?: string | null;
+  /** The cron job whose own session this turn runs in. */
+  cronJobId?: string | null;
+};
+
+/**
+ * Does something with this scope apply to a turn? Global and person always;
+ * project when the active project matches; task when the turn's task slug
+ * matches; job when the turn's cron job id matches. An unknown or malformed
+ * scope never applies.
+ */
+export function isScopeVisibleInContext(scope: string, ctx: ScopeContext): boolean {
+  const normalized = normalizeScope(scope);
+  if (!normalized) {
+    return false;
+  }
+  if (normalized === CANONICAL_SCOPE_GLOBAL || normalized.startsWith("person:")) {
+    return true;
+  }
+  const [kind, name] = [
+    normalized.slice(0, normalized.indexOf(":")),
+    normalized.slice(normalized.indexOf(":") + 1),
+  ];
+  const candidate =
+    kind === "project" ? ctx.activeProject : kind === "task" ? ctx.taskSlug : ctx.cronJobId;
+  const wanted = candidate ? normalizeScopeName(candidate) : null;
+  return wanted !== null && wanted === name;
 }
 
 /**

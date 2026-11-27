@@ -299,6 +299,8 @@ function checkMemoryDatabase(dbPath: string): DoctorCheckResult[] {
         results.push(warn(`Could not query chunks table: ${String(err)}`));
       }
     }
+    // PLAN-64: standing practices and their counters.
+    results.push(...inspectPractices(db));
   } catch (err) {
     results.push(error(`Failed to open database: ${String(err)}`));
   } finally {
@@ -310,6 +312,68 @@ function checkMemoryDatabase(dbPath: string): DoctorCheckResult[] {
   }
 
   return results;
+}
+
+/**
+ * PLAN-64: standing practices by status and the event counters (prompt
+ * inclusions, repeats, offers and the owner's answers). Exported for tests.
+ * Read-only; nothing is reported on a database from before practices.
+ */
+export function inspectPractices(db: DatabaseSync): DoctorCheckResult[] {
+  if (!tableExists(db, "practices") || !tableExists(db, "practice_events")) {
+    return [];
+  }
+  try {
+    const byStatus = new Map<string, number>();
+    for (const row of db
+      .prepare(`SELECT status, COUNT(*) AS c FROM practices GROUP BY status`)
+      .all() as unknown as Array<{ status: string; c: number }>) {
+      byStatus.set(row.status, Number(row.c));
+    }
+    const counts = new Map<string, number>();
+    for (const row of db
+      .prepare(
+        `SELECT kind, COUNT(*) AS c FROM practice_events
+          WHERE kind IN ('applied', 'repeat', 'not_followed', 'offered', 'declined')
+             OR (kind = 'confirmed' AND detail LIKE '%"via":"offer"%')
+          GROUP BY kind`,
+      )
+      .all() as unknown as Array<{ kind: string; c: number }>) {
+      counts.set(row.kind, Number(row.c));
+    }
+    const types = tableExists(db, "task_types")
+      ? Number(
+          (
+            db.prepare(`SELECT COUNT(*) AS c FROM task_types WHERE recurring = 1`).get() as {
+              c: number;
+            }
+          ).c,
+        )
+      : 0;
+    const n = (key: string) => counts.get(key) ?? 0;
+    const results = [
+      info(
+        `Practices: ${byStatus.get("active") ?? 0} active, ${byStatus.get("candidate") ?? 0} candidate, ` +
+          `${byStatus.get("suppressed") ?? 0} declined, ${byStatus.get("retired") ?? 0} retired; ` +
+          `${types} recurring task type(s)`,
+      ),
+      info(
+        `Practice counters: applied ${n("applied")}, repeats ${n("repeat")}, not followed ${n("not_followed")}, offers ${n("offered")} ` +
+          `(${n("confirmed")} confirmed, ${n("declined")} declined)`,
+      ),
+    ];
+    if (n("repeat") > 0) {
+      results.push(
+        warn(
+          `${n("repeat")} time(s) you had to repeat an instruction that was already an active practice ` +
+            `(see \`bitterbot memory practices list\`)`,
+        ),
+      );
+    }
+    return results;
+  } catch (err) {
+    return [info(`Practices could not be read: ${String(err)}`)];
+  }
 }
 
 /**

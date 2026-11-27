@@ -109,6 +109,8 @@ describe("memory control scopes (PLAN-53 G1)", () => {
       "memory.facts",
       "memory.preferences",
       "memory.audit",
+      // PLAN-64 Phase 1.
+      "memory.practices",
     ]) {
       expect(coreGatewayHandlers[method], `${method} has a handler`).toBeTypeOf("function");
       expect(authorizeGatewayMethod(method, operatorWith(["operator.read"]))).toBeNull();
@@ -124,6 +126,15 @@ describe("memory control scopes (PLAN-53 G1)", () => {
       // PLAN-55 Phase 3.
       "memory.exportDownload",
       "memory.import",
+      // PLAN-64 Phase 1.
+      "memory.savePractice",
+      "memory.editPractice",
+      "memory.setPracticeScope",
+      "memory.retirePractice",
+      "memory.unretirePractice",
+      "memory.answerPracticeOffer",
+      // PLAN-64 Phase 1b.
+      "memory.mergeTaskTypes",
     ]) {
       expect(coreGatewayHandlers[method], `${method} has a handler`).toBeTypeOf("function");
       expect(authorizeGatewayMethod(method, operatorWith(["operator.write"]))).not.toBeNull();

@@ -65,6 +65,12 @@ describe("CORRECTION_PREFILTER_PATTERNS", () => {
       "my-x-is",
       "my-x-is-value",
       "everywhere",
+      // PLAN-64 Phase 1 (covered in correction-capture.practices.test.ts).
+      "stop-verbing",
+      "dont-worry-about",
+      "no-need-to",
+      "give-too",
+      "you-should",
     ]);
   });
 

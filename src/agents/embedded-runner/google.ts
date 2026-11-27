@@ -13,6 +13,7 @@ import {
   sanitizeGoogleTurnOrdering,
   sanitizeSessionMessagesImages,
 } from "../embedded-helpers.js";
+import { annotateGeneratedNotes } from "../generated-note.js";
 import type { TranscriptStore as SessionManager } from "../runtime/transcript/store.js";
 import {
   sanitizeToolCallInputs,
@@ -426,7 +427,9 @@ export async function sanitizeSessionHistory(params: {
       provider: params.provider,
       modelId: params.modelId,
     });
-  const withInterSessionMarkers = annotateInterSessionUserMessages(params.messages);
+  const withInterSessionMarkers = annotateGeneratedNotes(
+    annotateInterSessionUserMessages(params.messages),
+  );
   const sanitizedImages = await sanitizeSessionMessagesImages(
     withInterSessionMarkers,
     "session:history",

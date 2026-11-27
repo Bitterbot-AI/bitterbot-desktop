@@ -73,6 +73,10 @@ export const FIELD_HELP: Record<string, string> = {
     "LLM-scored marketplace pricing for crystallized skills (token spend when a model is configured).",
   "agents.defaults.harnessEvolve.enabled":
     "Let dream cycles propose harness-policy overlays (PLAN-25). Experimental.",
+  "agents.defaults.harnessEvolve.evaluation":
+    'How a candidate harness policy is judged: "replay" (default) runs both policies on verifiable tasks in a scratch workspace and scores them with the task checker; "predicted" asks one model call to guess outcomes and executes nothing.',
+  "agents.defaults.harnessEvolve.maxTrialTurnsPerCycle":
+    "Ceiling on trial agent turns one harness replay cycle may dispatch (default: 40). Each paired trial costs two turns; 0 disables replay trials.",
   "memory.architectEvolution.enabled":
     "Learn extraction rules from failures and inject them into future extractions (HORMA). Experimental.",
   "memory.curiosity.enabled":
@@ -88,6 +92,16 @@ export const FIELD_HELP: Record<string, string> = {
     "After each of your turns whose message looks like a correction or a standing instruction, one cheap model call pins what you said as a settled fact at your authority (usage feature memory/correction). Off: corrections reach the facts ledger only when the agent pins them or when the dream-time extractor reads the transcript.",
   "memory.correction.confirm":
     'Append one "Memory updated: ..." line to the reply whenever a settled fact was written during the turn. Values are shown in direct chats only.',
+  "memory.practices.enabled":
+    'Standing practices: when you tell the agent how to do a kind of task ("for repo stats, include npm downloads"), the instruction is stored with a scope (one recurring kind of request, one scheduled job, one project, or everywhere) and included in the prompt of the turns it applies to. Capture uses the correction pass\'s one model call, so it also needs memory.correction.enabled. Off: nothing is captured, recurring requests are not typed and no practice is added to a prompt; stored practices are kept. Default on.',
+  "memory.practices.followUps.enabled":
+    'Learning from follow-ups: when you ask for something right after the answer to a request you make regularly ("how about npm downloads"), one cheap model call (usage feature memory/correction, at most one per such answer: your next message in the same conversation, within 6 hours) decides whether the answer left it out. If so it is kept as a candidate practice, which changes nothing until you say yes to the offer. Off: no such call is made and no candidate is stored. Default on.',
+  "memory.practices.offers.enabled":
+    'The practice offer: when a candidate practice was seen twice (or once as an explicit instruction), one generated line is added to a reply in a direct chat asking "Include it every time? (yes / no)". A bare yes saves it as a practice, a bare no drops it for good, anything else does nothing. Each candidate is offered at most twice. Off: no offer is made and yes/no is not read as an answer; candidates can still be activated with memory.unretirePractice. Default on.',
+  "memory.practices.attribution.enabled":
+    'The attribution line: when a practice scoped to a task type, a project or a person was included in the prompt of your turn because its scope matched, the reply in a direct chat ends with one generated line such as Applied: "Include npm downloads" for repo stats, from 12 Nov. A practice is named the first two times and once more after you reword or re-scope it. "Applied" means the practice was in the prompt and more than half of its content words are in the answer (a word match, no model); a practice the answer does not show gets no line, and one that names something to include and has none of its words in the answer is counted as not followed. Never shown for practices that apply everywhere, nor in a reply that already carries a memory or practice line. Off: no such line. Default on.',
+  "memory.practices.jobs.enabled":
+    'Scheduled jobs that learn: when an isolated scheduled job announces its report, the gateway records which job was announced and when. Your next message in the main conversation, within 6 hours, is then read as possibly being about that report: an explicit instruction about it ("give me the unique counts too every time") is saved as a practice for that job only, and a request for something the report left out becomes a candidate you are asked about. The first run after such a change ends its report with one line starting "Changed since last time:"; if your next message repeats or contradicts that practice, it is rolled back. Off: no announcement records, no link from your message to a job, no such line. Practices already saved for a job are still given to it. Default on.',
   "session.memory":
     '"off" is incognito: conversation transcripts are not indexed into memory, the session extractor does not read them, and corrections are not captured. Replies still work. Default "on".',
   "memory.curiosity.research.strictEgress":

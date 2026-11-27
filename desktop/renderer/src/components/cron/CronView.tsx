@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { useGatewayEvent } from "../../hooks/useGatewayEvent";
 import { describeError } from "../../lib/describe-error";
-import { formatRelativeTime, formatDateTime } from "../../lib/format";
+import { formatDate, formatRelativeTime, formatDateTime } from "../../lib/format";
 import { cn } from "../../lib/utils";
 import {
   cronJobHealth,
@@ -21,6 +21,21 @@ const HEALTH_TONE = {
   bad: "text-danger",
   idle: "text-muted-foreground/60",
 } as const;
+
+/** The standing practices the gateway lists for a job (what you taught it), if any. */
+export function taughtPractices(
+  job: CronJob,
+): Array<{ id: string; statement: string; savedAt: number }> {
+  const raw = (job as { practices?: unknown }).practices;
+  if (!Array.isArray(raw)) return [];
+  return raw.filter(
+    (p): p is { id: string; statement: string; savedAt: number } =>
+      Boolean(p) &&
+      typeof (p as { id?: unknown }).id === "string" &&
+      typeof (p as { statement?: unknown }).statement === "string" &&
+      typeof (p as { savedAt?: unknown }).savedAt === "number",
+  );
+}
 
 function describeDelivery(job: CronJob): string {
   const delivery = job.delivery;
@@ -75,6 +90,19 @@ function CronJobCard({
             <span className="text-xs font-mono text-muted-foreground/60">{job.schedule}</span>
           </div>
           <p className="text-xs text-muted-foreground line-clamp-2">{job.text}</p>
+          {taughtPractices(job).length > 0 && (
+            <ul
+              className="mt-1 space-y-0.5 text-xs text-muted-foreground"
+              data-testid="cron-practices"
+            >
+              {taughtPractices(job).map((p) => (
+                <li key={p.id}>
+                  You taught it: {p.statement}{" "}
+                  <span className="text-muted-foreground/60">(since {formatDate(p.savedAt)})</span>
+                </li>
+              ))}
+            </ul>
+          )}
           <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground/60">
             {job.lastRunAt && <span>Last: {formatRelativeTime(job.lastRunAt)}</span>}
             {job.nextRunAt && <span>Next: {formatDateTime(job.nextRunAt)}</span>}

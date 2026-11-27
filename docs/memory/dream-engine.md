@@ -269,11 +269,35 @@ Gap-filling driven by the curiosity engine. Loads up to 3 unresolved, unexpired 
 
 ### Research Mode
 
-**Retired in PLAN-45 Phase 1 (2026-09-05).** The empirical prompt-optimization mode (`prompt-optimization.ts`), its PLAN-21 two-gate validation sandbox (faithfulness gate + paired-bootstrap performance gate over held-out `skill_executions`), and the Pareto / cosine-decay edit budget (`skill-mutation-pareto.ts`) were deleted. It was unfueled (skill-execution bootstrap deadlock) and its promotion path wrote directly to live chunk text. What survives of `experiment-sandbox.ts` is only the paired LLM judge that harness-evolve (PLAN-25) uses to compare two harness policies; it never gates a skill.
+**Retired in PLAN-45 Phase 1 (2026-09-05).** The empirical prompt-optimization mode (`prompt-optimization.ts`), its PLAN-21 two-gate validation sandbox (faithfulness gate + paired-bootstrap performance gate over held-out `skill_executions`), and the Pareto / cosine-decay edit budget (`skill-mutation-pareto.ts`) were deleted. It was unfueled (skill-execution bootstrap deadlock) and its promotion path wrote directly to live chunk text. What survives of `experiment-sandbox.ts` is only the paired LLM judge, a prediction that executes nothing, which harness-evolve (PLAN-25) can use to compare two harness policies when `agents.defaults.harnessEvolve.evaluation` is `"predicted"`; it never gates a skill. See [Harness evolution](#harness-evolution-mode-opt-in) below.
 
 ### Slow Update (PLAN-21 Phase D)
 
 **Retired in PLAN-45 Phase 1 (2026-09-05).** The epoch-wise longitudinal regression (`dream-slow-update.ts`) and its per-cycle hook were deleted. The `skill_text_history` table it read was left orphaned at the time and then dropped in migration v67 (PLAN-46 dead-code pass); `dream_telemetry` rows under phase `plan21_slow_update` and `memory_audit_log` `plan21_slow_update_fired` events are historical only.
+
+### Harness Evolution Mode (opt-in)
+
+**Off by default.** `harness_evolve` runs only when `agents.defaults.harnessEvolve.enabled` is `true`. It edits one thing: the harness policy, which is a short list of prompt fragments appended to the system prompt plus per-tool description overrides (`src/agents/embedded-runner/harness-policy.ts`). It cannot touch tool permissions, the sandbox, safety interceptors or the GENOME; the policy type has no field for them. Promotions are local, versioned and reversible, and are never shared over P2P.
+
+One cycle mines failure clusters from `skill_executions` and `intervention_records`, asks the model for up to four minimal candidate policies, and gates each one: a paired bootstrap over per-task outcomes must put the 95% CI on the delta strictly above zero, on at least five scored pairs. At most one candidate is promoted per cycle. Every tenth cycle a slow update compares the live policy with up to three archived versions and rolls back when the live policy is significantly worse. Promotion and rollback use the same evaluation.
+
+`agents.defaults.harnessEvolve.evaluation` decides where the per-task outcomes come from.
+
+**`replay` (default): real re-execution** (`dream-modes/harness-evolve.replay.ts`, PLAN-64 Phase 6).
+
+- What is executed: for each replayable held-out execution, the linked task runs twice as a real agent turn, once under the baseline policy and once under the candidate, in the skill task gate's scratch-workspace trial runner. Both arms use the same executor (same agent, model, tool policy and timeout). Which arm goes first is drawn at random per task. Each trial gets a fresh scratch workspace that is deleted afterwards, and the policy is bound to that workspace for that turn only; the live policy on disk is not touched until a promotion.
+- How pass or fail is decided: by the task's deterministic checker (`scoreTaskAnswer`), the same verifier the skill task gate uses. No model is asked for its opinion of a transcript.
+- What counts as replayable: a `skill_executions` row holds no prompt and no outcome check, so it is replayable only when the node's reviewed task corpus (`skill-wiki/task-corpus.jsonl`) carries a task drafted from that execution's run (`sourceRunId`). That task, a self-contained restatement of what the run was doing, is what runs. The original user message is not re-sent.
+- What is excluded, never guessed: executions with no recorded run; executions whose recorded tool is unknown or is not one the scratch runner offers (messaging, wallet, browser and every other live-state tool); executions with no reviewed task and checker; tasks that reach for the network or a path outside the workspace; and a second execution of an already selected task. Trial turns run in a skill-evolution validation session: restricted tool allow-list, workspace-scoped files, undeclared network egress refused.
+- Fail closed: with fewer than five replayable held-out executions the cycle proposes nothing, promotes nothing and writes an insight with the replayable count, the required count and the exclusion reasons. The same holds when no trial executor is available. On most nodes today this is the normal outcome, because only operator-reviewed mined tasks link an execution to a checker.
+- Budget: every trial agent turn is reserved in SQLite (`harness_replay_cycles`, `harness_replay_trials`) before it is dispatched, and a reservation is never refunded. `maxTrialTurnsPerCycle` (default 40) is the ceiling per cycle; one comparison runs at most ten pairs; a comparison that cannot afford five pairs runs nothing. A crash leaves reserved turns counted, so reopening the cycle cannot spend them twice. An arm that errors drops its pair; a pause, an exhausted budget, 30 minutes of trial wall time or three errored pairs in a row (the executor is down) end the comparison. None of these is turned into a pass or a fail. On a slow-update cycle the rollback check spends the budget first.
+- Spend: trial turns are validation sessions, so their model usage is recorded in the usage ledger under `skills/evolution`, and a budget in `usage.budgets.mode: "enforce"` that covers that feature pauses dispatch.
+
+**`predicted`: one model's guess.** The older judge (`ExperimentSandbox.scoreVersionPair`) sends both policies and a list of past execution records to one model call and asks it to predict pass or fail for each. Nothing is executed. It remains available for nodes with no replayable executions, and it is labelled as a prediction wherever it is reported: the promotion insight says "PREDICTION" and "nothing was executed", and logs and provenance carry `evaluation=predicted`.
+
+Provenance (`harness-policy-archive/provenance.jsonl`) records, for every promotion, rejection and rollback: `evaluation` (`replay` or `predicted`), `nExecuted` (paired trials actually executed and verified; 0 for a prediction), `trialIds` (rows in `harness_replay_trials`), the bootstrap statistics and the held-out execution ids.
+
+Not established: the replay path is covered by unit tests with a scripted trial executor through the real selection, scorer, gate and slow-update code. It has not been run against a real model, and no promotion by replay has been observed on a live node.
 
 ---
 
@@ -629,11 +653,14 @@ tells you what happened while you were away:
 - the strongest insights from those dreams,
 - what changed in what it holds true about you (new, updated, and retired facts,
   and updated preferences),
+- what it learned from you: [practices](/memory/practices#in-the-daily-brief) saved or
+  confirmed, candidates waiting for your yes or no, practices you no longer have to
+  repeat, and any you had to repeat,
 - loops it has left open.
 
 The brief arrives like other owner notices: in the main session, in the Control
 UI, and on your chat channel (subject to quiet hours). It is skipped on days
-with nothing new to say. It is sent from the daily digest timer, so it needs the
+with nothing new to say (a practice saved or repeated counts as something to say). It is sent from the daily digest timer, so it needs the
 digest on (`memory.digest.enabled`, default on). If something in it is wrong, correct or forget it on
 the **Memory** page.
 

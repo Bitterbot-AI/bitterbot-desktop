@@ -218,6 +218,12 @@ Behavior details:
 - The main-session summary respects `wakeMode`: `now` triggers an immediate heartbeat and
   `next-heartbeat` waits for the next scheduled heartbeat.
 
+### Jobs that learn from your comments
+
+When an isolated job's report is announced, your next message in the main conversation (within 6 hours) is read as possibly being about that report. An instruction about it ("give me the unique counts too every time") is saved as a standing practice for that job only and is given to the job from its next run on. That run ends its report with one generated line, `Changed since last time: "..."`. The job's own `message` is never rewritten.
+
+What the job has learned is listed by `bitterbot cron list`, on the Automations and Memory pages, and in a generated file, `<agent dir>/cron/<jobId>/EXPERIENCE.md`, which is removed when the job is deleted. The rules, the limits (next message only, isolated jobs only, no trial run before the next scheduled run) and the off switch (`memory.practices.jobs.enabled: false`) are in [Standing practices: Scheduled jobs](/memory/practices#scheduled-jobs).
+
 ### Model and thinking overrides
 
 Isolated jobs (`agentTurn`) can override the model and thinking level:

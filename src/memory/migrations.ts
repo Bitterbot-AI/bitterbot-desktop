@@ -2855,6 +2855,131 @@ export const MIGRATIONS: Migration[] = [
       );
     },
   },
+  {
+    version: 81,
+    description:
+      "PLAN-64 Phase 1 (2026-11-27): standing practices. `practices` holds behavioural " +
+      "instructions (a sentence, a scope, a status, the source tier, evidence line refs " +
+      "and counters); `practice_events` is their append-only history (stored, applied, " +
+      "repeat, offered, confirmed, declined, widened, narrowed, edited, retired); " +
+      "`task_types` holds the owner's recurring kinds of request (slug, label, exemplar " +
+      "texts, occurrence and distinct-day counts). Status, source, origin and event kind " +
+      "vocabularies are code-only (SQLite has no enum). The follow-up, offer and backfill " +
+      "phases use the same columns, so they need no further migration.",
+    up: (db) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS practices (
+          id TEXT PRIMARY KEY,
+          statement TEXT NOT NULL,
+          statement_hash TEXT NOT NULL,
+          scope TEXT NOT NULL DEFAULT 'global',
+          status TEXT NOT NULL DEFAULT 'candidate',
+          source TEXT NOT NULL,
+          evidence_refs TEXT NOT NULL DEFAULT '[]',
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL,
+          applied_count INTEGER NOT NULL DEFAULT 0,
+          last_applied_at INTEGER,
+          offer_count INTEGER NOT NULL DEFAULT 0,
+          origin TEXT NOT NULL DEFAULT 'explicit'
+        );
+      `);
+      db.exec(`CREATE INDEX IF NOT EXISTS idx_practices_status_scope ON practices(status, scope)`);
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS practice_events (
+          id TEXT PRIMARY KEY,
+          practice_id TEXT NOT NULL,
+          kind TEXT NOT NULL,
+          session_ref TEXT,
+          detail TEXT,
+          ts INTEGER NOT NULL
+        );
+      `);
+      db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_practice_events_practice ON practice_events(practice_id, ts)`,
+      );
+      db.exec(`CREATE INDEX IF NOT EXISTS idx_practice_events_kind ON practice_events(kind, ts)`);
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS task_types (
+          slug TEXT PRIMARY KEY,
+          label TEXT NOT NULL DEFAULT '',
+          exemplars TEXT NOT NULL DEFAULT '[]',
+          occurrences INTEGER NOT NULL DEFAULT 0,
+          distinct_days INTEGER NOT NULL DEFAULT 0,
+          first_seen INTEGER NOT NULL,
+          last_seen INTEGER NOT NULL,
+          recurring INTEGER NOT NULL DEFAULT 0
+        );
+      `);
+      db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_task_types_recurring ON task_types(recurring, last_seen)`,
+      );
+    },
+  },
+  {
+    version: 82,
+    description:
+      "PLAN-64 Phase 1b (2026-11-27): follow-up learning state. One row per owner " +
+      "session: the last recurring-task answer (task slug, the owner's request, an " +
+      "excerpt of the answer, when it was sent, whether its one gap check was spent), " +
+      "the practice offer the last reply carried, and the owner's yes or no to it until " +
+      "the reply reports it. Persisted so a gateway restart between an answer and the " +
+      "follow-up, or between an offer and its answer, does not lose the link.",
+    up: (db) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS practice_session_state (
+          session_key TEXT PRIMARY KEY,
+          session_id TEXT,
+          task_slug TEXT,
+          owner_text TEXT,
+          answer_text TEXT,
+          answered_at INTEGER,
+          gap_checked INTEGER NOT NULL DEFAULT 0,
+          offer_practice_id TEXT,
+          offered_at INTEGER,
+          answer_practice_id TEXT,
+          answer_kind TEXT,
+          answer_run_id TEXT,
+          answer_at INTEGER,
+          updated_at INTEGER NOT NULL
+        );
+      `);
+    },
+  },
+  {
+    version: 83,
+    description:
+      "PLAN-64 Phase 5 (2026-11-27): scheduled jobs that learn. One row per announced " +
+      "report of an isolated cron job: the job, the conversation it was announced in, " +
+      "when, an excerpt of the job's instruction and of its report, and the practices " +
+      "whose 'Changed since last time' line that run consumed. The owner's next message " +
+      "in that conversation is linked to the job through this row, so the link survives " +
+      "a gateway restart. Rows are consumed by that message and dropped after 30 days.",
+    up: (db) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS practice_job_announcements (
+          id TEXT PRIMARY KEY,
+          job_id TEXT NOT NULL,
+          job_name TEXT,
+          session_key TEXT NOT NULL,
+          destination TEXT,
+          request_text TEXT,
+          output_text TEXT,
+          canary_practice_ids TEXT NOT NULL DEFAULT '[]',
+          announced_at INTEGER NOT NULL,
+          consumed_at INTEGER
+        );
+      `);
+      db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_practice_job_announcements_session
+           ON practice_job_announcements(session_key, announced_at)`,
+      );
+      db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_practice_job_announcements_job
+           ON practice_job_announcements(job_id, announced_at)`,
+      );
+    },
+  },
 ];
 
 /**

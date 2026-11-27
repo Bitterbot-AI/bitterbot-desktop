@@ -5,9 +5,18 @@
  * it. Once a day this says, in a few lines: how much the agent dreamed, the
  * strongest insights, what changed in what it holds true about the owner,
  * and what it has left open. Nothing is sent when there is nothing to say.
+ *
+ * PLAN-64 Phase 3 adds one section, "What I learned from you": the owner's
+ * standing practices since the last brief (practice-digest.ts).
  */
 
 import type { DatabaseSync } from "node:sqlite";
+import {
+  buildPracticeDigest,
+  type PracticeDigest,
+  practiceDigestHasNews,
+  renderPracticeDigest,
+} from "./practice-digest.js";
 
 export type DreamBrief = {
   cycles: number;
@@ -20,6 +29,12 @@ export type DreamBrief = {
   learned: Array<{ question: string; answer: string; host: string | null }>;
   /** Questions still open in the curiosity queue. */
   wondering: string[];
+  /**
+   * PLAN-64 Phase 3: standing practices since the last brief (saved or
+   * confirmed, waiting for an answer, no longer repeated, repeated). Read
+   * from the practices tables; the section is left out when all four are empty.
+   */
+  practices: PracticeDigest;
 };
 
 const all = <T>(db: DatabaseSync, sql: string, ...args: Array<number | string>): T[] => {
@@ -115,13 +130,29 @@ export function buildDreamBrief(db: DatabaseSync, sinceMs: number): DreamBrief {
       ORDER BY priority DESC LIMIT 3`,
     Date.now(),
   ).map((r) => one(r.description, 120));
-  return { cycles, insights, facts, preferences, openLoops, forgotten, learned, wondering };
+  const practices = buildPracticeDigest(db, sinceMs);
+  return {
+    cycles,
+    insights,
+    facts,
+    preferences,
+    openLoops,
+    forgotten,
+    learned,
+    wondering,
+    practices,
+  };
 }
 
 /** True when the brief has something the owner would want to read. */
 export function briefIsWorthSending(b: DreamBrief): boolean {
   return (
-    b.insights.length > 0 || b.facts.length > 0 || b.preferences.length > 0 || b.learned.length > 0
+    b.insights.length > 0 ||
+    b.facts.length > 0 ||
+    b.preferences.length > 0 ||
+    b.learned.length > 0 ||
+    // A practice saved or repeated is news even on a night without dreams.
+    practiceDigestHasNews(b.practices)
   );
 }
 
@@ -145,6 +176,10 @@ export function renderDreamBrief(b: DreamBrief): string {
       );
     }
     for (const p of b.preferences) lines.push(`- ${p.key}: ${p.value}`);
+  }
+  const learnedFromYou = renderPracticeDigest(b.practices);
+  if (learnedFromYou.length > 0) {
+    lines.push("", ...learnedFromYou);
   }
   if (b.learned.length > 0) {
     lines.push("", "What I went and learned on my own:");

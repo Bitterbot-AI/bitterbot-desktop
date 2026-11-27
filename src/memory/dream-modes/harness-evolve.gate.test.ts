@@ -81,6 +81,21 @@ describe("evaluateHarnessCandidate (PLAN-25 gate)", () => {
     expect(v.reason).toBe("insufficient-data");
   });
 
+  it("rejects when the scorer returns fewer pairs than the minimum (PLAN-64 Phase 6)", async () => {
+    // A replay that ran out of budget after three winning pairs must not pass.
+    const threeWins: ScorePairFn = async (_a, _b, sel) =>
+      sel.slice(0, 3).map((e) => ({ taskId: e.id, aPassed: false, bPassed: true }));
+    const v = await evaluateHarnessCandidate({
+      live: defaultHarnessPolicy(),
+      candidate: fragPolicy("f1", "x"),
+      selectionSet: selection(12),
+      scorePair: threeWins,
+      options: { random: seeded, bootstrapIterations: 500 },
+    });
+    expect(v.accepted).toBe(false);
+    expect(v.reason).toBe("insufficient-data");
+  });
+
   it("rejects removal of a protected fragment (faithfulness)", async () => {
     const live = fragPolicy("safety:cite", "always cite sources");
     const candidate = fragPolicy("other", "be terse"); // drops safety:cite

@@ -42,6 +42,9 @@ export async function runHarnessSlowUpdate(args: {
       liveText,
       args.selectionSet,
     );
+    // PLAN-64 Phase 6: too few scored pairs is no evidence of a regression
+    // (a replay that hit its trial budget must not trigger a rollback).
+    if (paired.length < MIN_PAIRED_FOR_BOOTSTRAP) continue;
     const stat = bootstrapPairedCI(
       paired.map((p) => ({
         executionId: p.taskId,

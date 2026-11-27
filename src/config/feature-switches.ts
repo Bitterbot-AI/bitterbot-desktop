@@ -92,6 +92,58 @@ export function correctionCaptureEnabled(correction: Toggle): boolean {
   return correction?.enabled !== false;
 }
 
+/** Standing practices (PLAN-64): on unless `memory.practices.enabled` is false. */
+export function practicesEnabled(practices: Toggle): boolean {
+  return practices?.enabled !== false;
+}
+
+type PracticesToggles =
+  | {
+      enabled?: boolean;
+      followUps?: Toggle;
+      offers?: Toggle;
+      attribution?: Toggle;
+      jobs?: Toggle;
+    }
+  | undefined
+  | null;
+
+/**
+ * Learning practices from follow-ups (PLAN-64 Phase 1b): on unless
+ * `memory.practices.enabled` or `memory.practices.followUps.enabled` is false.
+ */
+export function practiceFollowUpsEnabled(practices: PracticesToggles): boolean {
+  return practices?.enabled !== false && practices?.followUps?.enabled !== false;
+}
+
+/**
+ * The one-line practice offer and its yes/no answer (PLAN-64 Phase 1b): on
+ * unless `memory.practices.enabled` or `memory.practices.offers.enabled` is
+ * false.
+ */
+export function practiceOffersEnabled(practices: PracticesToggles): boolean {
+  return practices?.enabled !== false && practices?.offers?.enabled !== false;
+}
+
+/**
+ * The one-line "Applied: ..." attribution on a reply whose prompt carried a
+ * scoped practice (PLAN-64 Phase 3): on unless `memory.practices.enabled` or
+ * `memory.practices.attribution.enabled` is false.
+ */
+export function practiceAttributionEnabled(practices: PracticesToggles): boolean {
+  return practices?.enabled !== false && practices?.attribution?.enabled !== false;
+}
+
+/**
+ * Scheduled jobs that learn from the owner's corrections (PLAN-64 Phase 5):
+ * the announcement record, the job link of the owner's next message and the
+ * canary line. On unless `memory.practices.enabled` or
+ * `memory.practices.jobs.enabled` is false.
+ */
+export function practiceJobsEnabled(practices: PracticesToggles): boolean {
+  return practices?.enabled !== false && practices?.jobs?.enabled !== false;
+}
+
 /** Conversation memory: on unless `session.memory` is "off". */
 export function conversationMemoryEnabled(session: { memory?: string } | undefined): boolean {
   return session?.memory !== "off";

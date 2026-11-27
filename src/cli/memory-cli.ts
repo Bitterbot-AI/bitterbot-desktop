@@ -862,6 +862,249 @@ function registerOwnerMemoryCommands(memory: Command) {
     );
 }
 
+/** The slice of the memory manager the `memory practices` commands use. */
+type PracticesCliManager = {
+  practices: () => import("../memory/practices.js").PracticesStore;
+  taskTypes: () => import("../memory/task-types.js").TaskTypesStore;
+  practiceCounters: () => ReturnType<import("../memory/practices.js").PracticesStore["counters"]>;
+  practiceFollowUpDeps: () => import("../memory/practice-followup-turn.js").FollowUpTurnDeps;
+  correctionLlmCall: () => import("../memory/correction-capture.js").CorrectionLlmCall | null;
+  ownerMergeTaskTypes: (
+    from: string,
+    into: string,
+  ) => Promise<import("../memory/task-types.js").MergeResult>;
+};
+
+async function withPracticesManager(
+  opts: { agent?: string },
+  run: (m: PracticesCliManager, agentId: string) => Promise<void>,
+): Promise<void> {
+  const cfg = loadConfig();
+  const agentId = resolveAgent(cfg, opts.agent);
+  await withManager<MemoryManager>({
+    getManager: () => getMemorySearchManager({ cfg, agentId }),
+    onMissing: (error) => {
+      defaultRuntime.error(error ?? "Memory is disabled.");
+      process.exitCode = 1;
+    },
+    onCloseError: (err) =>
+      defaultRuntime.error(`Memory manager close failed: ${formatErrorMessage(err)}`),
+    close: async (manager) => {
+      await manager.close?.();
+    },
+    run: async (manager) => {
+      const m = manager as unknown as Partial<PracticesCliManager>;
+      if (typeof m.practices !== "function" || typeof m.practiceFollowUpDeps !== "function") {
+        defaultRuntime.error("This memory backend has no practices.");
+        process.exitCode = 1;
+        return;
+      }
+      try {
+        await run(m as PracticesCliManager, agentId);
+      } catch (err) {
+        defaultRuntime.error(formatErrorMessage(err));
+        process.exitCode = 1;
+      }
+    },
+  });
+}
+
+/** The backfill result as lines for the terminal. Exported for tests. */
+export function formatBackfillResult(
+  result: import("../memory/practice-backfill.js").BackfillResult,
+  opts: { apply: boolean },
+): string[] {
+  const lines: string[] = [];
+  const o = result.outcomes;
+  lines.push(
+    `Model calls: ${result.modelCalls} of at most ${result.maxCalls}. Follow-ups not examined: ${result.notExamined}.`,
+    `Not a gap: ${o.other}; unusable answer: ${o.unusable}; about one date or number only: ${o.specific}; not in your words: ${o.ungrounded}; already an active practice: ${o.repeatOfActive}; declined before: ${o.declinedBefore}; rejected: ${o.rejected}.`,
+  );
+  if (result.taskTypes.length > 0) {
+    lines.push("Recurring task types:");
+    for (const t of result.taskTypes) {
+      lines.push(
+        `  ${t.slug} (${t.label || t.slug}): ${t.occurrences} request(s)${t.isNew ? ", found by this backfill" : ""}`,
+      );
+    }
+  }
+  if (result.candidates.length === 0) {
+    lines.push("No candidate practices found.");
+  } else {
+    lines.push(`Candidate practices (${result.candidates.length}):`);
+    for (const c of result.candidates) {
+      lines.push(
+        `  [${c.taskLabel}] ${c.statement} (${c.state === "new" ? "new" : "already a candidate"}; ${c.sightings} independent sighting(s)${c.offerReady ? "; will be offered" : ""})`,
+      );
+      for (const e of c.evidence) {
+        lines.push(
+          `      ${e.day}${e.explicit ? " (explicit)" : ""}: "${e.text.slice(0, 160)}"${e.ref ? `  ${shortenHomeInString(e.ref)}` : ""}`,
+        );
+      }
+    }
+  }
+  if (result.applied) {
+    lines.push(
+      `Written: ${result.applied.candidates} new candidate(s), ${result.applied.sightings} sighting(s), ${result.applied.taskTypes} task type(s). Candidates change nothing until you say yes to the offer (or activate them with memory.unretirePractice).`,
+    );
+  } else if (opts.apply) {
+    lines.push("Nothing to write.");
+  } else {
+    lines.push("Dry run: nothing was written. Re-run with --apply to store these as candidates.");
+  }
+  return lines;
+}
+
+function registerPracticesCommands(memory: Command) {
+  const practices = memory
+    .command("practices")
+    .description("Standing practices: list them, backfill candidates from old conversations");
+
+  practices
+    .command("list")
+    .description("List practices with their scope, status and counters")
+    .option("--agent <id>", "Agent id (default: default agent)")
+    .option("--status <status>", "Only candidate, active, retired or suppressed")
+    .option("--json", "Print JSON")
+    .action(async (opts: { agent?: string; status?: string; json?: boolean }) => {
+      await withPracticesManager(opts, async (m) => {
+        const { PRACTICE_STATUSES } = await import("../memory/practices.js");
+        const status = (PRACTICE_STATUSES as readonly string[]).includes(opts.status ?? "")
+          ? (opts.status as (typeof PRACTICE_STATUSES)[number])
+          : undefined;
+        if (opts.status && !status) {
+          defaultRuntime.error(
+            `Unknown status "${opts.status}" (${PRACTICE_STATUSES.join(", ")}).`,
+          );
+          process.exitCode = 1;
+          return;
+        }
+        const counters = m.practiceCounters();
+        const zero = {
+          applied: 0,
+          repeats: 0,
+          notFollowed: 0,
+          offers: 0,
+          confirmed: 0,
+          declined: 0,
+        };
+        // PLAN-64 Phase 5: a `job:` practice is listed with its job's name.
+        const { jobScopeLabel, readJobsByScopeName } = await import("../cron/job-practices.js");
+        const jobs = await readJobsByScopeName(loadConfig());
+        const rows = m
+          .practices()
+          .list(status ? { statuses: [status] } : {})
+          .map((p) => ({
+            ...p,
+            counts: counters.byPractice.get(p.id) ?? zero,
+            ...(p.scope.startsWith("job:") ? { jobName: jobScopeLabel(p.scope, jobs) } : {}),
+          }));
+        const taskTypes = m.taskTypes().list({ recurringOnly: true });
+        if (opts.json) {
+          defaultRuntime.log(
+            JSON.stringify({ practices: rows, counters: counters.overall, taskTypes }, null, 2),
+          );
+          return;
+        }
+        if (rows.length === 0) {
+          defaultRuntime.log("No practices stored.");
+        }
+        for (const p of rows) {
+          defaultRuntime.log(
+            `${p.status.padEnd(10)} ${p.scope.padEnd(24)} ${p.statement}\n` +
+              ("jobName" in p && p.jobName
+                ? `${" ".repeat(11)}scheduled job: ${p.jobName}\n`
+                : "") +
+              `${" ".repeat(11)}id ${p.id}; applied ${p.counts.applied}, repeats ${p.counts.repeats}, not followed ${p.counts.notFollowed}, offers ${p.counts.offers}`,
+          );
+        }
+        const c = counters.overall;
+        defaultRuntime.log(
+          `Totals: applied ${c.applied}, repeats ${c.repeats}, not followed ${c.notFollowed}, offers ${c.offers} (${c.confirmed} confirmed, ${c.declined} declined).`,
+        );
+        if (taskTypes.length > 0) {
+          defaultRuntime.log(
+            `Recurring task types: ${taskTypes.map((t) => `${t.slug} (${t.occurrences})`).join(", ")}`,
+          );
+        }
+      });
+    });
+
+  practices
+    .command("backfill")
+    .description(
+      "Find candidate practices in existing conversations (read-only unless --apply; uses model calls)",
+    )
+    .option("--agent <id>", "Agent id (default: default agent)")
+    .option("--apply", "Store what is found as candidate practices", false)
+    .option("--max-calls <n>", "Most model calls to make", "40")
+    .option("--json", "Print JSON")
+    .action(
+      async (opts: { agent?: string; apply?: boolean; maxCalls?: string; json?: boolean }) => {
+        const maxCalls = Number.parseInt(opts.maxCalls ?? "40", 10);
+        if (!Number.isFinite(maxCalls) || maxCalls < 0) {
+          defaultRuntime.error("--max-calls must be a number, 0 or more.");
+          process.exitCode = 1;
+          return;
+        }
+        await withPracticesManager(opts, async (m, agentId) => {
+          const { runPracticeBackfill } = await import("../memory/practice-backfill.js");
+          const result = await runPracticeBackfill({
+            sessionsDir: resolveSessionTranscriptsDirForAgent(agentId),
+            practices: m.practices(),
+            taskTypes: m.taskTypes(),
+            llmCall: m.correctionLlmCall(),
+            maxCalls,
+            apply: opts.apply === true,
+            change: m.practiceFollowUpDeps().change,
+            onPlan: (plan) => {
+              if (opts.json) {
+                return;
+              }
+              defaultRuntime.log(
+                `Read ${plan.transcripts} conversation(s), ${plan.ownerTurns} message(s) of yours. ` +
+                  `${plan.followUps} follow-up(s) to a recurring request to examine, ${plan.newTaskTypes} task type(s) to name.`,
+              );
+              defaultRuntime.log(
+                plan.hasModel
+                  ? `Making at most ${plan.maxCalls} model call(s) (--max-calls).`
+                  : "No model is available for the correction pass (memory.correction), so nothing can be examined.",
+              );
+            },
+          });
+          defaultRuntime.log(
+            opts.json
+              ? JSON.stringify(result, null, 2)
+              : formatBackfillResult(result, { apply: opts.apply === true }).join("\n"),
+          );
+        });
+      },
+    );
+
+  practices
+    .command("merge-types")
+    .description("Fold one recurring task type into another (its practices move along)")
+    .argument("<from>", "Slug of the task type to fold in")
+    .argument("<into>", "Slug of the task type that keeps it")
+    .option("--agent <id>", "Agent id (default: default agent)")
+    .option("--json", "Print JSON")
+    .action(async (from: string, into: string, opts: { agent?: string; json?: boolean }) => {
+      await withPracticesManager(opts, async (m) => {
+        const result = await m.ownerMergeTaskTypes(from, into);
+        if (!result.ok) {
+          defaultRuntime.error(result.reason);
+          process.exitCode = 1;
+          return;
+        }
+        defaultRuntime.log(
+          opts.json
+            ? JSON.stringify(result, null, 2)
+            : `Merged ${from} into ${result.type.slug} (${result.type.occurrences} request(s)).`,
+        );
+      });
+    });
+}
+
 export function registerMemoryCli(program: Command) {
   const memory = program
     .command("memory")
@@ -873,6 +1116,7 @@ export function registerMemoryCli(program: Command) {
     );
 
   registerOwnerMemoryCommands(memory);
+  registerPracticesCommands(memory);
 
   memory
     .command("status")

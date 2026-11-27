@@ -123,6 +123,52 @@ export type MemoryConfig = {
     /** Append the one-line "Memory updated" confirmation to the reply (default: true). */
     confirm?: boolean;
   };
+  /**
+   * PLAN-64 Phase 1: standing practices. Behavioural instructions the owner
+   * gives ("for repo stats, include npm downloads") are stored with a scope
+   * and rendered into the prompt of the turns they apply to. Capture rides
+   * on the correction pass's single model call (`memory.correction`).
+   */
+  practices?: {
+    /**
+     * Capture practices, type recurring requests and render the practices
+     * block (default: true). False: none of the three happens; stored
+     * practices are kept and can still be listed and edited.
+     */
+    enabled?: boolean;
+    /**
+     * PLAN-64 Phase 1b: learn candidate practices from follow-ups on a
+     * recurring request. One cheap-model call per recurring-task answer at
+     * most, on the correction lane.
+     */
+    followUps?: {
+      /** Run the follow-up check and store candidates (default: true). */
+      enabled?: boolean;
+    };
+    /** PLAN-64 Phase 1b: the one-line "Include it every time? (yes / no)" offer. */
+    offers?: {
+      /** Append offers to replies and read a bare yes or no as the answer (default: true). */
+      enabled?: boolean;
+    };
+    /** PLAN-64 Phase 3: the one-line "Applied: ..." attribution on a reply. */
+    attribution?: {
+      /**
+       * Name a scoped practice the first two times its scope matched a turn,
+       * and once more after it is reworded or re-scoped (default: true).
+       */
+      enabled?: boolean;
+    };
+    /** PLAN-64 Phase 5: scheduled jobs that learn from the owner's corrections. */
+    jobs?: {
+      /**
+       * Record which job was announced where, read the owner's next message
+       * as possibly being about that report, and add the "Changed since last
+       * time" line to the first run after a job practice changed (default:
+       * true). False: none of the three; stored `job:` practices still render.
+       */
+      enabled?: boolean;
+    };
+  };
   /** PLAN-24 HORMA Phase 0: provenance pointers from synthesized memories to raw sources. */
   provenance?: {
     /**
