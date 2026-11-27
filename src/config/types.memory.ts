@@ -123,6 +123,20 @@ export type MemoryConfig = {
     /** Append the one-line "Memory updated" confirmation to the reply (default: true). */
     confirm?: boolean;
   };
+  /**
+   * PLAN-64 Phase 1: standing practices. Behavioural instructions the owner
+   * gives ("for repo stats, include npm downloads") are stored with a scope
+   * and rendered into the prompt of the turns they apply to. Capture rides
+   * on the correction pass's single model call (`memory.correction`).
+   */
+  practices?: {
+    /**
+     * Capture practices, type recurring requests and render the practices
+     * block (default: true). False: none of the three happens; stored
+     * practices are kept and can still be listed and edited.
+     */
+    enabled?: boolean;
+  };
   /** PLAN-24 HORMA Phase 0: provenance pointers from synthesized memories to raw sources. */
   provenance?: {
     /**

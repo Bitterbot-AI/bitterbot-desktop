@@ -11,7 +11,8 @@ import { DatabaseSync } from "node:sqlite";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { CanonicalFactsStore } from "../../memory/canonical-facts.js";
 import { ensureMemoryIndexSchema } from "../../memory/memory-schema.js";
-import { pinFact } from "../../memory/owner-controls.js";
+import { pinFact, savePractice, setPracticeScope } from "../../memory/owner-controls.js";
+import { PracticesStore } from "../../memory/practices.js";
 import type { FollowupRun } from "./queue.js";
 
 const state = vi.hoisted(() => ({
@@ -250,5 +251,77 @@ describe("runCorrectionCaptureAfterTurn", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe("runCorrectionCaptureAfterTurn: practices (PLAN-64 Phase 1)", () => {
+  const DAY_BY_DAY = "Give me day by day clones and the npm downloads too";
+  const STATEMENT = "For repo stats, give day by day clones and include the npm downloads.";
+  let practices: PracticesStore;
+  const resolveCaptureTaskType = vi.fn();
+
+  beforeEach(() => {
+    practices = new PracticesStore(db);
+    resolveCaptureTaskType.mockReset();
+    resolveCaptureTaskType.mockReturnValue({ slug: "repo-stats", label: "repo stats" });
+    state.getManager.mockResolvedValue({
+      manager: {
+        canonicalFacts: () => store,
+        ownerPinFact: async (input: Parameters<typeof pinFact>[2]) => pinFact(db, store, input),
+        correctionLlmCall: () => llm,
+        practices: () => practices,
+        ownerSavePractice: async (input: Parameters<typeof savePractice>[2]) =>
+          savePractice(db, practices, input),
+        ownerSetPracticeScope: async (id: string, scope: string) =>
+          setPracticeScope(db, practices, id, scope),
+        resolveCaptureTaskType,
+      },
+      error: null,
+    });
+    llm.mockResolvedValue(
+      JSON.stringify({
+        facts: [],
+        practices: [{ statement: STATEMENT, scope: "task", explicit: true }],
+      }),
+    );
+  });
+
+  it("stores the owner's instruction through the manager, scoped to the turn's task type", async () => {
+    const line = await runCorrectionCaptureAfterTurn({
+      ...base,
+      commandBody: DAY_BY_DAY,
+      followupRun: followupRun(),
+    });
+    expect(line).toBe(`Practice saved for repo stats: "${STATEMENT}"`);
+    expect(llm).toHaveBeenCalledTimes(1);
+    expect(llm.mock.calls[0]![0]).toContain("## Practices");
+    expect(resolveCaptureTaskType).toHaveBeenCalledWith("agent:main:main", DAY_BY_DAY);
+    expect(practices.list()).toMatchObject([
+      { statement: STATEMENT, scope: "task:repo-stats", status: "active", source: "owner" },
+    ]);
+  });
+
+  it("memory.practices.enabled=false: the prompt has no practices section and nothing is stored", async () => {
+    const line = await runCorrectionCaptureAfterTurn({
+      ...base,
+      cfg: { memory: { practices: { enabled: false } } },
+      commandBody: DAY_BY_DAY,
+      followupRun: followupRun(),
+    });
+    expect(line).toBeNull();
+    expect(llm.mock.calls[0]![0]).not.toContain("## Practices");
+    expect(resolveCaptureTaskType).not.toHaveBeenCalled();
+    expect(practices.list()).toHaveLength(0);
+  });
+
+  it("a non-owner turn stores nothing and opens nothing", async () => {
+    const line = await runCorrectionCaptureAfterTurn({
+      ...base,
+      commandBody: DAY_BY_DAY,
+      followupRun: followupRun({ senderIsOwner: false }),
+    });
+    expect(line).toBeNull();
+    expect(state.getManager).not.toHaveBeenCalled();
+    expect(practices.list()).toHaveLength(0);
   });
 });

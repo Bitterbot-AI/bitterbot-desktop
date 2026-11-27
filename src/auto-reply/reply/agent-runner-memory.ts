@@ -6,6 +6,7 @@ import { runWithModelFallback } from "../../agents/model-fallback.js";
 import { isCliProvider } from "../../agents/model-selection.js";
 import { resolveSandboxConfigForAgent, resolveSandboxRuntimeStatus } from "../../agents/sandbox.js";
 import type { BitterbotConfig } from "../../config/config.js";
+import { practicesEnabled } from "../../config/feature-switches.js";
 import {
   resolveAgentIdFromSessionKey,
   type SessionEntry,
@@ -299,11 +300,25 @@ export async function runCorrectionCaptureAfterTurn(params: {
           correctionLlmCall?: () =>
             | import("../../memory/correction-capture.js").CorrectionLlmCall
             | null;
+          // PLAN-64 Phase 1: practices ride on the same pass.
+          practices?: () => import("../../memory/practices.js").PracticesStore;
+          ownerSavePractice?: (
+            input: import("../../memory/owner-controls.js").SavePracticeInput,
+          ) => Promise<import("../../memory/practices.js").PracticeUpsertResult>;
+          ownerSetPracticeScope?: (
+            id: string,
+            scope: string,
+          ) => Promise<import("../../memory/practices.js").PracticeUpsertResult>;
+          resolveCaptureTaskType?: (
+            sessionKey: string | undefined,
+            text: string,
+          ) => { slug: string; label: string } | null;
         }
       | null
       | undefined;
     const store = m?.canonicalFacts?.() ?? null;
-    if (!store) {
+    const practicesOn = practicesEnabled(params.cfg.memory?.practices) && m?.ownerSavePractice;
+    if (!store && !practicesOn) {
       return null;
     }
     const lines: string[] = [];
@@ -326,6 +341,20 @@ export async function runCorrectionCaptureAfterTurn(params: {
         chatType: params.chatType,
         runStartedAt: since,
         store,
+        // No cron job id here: linking a main-session correction to the job
+        // whose announcement it answers is a later phase (PLAN-64 §4.5).
+        practices: practicesOn
+          ? {
+              save: (input) => m.ownerSavePractice!(input),
+              store: m.practices?.() ?? null,
+              setScope: m.ownerSetPracticeScope
+                ? (id, scope) => m.ownerSetPracticeScope!(id, scope)
+                : null,
+              taskType:
+                m.resolveCaptureTaskType?.(params.sessionKey ?? run.sessionKey, userMessage) ??
+                null,
+            }
+          : null,
         pinAsOwner: m?.ownerPinFact ? (input) => m.ownerPinFact!(input) : null,
         llmCall: m?.correctionLlmCall?.() ?? null,
         signal: abort.signal,

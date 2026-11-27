@@ -33,6 +33,7 @@ import type { EmbeddedPiRunResult } from "./embedded-runner.js";
 import { resolveEndocrineState } from "./endocrine-state.js";
 import { FailoverError, resolveFailoverStatus } from "./failover-error.js";
 import { genomeFileOf, otherAgentGenomeFiles, withGenomeGuard } from "./genome-guard.js";
+import { resolvePracticesBlock } from "./practices-block.js";
 import { redactRunIdentifier, resolveRunWorkspaceDir } from "./workspace-run.js";
 
 const log = createSubsystemLogger("agent/claude-cli");
@@ -142,6 +143,20 @@ export async function runCliAgent(params: {
     workspaceDir,
   }).catch(() => undefined);
 
+  // PLAN-64 Phase 1: standing practices for this kind of turn (owner
+  // first-party turns, or a cron job's own session; the resolver decides).
+  const practices = await resolvePracticesBlock({
+    config: params.config,
+    agentId: sessionAgentId,
+    promptMode: "full",
+    workspaceDir,
+    sessionKey: params.sessionKey,
+    senderIsOwner: params.senderIsOwner,
+    prompt: params.prompt,
+    runId: params.runId,
+    sessionFile: params.sessionFile,
+  }).catch(() => undefined);
+
   // PLAN-34 Phase 2b: idle-research findings surface on the next live turn.
   // Phase 2 adversarial fix: gate consumption to a genuine first-party live
   // turn so a subagent/cron/hook session routed to a CLI provider cannot
@@ -191,6 +206,7 @@ export async function runCliAgent(params: {
     agentId: sessionAgentId,
     endocrineState,
     canonicalFacts,
+    practices,
     researchFindings,
     computeState,
     selfState,

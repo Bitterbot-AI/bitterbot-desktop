@@ -88,6 +88,8 @@ export const FIELD_HELP: Record<string, string> = {
     "After each of your turns whose message looks like a correction or a standing instruction, one cheap model call pins what you said as a settled fact at your authority (usage feature memory/correction). Off: corrections reach the facts ledger only when the agent pins them or when the dream-time extractor reads the transcript.",
   "memory.correction.confirm":
     'Append one "Memory updated: ..." line to the reply whenever a settled fact was written during the turn. Values are shown in direct chats only.',
+  "memory.practices.enabled":
+    'Standing practices: when you tell the agent how to do a kind of task ("for repo stats, include npm downloads"), the instruction is stored with a scope (one recurring kind of request, one scheduled job, one project, or everywhere) and included in the prompt of the turns it applies to. Capture uses the correction pass\'s one model call, so it also needs memory.correction.enabled. Off: nothing is captured, recurring requests are not typed and no practice is added to a prompt; stored practices are kept. Default on.',
   "session.memory":
     '"off" is incognito: conversation transcripts are not indexed into memory, the session extractor does not read them, and corrections are not captured. Replies still work. Default "on".',
   "memory.curiosity.research.strictEgress":

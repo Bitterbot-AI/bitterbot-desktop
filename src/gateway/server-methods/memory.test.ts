@@ -12,7 +12,19 @@ import { CanonicalFactsStore } from "../../memory/canonical-facts.js";
 import { getMemorySearchManager } from "../../memory/index.js";
 import { ensureMemoryIndexSchema } from "../../memory/memory-schema.js";
 import { listSuppressions } from "../../memory/memory-suppressions.js";
-import { pinFact, retireFact, unretireFact } from "../../memory/owner-controls.js";
+import {
+  editPractice,
+  listPractices,
+  pinFact,
+  retireFact,
+  retirePractice,
+  savePractice,
+  setPracticeScope,
+  unretireFact,
+  unretirePractice,
+} from "../../memory/owner-controls.js";
+import { PracticesStore } from "../../memory/practices.js";
+import { TaskTypesStore } from "../../memory/task-types.js";
 import { ErrorCodes } from "../protocol/index.js";
 import { memoryHandlers } from "./memory.js";
 
@@ -42,6 +54,8 @@ async function call(handler: typeof retire, params: Record<string, unknown>): Pr
 
 let db: DatabaseSync;
 let store: CanonicalFactsStore;
+let practices: PracticesStore;
+let taskTypes: TaskTypesStore;
 
 beforeEach(() => {
   vi.mocked(getMemorySearchManager).mockReset();
@@ -54,7 +68,21 @@ beforeEach(() => {
   });
   store = new CanonicalFactsStore(db);
   store.pin({ key: "infra.deploy_endpoint", value: "api.acme.com", source: "extraction" });
+  practices = new PracticesStore(db);
+  taskTypes = new TaskTypesStore(db);
   const manager = {
+    // PLAN-64 Phase 1: the same thin wrappers the real manager has.
+    taskTypes: () => taskTypes,
+    ownerListPractices: (opts: Parameters<typeof listPractices>[1]) =>
+      listPractices(practices, opts),
+    ownerSavePractice: async (input: Parameters<typeof savePractice>[2]) =>
+      savePractice(db, practices, input),
+    ownerEditPractice: async (id: string, statement: string) =>
+      editPractice(db, practices, id, statement),
+    ownerSetPracticeScope: async (id: string, scope: string) =>
+      setPracticeScope(db, practices, id, scope),
+    ownerRetirePractice: async (id: string) => retirePractice(db, practices, id),
+    ownerUnretirePractice: async (id: string) => unretirePractice(db, practices, id),
     canonicalFacts: () => store,
     ownerRetireFact: async (key: string) => retireFact(db, store, key),
     ownerUnretireFact: async (key: string) => unretireFact(db, store, key),
@@ -204,5 +232,142 @@ describe("memory.facts / memory.pinFact scope and evidence (PLAN-55 Phase 1)", (
     expect(res.ok).toBe(false);
     expect(res.error?.code).toBe(ErrorCodes.INVALID_REQUEST);
     expect(res.error?.message).toMatch(/scope must be/);
+  });
+});
+
+describe("memory.practices and its mutations (PLAN-64 Phase 1)", () => {
+  const list = memoryHandlers["memory.practices"]!;
+  const save = memoryHandlers["memory.savePractice"]!;
+  const edit = memoryHandlers["memory.editPractice"]!;
+  const setScope = memoryHandlers["memory.setPracticeScope"]!;
+  const retirePr = memoryHandlers["memory.retirePractice"]!;
+  const unretirePr = memoryHandlers["memory.unretirePractice"]!;
+  const NPM = "Include npm downloads when reporting repo stats.";
+
+  type Listed = {
+    practices: Array<{
+      id: string;
+      statement: string;
+      scope: string;
+      status: string;
+      source: string;
+    }>;
+    taskTypes: Array<{ slug: string; label: string }>;
+  };
+
+  it("saves as the owner, lists every status, and filters by status", async () => {
+    const saved = await call(save, { statement: `  ${NPM} `, scope: "task:Repo Stats" });
+    expect(saved.ok).toBe(true);
+    expect(saved.payload).toMatchObject({
+      ok: true,
+      op: "add",
+      practice: {
+        statement: NPM,
+        scope: "task:repo-stats",
+        status: "active",
+        source: "owner",
+        origin: "owner_ui",
+      },
+    });
+    // A candidate (what capture writes below the owner tier) and a retired one.
+    practices.upsert({ statement: "Mention open pull requests too.", source: "extraction" });
+    const other = practices.upsert({ statement: "Keep answers short.", source: "owner" });
+    if (!other.ok) {
+      throw new Error("unreachable");
+    }
+    practices.retire(other.practice.id);
+
+    const all = (await call(list, {})).payload as Listed;
+    expect(all.practices.map((p) => p.status).toSorted()).toEqual([
+      "active",
+      "candidate",
+      "retired",
+    ]);
+    expect(all.taskTypes).toEqual([]);
+    const candidates = (await call(list, { status: "candidate" })).payload as Listed;
+    expect(candidates.practices).toHaveLength(1);
+    // An unknown status filter is ignored, not an error.
+    expect(((await call(list, { status: "bogus" })).payload as Listed).practices).toHaveLength(3);
+  });
+
+  it("refuses a bad scope, an unusable statement and a credential with INVALID_REQUEST", async () => {
+    for (const params of [
+      { statement: NPM, scope: "team:x" },
+      { statement: "ok" },
+      { statement: "Use the token sk-ant-REDACTED when deploying." },
+    ]) {
+      const res = await call(save, params);
+      expect(res.ok).toBe(false);
+      expect(res.error?.code).toBe(ErrorCodes.INVALID_REQUEST);
+      expect(res.error?.message ?? "").not.toContain("sk-ant");
+    }
+    expect(practices.list()).toHaveLength(0);
+  });
+
+  it("edits, widens, narrows, retires and un-retires by id", async () => {
+    const saved = (await call(save, { statement: NPM, scope: "task:repo-stats" })).payload as {
+      practice: { id: string };
+    };
+    const id = saved.practice.id;
+
+    const edited = await call(edit, {
+      id,
+      statement: "Include npm and PyPI downloads in repo stats.",
+    });
+    expect(edited.payload).toMatchObject({
+      ok: true,
+      practice: { statement: "Include npm and PyPI downloads in repo stats." },
+    });
+    expect((await call(edit, { id: "missing", statement: NPM })).error?.code).toBe(
+      ErrorCodes.INVALID_REQUEST,
+    );
+
+    expect((await call(setScope, { id, scope: "global" })).payload).toMatchObject({
+      practice: { scope: "global" },
+    });
+    expect((await call(setScope, { id, scope: "job:job-7" })).payload).toMatchObject({
+      practice: { scope: "job:job-7" },
+    });
+    expect((await call(setScope, { id, scope: "nope" })).error?.code).toBe(
+      ErrorCodes.INVALID_REQUEST,
+    );
+    expect((await call(setScope, { id })).error?.code).toBe(ErrorCodes.INVALID_REQUEST);
+
+    expect((await call(retirePr, { id })).payload).toEqual({ ok: true });
+    expect((await call(retirePr, { id })).payload).toEqual({ ok: false });
+    expect(practices.get(id)?.status).toBe("retired");
+    // Sticky: capture below the owner tier cannot bring it back.
+    expect(
+      practices.upsert({
+        statement: "Include npm and PyPI downloads in repo stats.",
+        source: "extraction",
+      }),
+    ).toMatchObject({ ok: false });
+    expect((await call(unretirePr, { id })).payload).toEqual({ ok: true });
+    expect(practices.get(id)?.status).toBe("active");
+    expect(
+      practices
+        .events(id)
+        .map((e) => e.kind)
+        .toReversed(),
+    ).toEqual(["stored", "edited", "widened", "narrowed", "retired", "confirmed"]);
+  });
+
+  it("lists recurring task types so a task scope can be shown by its label", async () => {
+    const day = 24 * 3_600_000;
+    let pending = "";
+    [
+      "How many clones did your repo get yesterday?",
+      "how did our npm's and clones do yesterday?",
+      "Can you check npm, clones and views for yesterday for your repo?",
+    ].forEach((text, i) => {
+      pending = taskTypes.observe(text, { now: Date.now() - (4 - i) * day }).type!.slug;
+    });
+    // Pending types are not listed.
+    expect(((await call(list, {})).payload as Listed).taskTypes).toEqual([]);
+    await taskTypes.promote(pending, async () => '{"slug":"repo-stats","label":"repo stats"}');
+    expect(((await call(list, {})).payload as Listed).taskTypes).toMatchObject([
+      { slug: "repo-stats", label: "repo stats", occurrences: 3, distinctDays: 3 },
+    ]);
   });
 });

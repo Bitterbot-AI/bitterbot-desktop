@@ -2855,6 +2855,67 @@ export const MIGRATIONS: Migration[] = [
       );
     },
   },
+  {
+    version: 81,
+    description:
+      "PLAN-64 Phase 1 (2026-11-27): standing practices. `practices` holds behavioural " +
+      "instructions (a sentence, a scope, a status, the source tier, evidence line refs " +
+      "and counters); `practice_events` is their append-only history (stored, applied, " +
+      "repeat, offered, confirmed, declined, widened, narrowed, edited, retired); " +
+      "`task_types` holds the owner's recurring kinds of request (slug, label, exemplar " +
+      "texts, occurrence and distinct-day counts). Status, source, origin and event kind " +
+      "vocabularies are code-only (SQLite has no enum). The follow-up, offer and backfill " +
+      "phases use the same columns, so they need no further migration.",
+    up: (db) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS practices (
+          id TEXT PRIMARY KEY,
+          statement TEXT NOT NULL,
+          statement_hash TEXT NOT NULL,
+          scope TEXT NOT NULL DEFAULT 'global',
+          status TEXT NOT NULL DEFAULT 'candidate',
+          source TEXT NOT NULL,
+          evidence_refs TEXT NOT NULL DEFAULT '[]',
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL,
+          applied_count INTEGER NOT NULL DEFAULT 0,
+          last_applied_at INTEGER,
+          offer_count INTEGER NOT NULL DEFAULT 0,
+          origin TEXT NOT NULL DEFAULT 'explicit'
+        );
+      `);
+      db.exec(`CREATE INDEX IF NOT EXISTS idx_practices_status_scope ON practices(status, scope)`);
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS practice_events (
+          id TEXT PRIMARY KEY,
+          practice_id TEXT NOT NULL,
+          kind TEXT NOT NULL,
+          session_ref TEXT,
+          detail TEXT,
+          ts INTEGER NOT NULL
+        );
+      `);
+      db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_practice_events_practice ON practice_events(practice_id, ts)`,
+      );
+      db.exec(`CREATE INDEX IF NOT EXISTS idx_practice_events_kind ON practice_events(kind, ts)`);
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS task_types (
+          slug TEXT PRIMARY KEY,
+          label TEXT NOT NULL DEFAULT '',
+          exemplars TEXT NOT NULL DEFAULT '[]',
+          occurrences INTEGER NOT NULL DEFAULT 0,
+          distinct_days INTEGER NOT NULL DEFAULT 0,
+          first_seen INTEGER NOT NULL,
+          last_seen INTEGER NOT NULL,
+          recurring INTEGER NOT NULL DEFAULT 0
+        );
+      `);
+      db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_task_types_recurring ON task_types(recurring, last_seen)`,
+      );
+    },
+  },
 ];
 
 /**

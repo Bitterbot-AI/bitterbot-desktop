@@ -41,6 +41,7 @@ import {
   dreamEngineEnabled,
   harnessEvolveEnabled,
   marketabilityPredictorEnabled,
+  practicesEnabled,
   skillEvolutionEnabled,
   skillSeekersEnabled,
 } from "../config/feature-switches.js";
@@ -171,8 +172,16 @@ import {
   pinFact as ownerPinFact,
   retireFact as ownerRetireFact,
   unretireFact as ownerUnretireFact,
+  editPractice as ownerEditPractice,
+  listPractices as ownerListPractices,
+  retirePractice as ownerRetirePractice,
+  savePractice as ownerSavePractice,
+  type SavePracticeInput,
+  setPracticeScope as ownerSetPracticeScope,
+  unretirePractice as ownerUnretirePractice,
 } from "./owner-controls.js";
 import { PeerReputationManager } from "./peer-reputation.js";
+import { type PracticeListOptions, PracticesStore } from "./practices.js";
 import { truncateAtSentence } from "./proactive-recall.js";
 import { resolveLearningConfig } from "./procedural-learning-contract.js";
 import { ProceduralLearningStore } from "./procedural-learning-store.js";
@@ -213,6 +222,7 @@ import { requireNodeSqlite } from "./sqlite.js";
 import { SurfacingTrial, resolveSurfacingTrialConfig } from "./surfacing-trial.js";
 import { captureNearbyWeakChunks, shouldTriggerCapture } from "./synaptic-tagging.js";
 import { TaskMemoryManager } from "./task-memory.js";
+import { observeOwnerTurn, TaskTypesStore } from "./task-types.js";
 import type {
   MemoryEmbeddingProbeResult,
   MemoryProviderStatus,
@@ -6871,6 +6881,109 @@ export class MemoryIndexManager implements MemorySearchManager {
       })().catch((err) => log.debug(`import re-embed stopped: ${String(err)}`));
     }
     return result;
+  }
+
+  // ── PLAN-64 Phase 1: standing practices and recurring task types ────────
+
+  private practicesStore: { db: DatabaseSync; store: PracticesStore } | null = null;
+  private taskTypesStore: { db: DatabaseSync; store: TaskTypesStore } | null = null;
+
+  /**
+   * The practices store, bound to the current database handle (rebuilt
+   * after a reindex swap). Present even when `memory.practices.enabled` is
+   * false, so the owner can still list and retire what was stored; capture,
+   * typing and the prompt block check the switch themselves.
+   */
+  practices(): PracticesStore {
+    if (!this.practicesStore || this.practicesStore.db !== this.db) {
+      this.practicesStore = { db: this.db, store: new PracticesStore(this.db) };
+    }
+    return this.practicesStore.store;
+  }
+
+  taskTypes(): TaskTypesStore {
+    if (!this.taskTypesStore || this.taskTypesStore.db !== this.db) {
+      this.taskTypesStore = { db: this.db, store: new TaskTypesStore(this.db) };
+    }
+    return this.taskTypesStore.store;
+  }
+
+  /**
+   * Count one owner turn against the recurring task types and return the
+   * recurring type it belongs to (or null). Word overlap only, synchronous,
+   * no model call on this path. A type that reaches the threshold on this
+   * turn is named in the background (one cheap call on the correction lane,
+   * or the deterministic fallback when no model is available) and is
+   * returned from the next turn on. No-op when practices are disabled.
+   */
+  observeOwnerTurnTaskType(params: {
+    text: string;
+    sessionKey?: string;
+    turnKey?: string;
+  }): { slug: string; label: string } | null {
+    if (!practicesEnabled(this.cfg.memory?.practices)) {
+      return null;
+    }
+    // Incognito (`session.memory: "off"`): the turn is matched against the
+    // recurring types that exist, but its text is not recorded as an
+    // occurrence or an exemplar.
+    if (!conversationMemoryEnabled(this.cfg.session)) {
+      const type = this.taskTypes().classify(params.text);
+      return type ? { slug: type.slug, label: type.label } : null;
+    }
+    return observeOwnerTurn(this.taskTypes(), params, this.correctionLlmCall());
+  }
+
+  /**
+   * The task type a captured practice should be scoped to: the recurring
+   * type of this message, else of the owner turn just before it in the
+   * session (in-process memory, 30 minutes). Read-only.
+   */
+  resolveCaptureTaskType(
+    sessionKey: string | undefined,
+    text: string,
+  ): { slug: string; label: string } | null {
+    if (!practicesEnabled(this.cfg.memory?.practices)) {
+      return null;
+    }
+    const store = this.taskTypes();
+    const type = store.classify(text) ?? store.precedingRecurringType(sessionKey, text);
+    return type ? { slug: type.slug, label: type.label } : null;
+  }
+
+  ownerListPractices(opts: PracticeListOptions = {}) {
+    return ownerListPractices(this.practices(), opts);
+  }
+
+  /** The practices writer (owner tier by default; serialised like every owner change). */
+  async ownerSavePractice(input: SavePracticeInput) {
+    return await this.ownerChange("save-practice", () =>
+      ownerSavePractice(this.db, this.practices(), input),
+    );
+  }
+
+  async ownerEditPractice(id: string, statement: string) {
+    return await this.ownerChange("edit-practice", () =>
+      ownerEditPractice(this.db, this.practices(), id, statement),
+    );
+  }
+
+  async ownerSetPracticeScope(id: string, scope: string) {
+    return await this.ownerChange("scope-practice", () =>
+      ownerSetPracticeScope(this.db, this.practices(), id, scope),
+    );
+  }
+
+  async ownerRetirePractice(id: string): Promise<boolean> {
+    return await this.ownerChange("retire-practice", () =>
+      ownerRetirePractice(this.db, this.practices(), id),
+    );
+  }
+
+  async ownerUnretirePractice(id: string): Promise<boolean> {
+    return await this.ownerChange("unretire-practice", () =>
+      ownerUnretirePractice(this.db, this.practices(), id),
+    );
   }
 
   /**

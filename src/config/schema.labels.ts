@@ -51,6 +51,7 @@ export const FIELD_LABELS: Record<string, string> = {
   "memory.curiosity.research.strictEgress": "Curiosity Strict Egress",
   "memory.correction.enabled": "Capture Corrections As You Chat",
   "memory.correction.confirm": "Confirm Memory Updates In Replies",
+  "memory.practices.enabled": "Standing Practices",
   "session.memory": "Learn From Conversations",
   "tools.wallet.enabled": "Wallet Tool",
   "tools.wallet.network": "Wallet Network",

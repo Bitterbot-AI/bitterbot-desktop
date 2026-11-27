@@ -137,6 +137,17 @@ const MemorySchema = z
         z.unknown(),
       ])
       .optional(),
+    // PLAN-64 Phase 1: standing practices (capture, task typing, prompt block).
+    practices: z
+      .union([
+        z
+          .object({
+            enabled: z.boolean().optional(),
+          })
+          .passthrough(),
+        z.unknown(),
+      ])
+      .optional(),
   })
   // Memory subsystems (dream, consolidation, digest, requestFrequency, etc.)
   // are typed in src/config/types.memory.ts but haven't all been mirrored into zod.

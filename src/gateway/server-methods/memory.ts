@@ -5,7 +5,10 @@
  * memory.forgetPreview (read) shows what a forget or an edit would also
  * change; memory.forget / memory.edit take `preview: true` and the
  * previewed `planHash`; memory.exportDownload hands out a one-time download
- * link; memory.import restores an export.
+ * link; memory.import restores an export. PLAN-64 Phase 1: memory.practices
+ * (read) lists standing practices; memory.savePractice, memory.editPractice,
+ * memory.setPracticeScope, memory.retirePractice and memory.unretirePractice
+ * change them (admin).
  */
 
 import os from "node:os";
@@ -16,6 +19,7 @@ import { getMemorySearchManager } from "../../memory/index.js";
 import type { MemoryIndexManager } from "../../memory/manager.js";
 import { MemoryImportRefused, parseMemoryExport } from "../../memory/memory-import.js";
 import { OwnerEditRefused } from "../../memory/owner-controls.js";
+import { PRACTICE_STATUSES, type PracticeStatus } from "../../memory/practices.js";
 import { normalizeControlUiBasePath } from "../control-ui-shared.js";
 import { mintMemoryExportToken } from "../memory-export-http.js";
 import { ErrorCodes, errorShape } from "../protocol/index.js";
@@ -264,6 +268,115 @@ export const memoryHandlers: GatewayRequestHandlers = {
     try {
       const m = await memoryManager(str(params.agentId));
       respond(true, { ok: await m.ownerUnretireFact(str(params.key)) });
+    } catch (err) {
+      fail(respond, err);
+    }
+  },
+
+  /**
+   * PLAN-64 Phase 1: the owner's standing practices, every status by default
+   * (candidates and retired ones included). `status` narrows to one of
+   * candidate | active | retired | suppressed. `appliedCount` counts runs
+   * whose prompt included the practice, not answers that followed it. Also
+   * returns the recurring task types, so a `task:<slug>` scope can be shown
+   * by its label.
+   */
+  "memory.practices": async ({ params, respond }) => {
+    try {
+      const m = await memoryManager(str(params.agentId));
+      const status = (PRACTICE_STATUSES as readonly string[]).includes(str(params.status))
+        ? (str(params.status) as PracticeStatus)
+        : undefined;
+      respond(true, {
+        practices: m.ownerListPractices(status ? { statuses: [status] } : {}),
+        taskTypes: m
+          .taskTypes()
+          .list({ recurringOnly: true })
+          .map((t) => ({
+            slug: t.slug,
+            label: t.label,
+            occurrences: t.occurrences,
+            distinctDays: t.distinctDays,
+            lastSeen: t.lastSeen,
+          })),
+      });
+    } catch (err) {
+      fail(respond, err);
+    }
+  },
+
+  /**
+   * Add a practice as the owner: active at once, at `scope` (`global` by
+   * default; `project:<name>`, `person:<name>`, `task:<slug>` or
+   * `job:<cronJobId>`). Stating a practice the owner had retired brings it back.
+   */
+  "memory.savePractice": async ({ params, respond }) => {
+    try {
+      const m = await memoryManager(str(params.agentId));
+      const result = await m.ownerSavePractice({
+        statement: str(params.statement),
+        scope: str(params.scope) || undefined,
+        evidenceRef: str(params.evidence) || undefined,
+        origin: "owner_ui",
+      });
+      if (!result.ok) {
+        respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, result.reason));
+        return;
+      }
+      respond(true, result);
+    } catch (err) {
+      fail(respond, err);
+    }
+  },
+
+  /** Reword a practice. */
+  "memory.editPractice": async ({ params, respond }) => {
+    try {
+      const m = await memoryManager(str(params.agentId));
+      const result = await m.ownerEditPractice(str(params.id), str(params.statement));
+      if (!result.ok) {
+        respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, result.reason));
+        return;
+      }
+      respond(true, result);
+    } catch (err) {
+      fail(respond, err);
+    }
+  },
+
+  /** Widen or narrow where a practice applies (logged as widened or narrowed). */
+  "memory.setPracticeScope": async ({ params, respond }) => {
+    try {
+      const m = await memoryManager(str(params.agentId));
+      const result = await m.ownerSetPracticeScope(str(params.id), str(params.scope));
+      if (!result.ok) {
+        respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, result.reason));
+        return;
+      }
+      respond(true, result);
+    } catch (err) {
+      fail(respond, err);
+    }
+  },
+
+  /**
+   * Retire a practice. Sticky: capture cannot store a near-identical one
+   * again; memory.unretirePractice or the owner stating it again can.
+   */
+  "memory.retirePractice": async ({ params, respond }) => {
+    try {
+      const m = await memoryManager(str(params.agentId));
+      respond(true, { ok: await m.ownerRetirePractice(str(params.id)) });
+    } catch (err) {
+      fail(respond, err);
+    }
+  },
+
+  /** Bring a retired or declined practice back, or activate a candidate. */
+  "memory.unretirePractice": async ({ params, respond }) => {
+    try {
+      const m = await memoryManager(str(params.agentId));
+      respond(true, { ok: await m.ownerUnretirePractice(str(params.id)) });
     } catch (err) {
       fail(respond, err);
     }

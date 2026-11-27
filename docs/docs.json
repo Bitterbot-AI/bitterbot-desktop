@@ -709,6 +709,7 @@
                 "pages": [
                   "memory/architecture-overview",
                   "memory/controls",
+                  "memory/practices",
                   "memory/how-the-memory-works",
                   "memory/working-memory",
                   "memory/sage-graph-memory",

@@ -240,6 +240,13 @@ const BASE_METHODS = [
   "memory.retireFact",
   "memory.unretireFact",
   "memory.pinFact",
+  // PLAN-64 Phase 1: standing practices
+  "memory.practices",
+  "memory.savePractice",
+  "memory.editPractice",
+  "memory.setPracticeScope",
+  "memory.retirePractice",
+  "memory.unretirePractice",
   "memory.export",
   "memory.forgetPreview",
   "memory.exportDownload",

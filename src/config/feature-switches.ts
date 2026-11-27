@@ -92,6 +92,11 @@ export function correctionCaptureEnabled(correction: Toggle): boolean {
   return correction?.enabled !== false;
 }
 
+/** Standing practices (PLAN-64): on unless `memory.practices.enabled` is false. */
+export function practicesEnabled(practices: Toggle): boolean {
+  return practices?.enabled !== false;
+}
+
 /** Conversation memory: on unless `session.memory` is "off". */
 export function conversationMemoryEnabled(session: { memory?: string } | undefined): boolean {
   return session?.memory !== "off";

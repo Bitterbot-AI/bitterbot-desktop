@@ -42,7 +42,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import type { DatabaseSync } from "node:sqlite";
-import type { CanonicalFactsStore } from "./canonical-facts.js";
+import type { CanonicalFactsStore, CanonicalSource } from "./canonical-facts.js";
 import { insertEditedChunkCopy } from "./chunk-writer.js";
 import { yieldToEventLoop } from "./event-loop.js";
 import {
@@ -71,6 +71,13 @@ import {
   preferenceKeyHash,
   preferenceValueHash,
 } from "./memory-suppressions.js";
+import type {
+  Practice,
+  PracticeListOptions,
+  PracticeOrigin,
+  PracticesStore,
+  PracticeUpsertResult,
+} from "./practices.js";
 
 /** Id prefixes of memories that exist only in the database (the agent's own). */
 export const OWNER_EDITABLE_PREFIXES = [
@@ -537,6 +544,117 @@ export function pinFact(db: DatabaseSync, store: CanonicalFactsStore, input: Own
       scope: result.fact.scope,
       ...(result.op === "supersede" && previous ? { previousValue: previous.value } : {}),
     };
+  });
+}
+
+// ── PLAN-64 Phase 1: standing practices ─────────────────────────────────────
+
+/** Every practice, whatever its status (the owner sees candidates and retired ones too). */
+export function listPractices(store: PracticesStore, opts: PracticeListOptions = {}): Practice[] {
+  return store.list(opts);
+}
+
+export type SavePracticeInput = {
+  statement: string;
+  scope?: string;
+  /** Default `owner`. The per-turn capture passes `extraction` for what the owner did not say. */
+  source?: CanonicalSource;
+  origin?: PracticeOrigin;
+  evidenceRef?: string | null;
+  /** Audit only, as for pinFact. */
+  actor?: "owner" | "correction";
+};
+
+/**
+ * Store a practice. At the owner tier (the default) it is active at once and
+ * brings back a practice the owner had retired; below it the practice is a
+ * candidate and an owner-retired one stays retired.
+ */
+export function savePractice(
+  db: DatabaseSync,
+  store: PracticesStore,
+  input: SavePracticeInput,
+): PracticeUpsertResult {
+  return inSavepoint(db, "owner_save_practice", () => {
+    const result = store.upsert({
+      statement: input.statement,
+      scope: input.scope,
+      source: input.source ?? "owner",
+      origin: input.origin ?? "owner_ui",
+      evidenceRef: input.evidenceRef,
+    });
+    if (result.ok) {
+      writeAudit(db, `practice:${result.practice.id}`, "practice_saved", {
+        op: result.op,
+        scope: result.practice.scope,
+        status: result.practice.status,
+        source: result.practice.source,
+        actor: input.actor ?? "owner",
+      });
+    }
+    return result;
+  });
+}
+
+/** Reword a practice as the owner. */
+export function editPractice(
+  db: DatabaseSync,
+  store: PracticesStore,
+  id: string,
+  statement: string,
+): PracticeUpsertResult {
+  return inSavepoint(db, "owner_edit_practice", () => {
+    const result = store.editStatement(id, statement);
+    if (result.ok) {
+      writeAudit(db, `practice:${id}`, "owner_edit_practice", {});
+    }
+    return result;
+  });
+}
+
+/** Widen or narrow where a practice applies, as the owner. */
+export function setPracticeScope(
+  db: DatabaseSync,
+  store: PracticesStore,
+  id: string,
+  scope: string,
+): PracticeUpsertResult {
+  return inSavepoint(db, "owner_scope_practice", () => {
+    const before = store.get(id);
+    const result = store.setScope(id, scope);
+    if (result.ok && before && before.scope !== result.practice.scope) {
+      writeAudit(db, `practice:${id}`, "owner_scope_practice", {
+        from: before.scope,
+        to: result.practice.scope,
+      });
+    }
+    return result;
+  });
+}
+
+/**
+ * Retire a practice as the owner. Sticky: capture and every other writer
+ * below the owner tier cannot store a near-identical practice again. Only
+ * unretirePractice() or the owner stating it again brings it back.
+ */
+export function retirePractice(db: DatabaseSync, store: PracticesStore, id: string): boolean {
+  return inSavepoint(db, "owner_retire_practice", () => {
+    const ok = store.retire(id);
+    if (ok) {
+      writeAudit(db, `practice:${id}`, "owner_retire_practice", {});
+    }
+    return ok;
+  });
+}
+
+/** Bring a retired or declined practice back, or activate a candidate, as the owner. */
+export function unretirePractice(db: DatabaseSync, store: PracticesStore, id: string): boolean {
+  return inSavepoint(db, "owner_unretire_practice", () => {
+    const ok = store.activate(id);
+    if (ok) {
+      writeAudit(db, `practice:${id}`, "owner_unretire_practice", {});
+    }
+    return ok;
   });
 }
 

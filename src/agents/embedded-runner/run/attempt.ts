@@ -52,6 +52,7 @@ import { isTimeoutError } from "../../failover-error.js";
 import { resolveModelAuthMode } from "../../model-auth.js";
 import { resolveDefaultModelForAgent } from "../../model-selection.js";
 import { createOllamaStreamFn, OLLAMA_NATIVE_BASE_URL } from "../../ollama-stream.js";
+import { resolvePracticesBlock } from "../../practices-block.js";
 import { resolveAgentCompaction } from "../../runtime/compaction/agent-config.js";
 import { resolveHeartbeatPromptSet } from "../../runtime/compaction/heartbeat.js";
 import { buildProactiveRecallPreface } from "../../runtime/compaction/transcript-recall.js";
@@ -639,6 +640,26 @@ export async function runEmbeddedAttempt(
             workspaceDir: resolvedWorkspace,
           }).catch(() => undefined);
 
+    // PLAN-64 Phase 1: the owner's standing practices for this kind of turn.
+    // The turn's task type is resolved inside (word overlap, no model call)
+    // before the block is built. Owner first-party turns only, plus a cron
+    // job's own session for its job-scoped practices; the resolver decides.
+    const practices =
+      remoteTaskTurn || guestTurn
+        ? undefined
+        : await resolvePracticesBlock({
+            config: params.config,
+            agentId: sessionAgentId,
+            promptMode,
+            workspaceDir: resolvedWorkspace,
+            sessionKey: params.sessionKey,
+            senderIsOwner: params.senderIsOwner,
+            isHeartbeat: params.isHeartbeat === true,
+            prompt: params.prompt,
+            runId: params.runId,
+            sessionFile: params.sessionFile,
+          }).catch(() => undefined);
+
     // PLAN-34 Phase 2b: idle-research findings surface deterministically on
     // the next live turn — same independence contract as canonical facts.
     // Consume ONLY on a genuine first-party live user turn (not heartbeat,
@@ -722,6 +743,7 @@ export async function runEmbeddedAttempt(
       memoryCitationsMode: params.config?.memory?.citations,
       endocrineState,
       canonicalFacts,
+      practices,
       researchFindings,
       computeState,
       selfState,
