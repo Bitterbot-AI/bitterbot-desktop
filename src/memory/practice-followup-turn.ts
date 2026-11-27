@@ -186,8 +186,9 @@ const NO_TURN: FollowUpTurn = {
  * The reply path, before the correction pass. Reports an offer answered on
  * this turn (applying it here when the prompt path did not see a bare
  * answer, for example because the prompt carried other blocks), and spends
- * the previous recurring-task answer's one gap check on this message when it
- * arrived inside the window in the same session.
+ * the previous answer's one gap check on this message when it is the next
+ * owner message of the same session inside the window and either that
+ * answer was to a recurring task, or this message itself matches one.
  */
 export async function beginFollowUpTurn(
   deps: FollowUpTurnDeps,
@@ -243,6 +244,29 @@ export async function beginFollowUpTurn(
           previousOwnerMessage: pending.ownerText,
           previousAnswer: pending.answerText,
         };
+      } else if (!pending) {
+        // The second trigger: the previous request matched no task type
+        // ("can you check the latest stats?") and this message matches a
+        // recurring one by its words. The gap, if it is one, belongs to this
+        // message's type. The state row is this session's previous owner
+        // turn (same transcript), so a message that opens a session never
+        // gets here.
+        const untyped = deps.state.pendingUntypedAnswer(sessionKey, now);
+        const text = prose(params.userMessage);
+        const own =
+          untyped && text && untyped.sessionId === (params.sessionId || sessionKey)
+            ? deps.taskTypes.classify(text)
+            : null;
+        if (untyped && own) {
+          deps.state.markGapChecked(sessionKey, now);
+          turn.gapContext = {
+            taskSlug: own.slug,
+            taskLabel: own.label,
+            previousOwnerMessage: untyped.ownerText,
+            previousAnswer: untyped.answerText,
+            typedBy: "message",
+          };
+        }
       }
     }
   } catch (err) {
@@ -290,7 +314,12 @@ export async function finishFollowUpTurn(
   const text = prose(params.userMessage);
   try {
     const ctx = turn.gapContext;
-    if (ctx && params.followUp?.kind === "gap") {
+    if (ctx && params.followUp?.kind === "specific") {
+      // A follow-up about one instance (a date, a number): not a candidate,
+      // and not a new kind of request or a fresh occurrence either.
+      deps.taskTypes.dropDeferred(sessionKey, stripNonProse(params.userMessage));
+      log.info(`follow-up gap on ${ctx.taskSlug}: specific to one instance, not kept`);
+    } else if (ctx && params.followUp?.kind === "gap") {
       deps.taskTypes.dropDeferred(sessionKey, stripNonProse(params.userMessage));
       const statement = params.followUp.statement;
       // The owner said it as an instruction and the correction pass already
@@ -358,10 +387,12 @@ export async function finishFollowUpTurn(
       deps.state.clearOffer(sessionKey, now);
     }
 
-    if (type && practiceFollowUpsEnabled(params.cfg.memory?.practices)) {
+    if (text && practiceFollowUpsEnabled(params.cfg.memory?.practices)) {
+      // Typed or not: the owner's next message is checked against this
+      // answer (an untyped request only when that message is itself typed).
       deps.state.recordAnswer(sessionKey, {
         sessionId,
-        taskSlug: type.slug,
+        taskSlug: type?.slug ?? null,
         ownerText: text,
         answerText: params.replyText,
         now,

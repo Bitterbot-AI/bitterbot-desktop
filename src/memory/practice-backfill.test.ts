@@ -168,7 +168,34 @@ describe("runPracticeBackfill", () => {
     expect(result.modelCalls).toBe(4);
     expect(llm).toHaveBeenCalledTimes(4);
     expect(result.notExamined).toBe(0);
-    expect(result.outcomes).toMatchObject({ other: 1, unusable: 0, ungrounded: 0 });
+    expect(result.outcomes).toMatchObject({ other: 1, unusable: 0, specific: 0, ungrounded: 0 });
+    // Every follow-up it looked at, oldest first, with what became of it.
+    expect(result.examined).toEqual([
+      {
+        day: "2026-11-7",
+        taskSlug: "repo-stats",
+        typedBy: "answer",
+        text: "how about our npm downloads",
+        outcome: "candidate",
+        statement: "Include npm downloads",
+      },
+      {
+        day: "2026-11-8",
+        taskSlug: "repo-stats",
+        typedBy: "answer",
+        text: "hmm, I wonder what drove the 68 unique clones...",
+        outcome: "other",
+        statement: null,
+      },
+      {
+        day: "2026-11-9",
+        taskSlug: "repo-stats",
+        typedBy: "answer",
+        text: "how did npm do?",
+        outcome: "candidate",
+        statement: "Include npm",
+      },
+    ]);
     expect(result.taskTypes).toEqual([
       { slug: "repo-stats", label: "repo stats", occurrences: 4, isNew: true },
     ]);
@@ -288,5 +315,190 @@ describe("runPracticeBackfill", () => {
   it("an unreadable sessions directory is an empty result, not an error", async () => {
     const result = await run({ sessionsDir: path.join(dir, "missing") });
     expect(result).toMatchObject({ transcripts: 0, followUps: 0, modelCalls: 0, candidates: [] });
+  });
+
+  /** One transcript: owner and assistant turns at the given UTC times on a day of November 2026. */
+  function transcript(day: number, turns: Array<[role: Turn["role"], at: string, text: string]>) {
+    const d = String(day).padStart(2, "0");
+    return `${JSON.stringify({ type: "session", id: `x${day}` })}\n${turns
+      .map(([role, at, text]) => line({ role, text, at: `2026-11-${d}T${at}:00.000Z` }))
+      .join("\n")}\n`;
+  }
+
+  it("finds the next message hours after the answer, not one after six hours or after another owner turn", async () => {
+    // Real timings: 2026-11-07 11:05 and 12:43; 2026-11-11 10:24 and 13:06.
+    fs.writeFileSync(
+      path.join(dir, "s1.jsonl"),
+      transcript(7, [
+        ["user", "16:05", STATS],
+        ["assistant", "16:06", ANSWER],
+        ["user", "17:43", "how about our npm downloads"],
+      ]),
+    );
+    fs.writeFileSync(
+      path.join(dir, "s3.jsonl.reset.2026-11-09T20-00-00.000Z"),
+      transcript(9, [
+        ["user", "15:24", STATS],
+        ["assistant", "15:25", ANSWER],
+        ["user", "18:06", "how did npm do?"],
+      ]),
+    );
+    // Too late (seven hours), and a message with another owner turn in between.
+    fs.writeFileSync(
+      path.join(dir, "s6.jsonl"),
+      transcript(12, [
+        ["user", "09:00", STATS],
+        ["assistant", "09:01", ANSWER],
+        ["user", "16:02", "how about our npm downloads"],
+      ]),
+    );
+    fs.writeFileSync(
+      path.join(dir, "s7.jsonl"),
+      transcript(13, [
+        ["user", "09:00", STATS],
+        ["assistant", "09:01", ANSWER],
+        ["user", "09:05", "thanks, that works"],
+        ["assistant", "09:05", "Any time."],
+        ["user", "09:06", "how did npm do?"],
+      ]),
+    );
+    const result = await run();
+    const examined = result.examined.map((e) => `${e.day} ${e.outcome} ${e.text}`);
+    expect(examined).toEqual([
+      "2026-11-7 candidate how about our npm downloads",
+      "2026-11-8 other hmm, I wonder what drove the 68 unique clones...",
+      "2026-11-9 candidate how did npm do?",
+      "2026-11-13 other thanks, that works",
+    ]);
+    expect(result.candidates).toHaveLength(1);
+    expect(result.candidates[0]).toMatchObject({
+      statement: "Include npm downloads",
+      sightings: 2,
+      offerReady: true,
+    });
+  });
+
+  it("a reply to a heartbeat in between is not the answer the follow-up is read against", async () => {
+    fs.writeFileSync(
+      path.join(dir, "s1.jsonl"),
+      transcript(7, [
+        ["user", "16:05", STATS],
+        ["assistant", "16:06", ANSWER],
+        ["user", "16:30", "Read HEARTBEAT.md and follow it"],
+        ["assistant", "16:30", "HEARTBEAT_OK"],
+        ["user", "17:43", "how about our npm downloads"],
+      ]),
+    );
+    await run();
+    const gapPrompt = llm.mock.calls
+      .map((c) => c[0])
+      .find((p) => p.includes("Owner (follow-up): how about our npm downloads"))!;
+    expect(gapPrompt).toContain(ANSWER);
+    expect(gapPrompt).not.toContain("HEARTBEAT_OK");
+  });
+
+  it("the second trigger: a recurring request right after an untyped one, never the first message of a transcript", async () => {
+    // Real, 2026-11-27: "Can you check the latest stats?" matched no type.
+    const rest = "And how many clones did the repo get yesterday, day by day?";
+    fs.writeFileSync(
+      path.join(dir, "s6.jsonl"),
+      transcript(12, [
+        ["user", "16:36", "Can you check the latest stats?"],
+        ["assistant", "16:36", "Clones: 4,022 total. Views: 924 total."],
+        ["user", "16:37", rest],
+        ["assistant", "16:38", "Day by day: ..."],
+      ]),
+    );
+    // The same message opening a transcript is an occurrence, not a follow-up.
+    fs.writeFileSync(path.join(dir, "s7.jsonl"), transcript(13, [["user", "09:00", rest]]));
+    llm.mockImplementation(async (prompt: string) => {
+      if (prompt.includes("Name that kind of request")) {
+        return '{"slug":"repo-stats","label":"repo stats"}';
+      }
+      return prompt.includes("Owner (request): Can you check the latest stats?")
+        ? '{"kind":"gap","missing":"Include day by day clones"}'
+        : '{"kind":"other"}';
+    });
+    const result = await run();
+    const second = result.examined.filter((e) => e.typedBy === "message");
+    expect(second).toEqual([
+      {
+        day: "2026-11-12",
+        taskSlug: "repo-stats",
+        typedBy: "message",
+        text: rest,
+        outcome: "candidate",
+        statement: "Include day by day clones",
+      },
+    ]);
+    const prompt = llm.mock.calls.map((c) => c[0]).find((p) => p.includes("Owner (request):"))!;
+    expect(prompt).toContain("Clones: 4,022 total. Views: 924 total.");
+    expect(prompt).toContain('it reads like "repo stats"');
+  });
+
+  it("counts a gap about one date or number as specific, a fenced answer with prose as usable, a retracted gap as unusable", async () => {
+    fs.writeFileSync(
+      path.join(dir, "s2.jsonl"),
+      session(8, "geez, not clones stats for the 24th to 27th?"),
+    );
+    llm.mockImplementation(async (prompt: string) => {
+      if (prompt.includes("Name that kind of request")) {
+        return '```json\n{"slug":"repo-stats","label":"repo stats"}\n```\n\nThis names the general task.';
+      }
+      if (prompt.includes("24th to 27th?")) {
+        return '{"kind":"gap","missing":"Include clone stats for the 24th to 27th"}';
+      }
+      if (prompt.includes("Owner (follow-up): how about our npm downloads")) {
+        return '```json\n{"kind":"gap","missing":"Include npm downloads"}\n```\n\nThe owner asks for a metric the answer left out.';
+      }
+      return '```json\n{"kind":"gap","missing":"Include npm"}\n```\n\nWait, let me reconsider. This may be a new topic.';
+    });
+    const result = await run();
+    expect(result.taskTypes).toMatchObject([{ slug: "repo-stats", label: "repo stats" }]);
+    expect(result.outcomes).toMatchObject({ other: 0, unusable: 1, specific: 1 });
+    expect(result.examined.map((e) => e.outcome)).toEqual(["candidate", "specific", "unusable"]);
+    expect(result.candidates.map((c) => c.statement)).toEqual(["Include npm downloads"]);
+  });
+
+  it("names the largest new type first and offers a later one only already named types to merge into", async () => {
+    const npm = [
+      "how are the npm downloads of the package doing",
+      "npm downloads of the package this week please",
+      "what are the npm downloads of the package",
+    ];
+    npm.forEach((text, i) => {
+      fs.writeFileSync(
+        path.join(dir, `n${i}.jsonl`),
+        transcript(20 + i, [
+          ["user", "10:00", text],
+          ["assistant", "10:01", "12 downloads."],
+        ]),
+      );
+    });
+    // Two more stats requests, so the stats type is clearly the larger one
+    // (the base follow-up "how about our npm downloads" joins the npm type).
+    fs.writeFileSync(path.join(dir, "s6.jsonl"), session(14));
+    fs.writeFileSync(path.join(dir, "s7.jsonl"), session(15));
+    const naming: string[] = [];
+    llm.mockImplementation(async (prompt: string) => {
+      if (!prompt.includes("Name that kind of request")) {
+        return '{"kind":"other"}';
+      }
+      naming.push(prompt);
+      return prompt.includes("same_as")
+        ? '{"same_as":"repo-stats"}'
+        : '{"slug":"repo-stats","label":"repo stats"}';
+    });
+    const result = await run();
+    expect(naming).toHaveLength(2);
+    // The larger type (four stats requests) first, with nothing to merge into yet.
+    expect(naming[0]).toContain(STATS);
+    expect(naming[0]).not.toContain("same_as");
+    // The smaller one is shown the named type with its exemplars.
+    expect(naming[1]).toContain(npm[0]);
+    expect(naming[1]).toContain(`repo-stats (repo stats): ${JSON.stringify(STATS)}`);
+    expect(result.taskTypes).toEqual([
+      { slug: "repo-stats", label: "repo stats", occurrences: 10, isNew: true },
+    ]);
   });
 });

@@ -7006,13 +7006,24 @@ export class MemoryIndexManager implements MemorySearchManager {
       const type = this.taskTypes().classify(params.text);
       return type ? { slug: type.slug, label: type.label } : null;
     }
-    // PLAN-64 Phase 1b: a turn right after a recurring-task answer may be a
-    // follow-up to it; it does not found a type of its own (the reply path
-    // counts it afterwards when the follow-up check says it was a new topic).
-    const followUpOf = practiceFollowUpsEnabled(this.cfg.memory?.practices)
+    // PLAN-64 Phase 1b: the owner's next turn after a recurring-task answer
+    // may be a follow-up to it; it does not found a type of its own (the
+    // reply path counts it afterwards when the follow-up check says it was a
+    // new topic). The same holds for a turn that matches a recurring type
+    // right after an untyped request: typed now, counted after the check.
+    const followUps = practiceFollowUpsEnabled(this.cfg.memory?.practices);
+    const followUpOf = followUps
       ? (this.followUpState().pendingAnswer(params.sessionKey)?.taskSlug ?? null)
       : null;
-    return observeOwnerTurn(this.taskTypes(), { ...params, followUpOf }, this.correctionLlmCall());
+    const followsUntypedAnswer =
+      followUps && !followUpOf
+        ? this.followUpState().pendingUntypedAnswer(params.sessionKey) !== null
+        : false;
+    return observeOwnerTurn(
+      this.taskTypes(),
+      { ...params, followUpOf, followsUntypedAnswer },
+      this.correctionLlmCall(),
+    );
   }
 
   /**

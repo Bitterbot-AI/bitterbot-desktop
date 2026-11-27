@@ -28,6 +28,7 @@ import {
   formatOfferLine,
   gapElement,
   isGapGrounded,
+  isSpecificGapStatement,
   MAX_OFFERS_PER_PRACTICE,
   parseFollowUpGap,
   parseOfferAnswer,
@@ -152,6 +153,58 @@ describe("FollowUpStateStore", () => {
     expect(state.recentTaskSlug(SESSION, T0 + 8000)).toBeNull();
   });
 
+  it("the window is six hours: the real follow-ups came one to three hours after the answer", () => {
+    expect(FOLLOW_UP_WINDOW_MS).toBe(6 * 3_600_000);
+    const state = new FollowUpStateStore(schema(new DatabaseSync(":memory:")));
+    state.recordAnswer(SESSION, {
+      taskSlug: "repo-stats",
+      ownerText: "q",
+      answerText: "a",
+      now: T0,
+    });
+    // 2026-11-07: stats question 11:05, "how about our npm downloads" 12:43.
+    expect(state.pendingAnswer(SESSION, T0 + 98 * 60_000)).not.toBeNull();
+    // 2026-11-11: 10:24 and 13:06.
+    expect(state.pendingAnswer(SESSION, T0 + 162 * 60_000)).not.toBeNull();
+    expect(state.pendingAnswer(SESSION, T0 + 7 * 3_600_000)).toBeNull();
+  });
+
+  it("keeps the answer to an untyped request for the next message, under the same window and one check", () => {
+    const state = new FollowUpStateStore(schema(new DatabaseSync(":memory:")));
+    expect(state.pendingUntypedAnswer(SESSION, T0)).toBeNull();
+    state.recordAnswer(SESSION, {
+      sessionId: "s1",
+      taskSlug: null,
+      ownerText: "[Fri 2026-11-27 11:36 EST] Can you check the latest stats?",
+      answerText: "Clones: 4,022 total.",
+      now: T0,
+    });
+    expect(state.pendingAnswer(SESSION, T0 + 1)).toBeNull();
+    expect(state.recentTaskSlug(SESSION, T0 + 1)).toBeNull();
+    expect(state.pendingUntypedAnswer(SESSION, T0 + 60_000)).toEqual({
+      sessionId: "s1",
+      ownerText: "Can you check the latest stats?",
+      answerText: "Clones: 4,022 total.",
+      answeredAt: T0,
+    });
+    expect(state.pendingUntypedAnswer(SESSION, T0 + FOLLOW_UP_WINDOW_MS + 1)).toBeNull();
+    state.markGapChecked(SESSION, T0 + 1000);
+    expect(state.pendingUntypedAnswer(SESSION, T0 + 2000)).toBeNull();
+    // A typed answer is not an untyped one, and an empty answer arms nothing.
+    state.recordAnswer(SESSION, {
+      taskSlug: "repo-stats",
+      ownerText: "q",
+      answerText: "a",
+      now: T0,
+    });
+    expect(state.pendingUntypedAnswer(SESSION, T0 + 1)).toBeNull();
+    state.recordAnswer(SESSION, { taskSlug: null, ownerText: "q", answerText: " ", now: T0 });
+    expect(state.pendingUntypedAnswer(SESSION, T0 + 1)).toBeNull();
+    state.recordAnswer(SESSION, { taskSlug: null, ownerText: "q", answerText: "a", now: T0 });
+    state.clearAnswer(SESSION, T0 + 1);
+    expect(state.pendingUntypedAnswer(SESSION, T0 + 2)).toBeNull();
+  });
+
   it("follows a task type that was merged or renamed", () => {
     const state = new FollowUpStateStore(schema(new DatabaseSync(":memory:")));
     state.recordAnswer(SESSION, {
@@ -274,6 +327,98 @@ describe("the follow-up check prompt and parser", () => {
     });
   });
 
+  it("the rules say that another metric of the same report is a gap, offered or not", () => {
+    const prompt = buildFollowUpGapPrompt(CTX, "What about visitors to the repo?");
+    expect(prompt).toContain("another metric, item, breakdown or time range of the same report");
+    expect(prompt).toContain("had offered that item");
+    expect(prompt).toContain('When unsure, answer "other".');
+    expect(prompt).not.toContain("\u2014");
+  });
+
+  it("a follow-up to an untyped request says which side made it a candidate", () => {
+    const ctx = {
+      ...CTX,
+      previousOwnerMessage: "Can you check the latest stats?",
+      typedBy: "message" as const,
+    };
+    const prompt = buildFollowUpGapPrompt(
+      ctx,
+      "Give me day by day clones and the npm downloads too",
+    );
+    expect(prompt).toContain("Owner (request): Can you check the latest stats?");
+    expect(prompt).toContain(
+      'Owner (follow-up; it reads like "repo stats", a request the owner makes regularly): Give me day by day clones and the npm downloads too',
+    );
+    expect(prompt).not.toContain("made a request they make regularly");
+    expect(buildFollowUpPromptSection(ctx, "Give me day by day clones too")).toContain(
+      "answered an earlier request",
+    );
+  });
+
+  it("takes the first object of an answer with prose around it (real model answers)", () => {
+    // claude-haiku-4-5, 2026-11-27 replay: counted "unusable" before.
+    expect(
+      parseFollowUpGap(
+        '```json\n{"kind":"other"}\n```\n\nThe follow-up is a new, separate request (running `deep_recall` with a specific REPL query) rather than asking for a missing element.',
+      ),
+    ).toEqual({ kind: "other" });
+    expect(
+      parseFollowUpGap(
+        'The follow-up asks about npm downloads, which is a different metric of repository performance.\n\n```json\n{"kind":"gap","missing":"Include npm downloads"}\n```',
+      ),
+    ).toEqual({ kind: "gap", statement: "Include npm downloads" });
+    expect(
+      parseFollowUpGap(
+        '```json\n{"kind":"gap","missing":"Include traffic"}\n```\n\nThe owner asks for a metric the answer left out.',
+      ),
+    ).toEqual({ kind: "gap", statement: "Include traffic" });
+  });
+
+  it("a gap the model takes back is unusable; an 'other' it wavers on stays other (real answer)", () => {
+    expect(
+      parseFollowUpGap(
+        '```json\n{"kind":"gap","missing":"Include step 1 confirmation"}\n```\n\nWait, let me reconsider. The follow-up is asking for a different query structure.',
+      ),
+    ).toBeNull();
+    expect(
+      parseFollowUpGap(
+        '{"facts":[],"follow_up":{"kind":"gap","missing":"Include npm downloads"}}\n\nActually, the answer did contain it.',
+      ),
+    ).toBeNull();
+    expect(
+      parseFollowUpGap('{"kind":"other"}\n\nWait, let me reconsider. It could be a gap.'),
+    ).toEqual({ kind: "other" });
+  });
+
+  it("a gap that names one instance is 'specific', never a gap (real case)", () => {
+    // From "geez, not clones stats for the 24th to 27th?".
+    expect(
+      parseFollowUpGap('{"kind":"gap","missing":"Include clone stats for the 24th to 27th"}'),
+    ).toEqual({ kind: "specific", statement: "Include clone stats for the 24th to 27th" });
+    for (const statement of [
+      "Include the 14-day window",
+      "Include the last 7 days",
+      "Include clones for yesterday",
+      "Include today's views",
+      "Include the November totals",
+      "Include Friday's clones",
+      "Include the numbers for Sept 24",
+    ]) {
+      expect(isSpecificGapStatement(statement), statement).toBe(true);
+    }
+    for (const statement of [
+      "Include npm downloads",
+      "Include day by day clones",
+      "Include traffic for the past few days",
+      "Include visitors to the repo",
+      "Include p95 latency",
+      "Include the s3 bucket sizes",
+      "Include what may be missing",
+    ]) {
+      expect(isSpecificGapStatement(statement), statement).toBe(false);
+    }
+  });
+
   it("puts 'Include' in front of a bare element", () => {
     expect(parseFollowUpGap('{"kind":"gap","missing":"npm downloads"}')).toEqual({
       kind: "gap",
@@ -310,6 +455,15 @@ describe("grounding and matching", () => {
         "Include traffic for the past few days",
       ),
     ).toBe(true);
+    // The owner's typo, the model's spelling (real: "What about vistors to the repo?").
+    expect(isGapGrounded("What about vistors to the repo?", "Include visitors to the repo")).toBe(
+      true,
+    );
+    expect(isGapGrounded("and the dowloads?", "Include downloads")).toBe(true);
+    expect(isGapGrounded("and the donwloads?", "Include downloads")).toBe(true);
+    // Short words get no such slack, and two edits are another word.
+    expect(isGapGrounded("how are the stars?", "Include stats")).toBe(false);
+    expect(isGapGrounded("what about the visits?", "Include visitors")).toBe(false);
     // The model named something the owner did not say.
     expect(isGapGrounded("how did npm do?", "Include npm downloads")).toBe(false);
     expect(isGapGrounded("thanks, looks good", "Include npm downloads")).toBe(false);

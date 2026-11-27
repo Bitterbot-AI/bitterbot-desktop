@@ -143,9 +143,9 @@ type TurnOptions = {
 
 /** One owner turn: prompt build, then the run-completion hook. */
 async function turn(body: string, opts: TurnOptions = {}) {
-  // Twenty minutes apart: outside the follow-up window, so a repeated request
-  // is not sent to the follow-up check (which would be a model call).
-  clock += 20 * 60_000;
+  // Seven hours apart: outside the follow-up window (six hours), so a
+  // repeated request is not sent to the follow-up check (a model call).
+  clock += 7 * 3_600_000;
   vi.setSystemTime(clock);
   const runStartedAt = clock;
   const cfg = opts.cfg ?? CFG;

@@ -24,21 +24,25 @@
  *
  * PLAN-64 Phase 1b, because a replay of the owner's real messages split one
  * task into three types:
- * - Merge at naming time. The one naming call is shown the label and two
- *   exemplars of each existing recurring type and may answer `same_as`
- *   instead of a new name; the pending type is then folded into that type
+ * - Merge at naming time. The one naming call is shown the label and up to
+ *   four exemplars of each existing recurring type, is told which of them
+ *   shares the most exemplar words with the new one (a hint), and may answer
+ *   `same_as` instead of a new name; the pending type is then folded into that type
  *   (`merge`). The owner can merge two types by hand as well. Without a model
  *   nothing is merged automatically.
- * - A follow-up does not found a type. A turn inside the follow-up window of
- *   a recurring-task answer that does not match a recurring type on its own
+ * - A follow-up does not found a type. The owner's next turn after a
+ *   recurring-task answer that does not match a recurring type on its own
  *   is not counted (`deferred`); the caller counts it later only when the
- *   follow-up check says it was a new topic.
+ *   follow-up check says it was a new topic. Likewise a turn that matches a
+ *   recurring type right after an untyped request is typed but not counted
+ *   until the check says it was not the missing part of that request.
  */
 
 import crypto from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { normalizeScopeName } from "./canonical-facts.js";
+import { extractFirstJsonObject } from "./model-json.js";
 
 const log = createSubsystemLogger("memory/task-types");
 
@@ -60,6 +64,12 @@ const MAX_MERGED_EXEMPLARS = 16;
 const MERGE_KEPT_FROM = 4;
 /** Existing recurring types shown to the naming call. */
 const MAX_NAMING_EXISTING_TYPES = 20;
+/** Exemplars of each existing type the naming call is shown. */
+const MAX_NAMING_EXISTING_EXEMPLARS = 4;
+/** Shared exemplar content words an existing type needs to be pointed out to the naming call. */
+const NAMING_HINT_MIN_SHARED = 2;
+/** ... and the share of the smaller of the two word sets they must make up. */
+const NAMING_HINT_MIN_SHARE = 0.2;
 export const MAX_PENDING_TYPES = 150;
 const PENDING_PREFIX = "pending-";
 const LABEL_TIMEOUT_MS = 8_000;
@@ -235,11 +245,39 @@ export type TaskLabelLlmCall = (prompt: string, opts?: { signal?: AbortSignal })
 /** An existing recurring type as the naming call sees it. */
 export type NamingExistingType = { slug: string; label: string; exemplars: string[] };
 
+/**
+ * The existing type whose exemplars share the most content words with the
+ * new type's, or null when none shares enough (NAMING_HINT_MIN_SHARED words
+ * making up NAMING_HINT_MIN_SHARE of the smaller word set). Deterministic;
+ * it is shown to the naming call as a hint and decides nothing by itself.
+ */
+export function closestExistingType(
+  exemplars: string[],
+  existing: NamingExistingType[],
+): { slug: string; shared: string[] } | null {
+  const mine = new Set(exemplars.flatMap((e) => contentWords(e)));
+  let best: { slug: string; shared: string[] } | null = null;
+  for (const type of existing) {
+    const theirs = new Set(type.exemplars.flatMap((e) => contentWords(e)));
+    const shared = [...mine].filter((word) => theirs.has(word));
+    const share = shared.length / Math.max(1, Math.min(mine.size, theirs.size));
+    if (
+      shared.length >= NAMING_HINT_MIN_SHARED &&
+      share >= NAMING_HINT_MIN_SHARE &&
+      shared.length > (best?.shared.length ?? 0)
+    ) {
+      best = { slug: type.slug, shared };
+    }
+  }
+  return best;
+}
+
 export function buildTaskLabelPrompt(
   exemplars: string[],
   existing: NamingExistingType[] = [],
 ): string {
   const known = existing.slice(0, MAX_NAMING_EXISTING_TYPES);
+  const closest = closestExistingType(exemplars, known);
   const knownBlock =
     known.length > 0
       ? `
@@ -248,15 +286,21 @@ ${known
   .map(
     (t) =>
       `- ${t.slug} (${t.label || t.slug.replace(/-/g, " ")}): ${t.exemplars
-        .slice(0, 2)
+        .slice(0, MAX_NAMING_EXISTING_EXEMPLARS)
         .map((e) => JSON.stringify(e.slice(0, MAX_EXEMPLAR_CHARS)))
         .join("; ")}`,
   )
   .join("\n")}
-
-If the requests above ask for the same kind of thing as one of these (the same task in other words, or the same task with one more item asked for), answer with that slug instead of a new name:
-{"same_as":"${known[0]!.slug}"}
-Only do that when an answer to one would also answer the other. When unsure, give a new name.
+${
+  closest
+    ? `
+Of these, "${closest.slug}" shares the most words with the requests above (${closest.shared.slice(0, 6).join(", ")}). That is a hint, not a decision.
+`
+    : ""
+}
+Answer with the slug of one of these instead of a new name:
+{"same_as":"${(closest ?? known[0]!).slug}"}
+when the requests above would be answered by the same kind of report or lookup as that one, or are often asked in the same breath as it, even if they name a different metric or item of that report. Give a new name only when they are a different kind of task.
 `
       : "";
   return `The owner of an assistant asks for the same kind of thing repeatedly. Name that kind of request.
@@ -269,7 +313,7 @@ ${exemplars
 ${knownBlock}
 Respond with ONLY a JSON object (no markdown fences):
 {"slug":"repo-stats","label":"repo stats"}
-"slug": 1 to 3 lowercase words joined by hyphens. "label": the same in plain words, at most 4 words. Describe the kind of request, not one instance: no dates, no numbers, no names of people.`;
+"slug": 1 to 3 lowercase words joined by hyphens. "label": the same in plain words, at most 4 words. Describe the kind of request, not one instance: no dates, no numbers, no names of people. Name the general task, not one metric or item of it ("repo stats", not "repository clone count").`;
 }
 
 export type TaskNaming =
@@ -285,20 +329,15 @@ export function parseTaskNamingResponse(
   raw: string,
   existingSlugs: ReadonlySet<string>,
 ): TaskNaming | null {
-  try {
-    const cleaned = raw
-      .replace(/^```(?:json)?\s*\n?/m, "")
-      .replace(/\n?```\s*$/m, "")
-      .trim();
-    const parsed = JSON.parse(cleaned) as { same_as?: unknown };
-    if (typeof parsed.same_as === "string") {
-      const same = normalizeScopeName(parsed.same_as.trim().slice(0, 64));
-      if (same && existingSlugs.has(same)) {
-        return { kind: "same", slug: same };
-      }
-    }
-  } catch {
+  const parsed = extractFirstJsonObject(raw)?.value;
+  if (!parsed) {
     return null;
+  }
+  if (typeof parsed.same_as === "string") {
+    const same = normalizeScopeName(parsed.same_as.trim().slice(0, 64));
+    if (same && existingSlugs.has(same)) {
+      return { kind: "same", slug: same };
+    }
   }
   const named = parseTaskLabelResponse(raw);
   return named ? { kind: "new", ...named } : null;
@@ -306,27 +345,19 @@ export function parseTaskNamingResponse(
 
 /** Parse the labelling response. Null on anything unusable (the fallback is used then). */
 export function parseTaskLabelResponse(raw: string): { slug: string; label: string } | null {
-  try {
-    const cleaned = raw
-      .replace(/^```(?:json)?\s*\n?/m, "")
-      .replace(/\n?```\s*$/m, "")
-      .trim();
-    const parsed = JSON.parse(cleaned) as { slug?: unknown; label?: unknown };
-    if (typeof parsed.slug !== "string") {
-      return null;
-    }
-    const slug = normalizeScopeName(parsed.slug.trim().slice(0, 40));
-    if (!slug || slug.startsWith(PENDING_PREFIX) || !/[a-z]/.test(slug)) {
-      return null;
-    }
-    const label =
-      typeof parsed.label === "string" && parsed.label.trim()
-        ? parsed.label.replace(/\s+/g, " ").trim().slice(0, 40)
-        : slug.replace(/-/g, " ");
-    return { slug, label };
-  } catch {
+  const parsed = extractFirstJsonObject(raw)?.value;
+  if (!parsed || typeof parsed.slug !== "string") {
     return null;
   }
+  const slug = normalizeScopeName(parsed.slug.trim().slice(0, 40));
+  if (!slug || slug.startsWith(PENDING_PREFIX) || !/[a-z]/.test(slug)) {
+    return null;
+  }
+  const label =
+    typeof parsed.label === "string" && parsed.label.trim()
+      ? parsed.label.replace(/\s+/g, " ").trim().slice(0, 40)
+      : slug.replace(/-/g, " ");
+  return { slug, label };
 }
 
 export type TaskMatch = { type: TaskType; score: number };
@@ -342,10 +373,11 @@ export type ObserveResult = {
    */
   needsPromotion: boolean;
   /**
-   * The turn sits in the follow-up window of a recurring-task answer and
-   * matched no recurring type on its own: it was not counted. The caller
-   * counts it later (`observe` without `followUpOf`) when the follow-up check
-   * says it was a new topic.
+   * The turn was not counted because it may be a follow-up: it sits in the
+   * follow-up window of a recurring-task answer and matched no recurring
+   * type on its own (`type` is null), or it matches a recurring type and
+   * follows an untyped request (`type` is that type). The caller counts it
+   * later (`countDeferred`) when the follow-up check says it was not a gap.
    */
   deferred?: boolean;
 };
@@ -469,6 +501,13 @@ export class TaskTypesStore {
        * recurring type on its own is deferred instead of counted.
        */
       followUpOf?: string | null;
+      /**
+       * The owner's previous turn in this session matched no type and its
+       * answer is still open for a follow-up. Set: a turn that matches a
+       * recurring type is typed as it (the practices of that type apply) but
+       * not counted yet, because it may be a follow-up to that answer.
+       */
+      followsUntypedAnswer?: boolean;
     } = {},
   ): ObserveResult {
     const none: ObserveResult = { type: null, duplicate: false, needsPromotion: false };
@@ -490,14 +529,15 @@ export class TaskTypesStore {
       if (opts.followUpOf && !match?.type.recurring) {
         // A follow-up never founds (or feeds) a type of its own.
         this.rememberSessionTurn(opts.sessionKey, opts.turnKey, text, null, now);
-        this.deferredTurns.add(`${opts.sessionKey ?? ""}|${textHash(text)}`);
-        if (this.deferredTurns.size > MAX_TRACKED_TURN_KEYS) {
-          const first = this.deferredTurns.values().next().value;
-          if (first !== undefined) {
-            this.deferredTurns.delete(first);
-          }
-        }
+        this.defer(opts.sessionKey, text);
         return { ...none, deferred: true };
+      }
+      if (opts.followsUntypedAnswer && !opts.followUpOf && match?.type.recurring) {
+        // It may be the missing part of the untyped request before it, not a
+        // fresh occurrence: counted later, when the follow-up check says so.
+        this.rememberSessionTurn(opts.sessionKey, opts.turnKey, text, match.type.slug, now);
+        this.defer(opts.sessionKey, text);
+        return { type: match.type, duplicate: false, needsPromotion: false, deferred: true };
       }
       const type = match ? this.bump(match.type, text, now) : this.insertPending(text, now);
       // The slug is kept even while the type is pending: it may be promoted
@@ -511,6 +551,16 @@ export class TaskTypesStore {
     } catch (err) {
       log.debug(`task typing failed: ${String(err)}`);
       return none;
+    }
+  }
+
+  private defer(sessionKey: string | undefined, text: string): void {
+    this.deferredTurns.add(`${sessionKey ?? ""}|${textHash(text)}`);
+    if (this.deferredTurns.size > MAX_TRACKED_TURN_KEYS) {
+      const first = this.deferredTurns.values().next().value;
+      if (first !== undefined) {
+        this.deferredTurns.delete(first);
+      }
     }
   }
 
@@ -731,12 +781,21 @@ export class TaskTypesStore {
    * `onMerge` re-points what was scoped to the old slug). Returns the type
    * as it now is; unchanged when there is no usable answer.
    */
-  async relabel(slug: string, llmCall: TaskLabelLlmCall): Promise<TaskType | null> {
+  async relabel(
+    slug: string,
+    llmCall: TaskLabelLlmCall,
+    opts: {
+      /** Only these types are offered as a merge target (the backfill: the ones already named). */
+      mergeInto?: ReadonlySet<string>;
+    } = {},
+  ): Promise<TaskType | null> {
     const before = this.get(slug);
     if (!before?.recurring) {
       return before;
     }
-    const existing = this.namingCandidates(slug);
+    const existing = this.namingCandidates(slug).filter(
+      (t) => !opts.mergeInto || opts.mergeInto.has(t.slug),
+    );
     let named: TaskNaming | null = null;
     const abort = new AbortController();
     const timer = setTimeout(
@@ -951,6 +1010,8 @@ export function observeOwnerTurn(
     now?: number;
     /** See TaskTypesStore.observe: the recurring type whose answer this turn follows. */
     followUpOf?: string | null;
+    /** See TaskTypesStore.observe. */
+    followsUntypedAnswer?: boolean;
   },
   llmCall?: TaskLabelLlmCall | null,
 ): { slug: string; label: string } | null {
@@ -959,6 +1020,7 @@ export function observeOwnerTurn(
     sessionKey: params.sessionKey,
     now: params.now,
     followUpOf: params.followUpOf,
+    followsUntypedAnswer: params.followsUntypedAnswer,
   });
   let type = observed.type;
   if (type && observed.needsPromotion) {

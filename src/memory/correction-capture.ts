@@ -296,7 +296,8 @@ export function stripNonProse(text: string): string {
 /** The name of the first pattern that matches the prose of `text`, or null. */
 export function matchesCorrectionPrefilter(text: string): string | null {
   // Typographic apostrophes ("don’t") read as plain ones for every pattern.
-  const prose = stripNonProse(text).replace(/[\u2018\u2019]/g, "'");
+  // The channel's timestamp envelope is not the start of the owner's sentence.
+  const prose = stripMessageEnvelope(stripNonProse(text)).replace(/[\u2018\u2019]/g, "'");
   if (!prose.trim()) {
     return null;
   }
@@ -322,7 +323,7 @@ const EXPLICIT_INSTRUCTION_PATTERNS: ReadonlySet<string> = new Set([
  * sightings.
  */
 export function isExplicitStandingInstruction(text: string): boolean {
-  const prose = stripNonProse(text).replace(/[\u2018\u2019]/g, "'");
+  const prose = stripMessageEnvelope(stripNonProse(text)).replace(/[\u2018\u2019]/g, "'");
   if (!prose.trim()) {
     return false;
   }

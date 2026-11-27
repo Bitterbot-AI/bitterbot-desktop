@@ -16,7 +16,8 @@
  * a candidate through the normal offer or the RPC.
  *
  * Model calls: at most `maxCalls` in total (naming or merging the task
- * types the replay found, then one call per candidate follow-up). The
+ * types the replay found, largest first, then one call per candidate
+ * follow-up: the owner's next message after an answer, see pass 2). The
  * caller is told the counts before the first call (`onPlan`).
  */
 
@@ -112,11 +113,18 @@ async function readTranscript(absPath: string): Promise<Message[]> {
   return out;
 }
 
-/** One owner message that came right after a recurring-task answer. */
+/**
+ * One owner message that may be a follow-up: the owner's next message in the
+ * session after an answer, within FOLLOW_UP_WINDOW_MS, when the answered turn
+ * was a recurring task (`typedBy: "answer"`) or, that turn being untyped,
+ * when the message itself matches a recurring type (`typedBy: "message"`).
+ */
 export type BackfillFollowUp = {
   file: string;
   ts: number;
+  /** The recurring type a gap would be attributed to. */
   taskSlug: string;
+  typedBy: "answer" | "message";
   previousOwnerMessage: string;
   previousAnswer: string;
   /** The owner's follow-up, prose only. */
@@ -149,6 +157,25 @@ export type BackfillCandidate = {
   evidence: Array<{ text: string; ref: string | null; day: string; explicit: boolean }>;
 };
 
+export type BackfillExamined = {
+  day: string;
+  taskSlug: string;
+  typedBy: "answer" | "message";
+  /** The owner's follow-up, prose only. */
+  text: string;
+  outcome:
+    | "candidate"
+    | "other"
+    | "unusable"
+    | "specific"
+    | "ungrounded"
+    | "repeatOfActive"
+    | "declinedBefore"
+    | "rejected";
+  /** The gap statement, when the model gave one. */
+  statement: string | null;
+};
+
 export type BackfillResult = BackfillPlan & {
   modelCalls: number;
   /** Follow-ups left unexamined because the call budget ran out or no model was available. */
@@ -156,6 +183,8 @@ export type BackfillResult = BackfillPlan & {
   outcomes: {
     other: number;
     unusable: number;
+    /** A gap that named one instance (a date, a number, "yesterday"): not kept. */
+    specific: number;
     ungrounded: number;
     repeatOfActive: number;
     declinedBefore: number;
@@ -163,6 +192,8 @@ export type BackfillResult = BackfillPlan & {
   };
   taskTypes: Array<{ slug: string; label: string; occurrences: number; isNew: boolean }>;
   candidates: BackfillCandidate[];
+  /** Every follow-up the backfill looked at, oldest first, with what became of it. */
+  examined: BackfillExamined[];
   /** Null on a dry run. */
   applied: { candidates: number; sightings: number; taskTypes: number } | null;
 };
@@ -333,13 +364,21 @@ async function backfill(
     .filter((t) => !liveRecurring.has(t.slug))
     .toSorted((a, b) => b.occurrences - a.occurrences);
 
-  // ── Pass 2: follow-ups to a recurring-task answer ───────────────────────
+  // ── Pass 2: the owner's next message after an answer ────────────────────
+  // The reply path's two triggers (practice-followup-turn.ts): the answered
+  // turn was a recurring task, or it was untyped and the next message itself
+  // matches a recurring type. `last` is the previous owner turn of the same
+  // transcript, so a message that opens a session is never a follow-up.
   const followUps: BackfillFollowUp[] = [];
   for (const session of sessions) {
-    let last: { slug: string; owner: string; answer: string; answeredAt: number } | null = null;
+    let last: { slug: string | null; owner: string; answer: string; answeredAt: number } | null =
+      null;
+    // A reply to a turn that was not the owner typing (a heartbeat, a cron
+    // fire) is not the answer to the owner's request before it.
+    let answering = false;
     for (const message of session.messages) {
       if (message.role === "assistant") {
-        if (last) {
+        if (last && answering) {
           last.answer = message.text;
           last.answeredAt = message.ts;
         }
@@ -347,26 +386,31 @@ async function backfill(
       }
       const prose = ownerProse(message.text);
       if (!prose) {
+        answering = false;
         continue;
       }
+      answering = true;
+      const type = scratchTypes.classify(prose);
+      const taskSlug = last?.slug ?? type?.slug ?? null;
       if (
-        last?.answer &&
+        last?.answer.trim() &&
+        taskSlug &&
         message.ts >= last.answeredAt &&
         message.ts - last.answeredAt <= FOLLOW_UP_WINDOW_MS
       ) {
         followUps.push({
           file: session.file,
           ts: message.ts,
-          taskSlug: last.slug,
+          taskSlug,
+          typedBy: last.slug ? "answer" : "message",
           previousOwnerMessage: last.owner,
           previousAnswer: last.answer,
           text: prose,
           rawText: message.text,
         });
       }
-      // One follow-up per answer; this turn may itself be a recurring task.
-      const type = scratchTypes.classify(prose);
-      last = type ? { slug: type.slug, owner: prose, answer: "", answeredAt: 0 } : null;
+      // One follow-up per answer; this turn is the next one's "previous turn".
+      last = { slug: type?.slug ?? null, owner: prose, answer: "", answeredAt: 0 };
     }
     await yieldToEventLoop();
   }
@@ -387,6 +431,7 @@ async function backfill(
     outcomes: {
       other: 0,
       unusable: 0,
+      specific: 0,
       ungrounded: 0,
       repeatOfActive: 0,
       declinedBefore: 0,
@@ -394,6 +439,7 @@ async function backfill(
     },
     taskTypes: [],
     candidates: [],
+    examined: [],
     applied: null,
   };
   const describeTypes = () =>
@@ -411,6 +457,10 @@ async function backfill(
   // ── Model calls: name or merge the new types, then one per follow-up ────
   const llmCall = opts.llmCall;
   const spend = () => result.modelCalls < maxCalls && !opts.signal?.aborted;
+  // Largest first, and a type may only be folded into one that already has
+  // its name (a live type, or one named earlier in this loop): the smaller
+  // variants of a task merge into its main type, never the other way round.
+  const named = new Set(liveRecurring);
   for (const type of newTypes) {
     if (!spend()) {
       break;
@@ -419,7 +469,10 @@ async function backfill(
       continue; // folded into another type by an earlier answer
     }
     result.modelCalls += 1;
-    await scratchTypes.relabel(type.slug, llmCall);
+    const after = await scratchTypes.relabel(type.slug, llmCall, { mergeInto: named });
+    if (after) {
+      named.add(after.slug);
+    }
   }
   const resolveSlug = (slug: string): string => {
     let current = slug;
@@ -445,6 +498,19 @@ async function backfill(
     }
     result.modelCalls += 1;
     result.notExamined -= 1;
+    const note = (outcome: BackfillExamined["outcome"], statement: string | null = null) => {
+      if (outcome !== "candidate") {
+        result.outcomes[outcome] += 1;
+      }
+      result.examined.push({
+        day: practiceDayKey(followUp.ts),
+        taskSlug,
+        typedBy: followUp.typedBy,
+        text: followUp.text.slice(0, 300),
+        outcome,
+        statement,
+      });
+    };
     let raw = "";
     try {
       raw = await llmCall(
@@ -454,21 +520,30 @@ async function backfill(
             taskLabel: type.label,
             previousOwnerMessage: followUp.previousOwnerMessage,
             previousAnswer: followUp.previousAnswer,
+            typedBy: followUp.typedBy,
           },
           followUp.text,
         ),
         { signal: opts.signal },
       );
     } catch (err) {
-      log.debug(`backfill follow-up call failed: ${String(err)}`);
+      // Owner-triggered command: say why a call was lost, do not hide it.
+      log.warn(`backfill follow-up call failed: ${String(err).slice(0, 300)}`);
     }
     const gap = parseFollowUpGap(raw);
     if (!gap) {
-      result.outcomes.unusable += 1;
+      if (raw.trim()) {
+        log.warn(`backfill follow-up answer not usable: ${raw.replace(/\s+/g, " ").slice(0, 300)}`);
+      }
+      note("unusable");
       continue;
     }
     if (gap.kind === "other") {
-      result.outcomes.other += 1;
+      note("other");
+      continue;
+    }
+    if (gap.kind === "specific") {
+      note("specific", gap.statement);
       continue;
     }
     const input: Omit<GapSightingInput, "store"> = {
@@ -484,17 +559,22 @@ async function backfill(
     const outcome = recordGapSighting({ ...input, store: scratchPractices });
     if (outcome.kind === "candidate") {
       recorded.push({ input, text: followUp.text, practiceId: outcome.practice.id });
+      note("candidate", gap.statement);
     } else if (outcome.kind === "repeat") {
-      result.outcomes.repeatOfActive += 1;
+      note("repeatOfActive", gap.statement);
     } else if (outcome.kind === "refused") {
-      result.outcomes.declinedBefore += 1;
+      note("declinedBefore", gap.statement);
     } else if (outcome.kind === "ungrounded") {
-      result.outcomes.ungrounded += 1;
+      note("ungrounded", gap.statement);
     } else {
-      result.outcomes.rejected += 1;
+      note("rejected", gap.statement);
     }
   }
   result.taskTypes = describeTypes();
+  // A type merged or renamed after a follow-up was examined: report the slug it has now.
+  for (const item of result.examined) {
+    item.taskSlug = resolveSlug(item.taskSlug);
+  }
 
   // ── What it found ───────────────────────────────────────────────────────
   const byPractice = new Map<string, { practice: Practice; items: typeof recorded }>();

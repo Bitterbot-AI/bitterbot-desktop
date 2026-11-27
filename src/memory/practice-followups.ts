@@ -7,13 +7,17 @@
  * ask for the part it left out ("how about our npm downloads"). This module
  * turns that into a practice, with the owner's yes in between:
  *
- * 1. Follow-up gap. The reply path records each answer to a turn typed as a
- *    recurring task (`practice_session_state`, persisted). On the owner's
- *    next message in that session within FOLLOW_UP_WINDOW_MS, ONE cheap-model
+ * 1. Follow-up gap. The reply path records the answer to each owner turn
+ *    (`practice_session_state`, persisted) with the recurring task type the
+ *    turn was typed as, if any. The owner's NEXT message in that session
+ *    (no other owner turn in between) within FOLLOW_UP_WINDOW_MS is checked
+ *    when the answered turn was a recurring task, or when that turn was
+ *    untyped and the new message itself matches a recurring type by words
+ *    (the gap is then attributed to the new message's type). ONE cheap-model
  *    call (the correction lane, folded into the correction pass's own call
  *    when its pre-filter fires on the same turn) classifies the message as
  *    `gap` (asks for something the answer should have contained) or `other`.
- *    At most one such call per recurring-task answer.
+ *    At most one such call per answer.
  * 2. Candidate. A gap is a short imperative ("Include npm downloads") whose
  *    element must be grounded in the owner's own words. It is stored as a
  *    `candidate` practice at `task:<slug>`, origin `follow_up`, never
@@ -38,6 +42,7 @@
 import type { DatabaseSync } from "node:sqlite";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import type { ScopeContext } from "./canonical-facts.js";
+import { extractFirstJsonObject, hasRetraction } from "./model-json.js";
 import {
   arePracticesNearDuplicate,
   cleanPracticeStatement,
@@ -51,8 +56,14 @@ import { contentWords, stripMessageEnvelope } from "./task-types.js";
 
 const log = createSubsystemLogger("memory/practice-followups");
 
-/** A follow-up counts when it arrives this soon after the recurring-task answer. */
-export const FOLLOW_UP_WINDOW_MS = 15 * 60_000;
+/**
+ * A follow-up is the owner's next message in the session after the answer,
+ * when it arrives within this long. Six hours, not minutes: in the owner's
+ * real history the follow-ups ("how about our npm downloads") came one to
+ * three hours after the answer, in the same session. The cost stays one
+ * check per answer, because only the next message is looked at.
+ */
+export const FOLLOW_UP_WINDOW_MS = 6 * 3_600_000;
 /** A yes or no counts as the answer to an offer for this long. */
 export const OFFER_ANSWER_WINDOW_MS = 30 * 60_000;
 export const MAX_OFFERS_PER_PRACTICE = 2;
@@ -68,7 +79,10 @@ const MAX_OFFER_LINE_CHARS = 320;
 export type FollowUpState = {
   sessionKey: string;
   sessionId: string | null;
-  /** The recurring type of the last answered owner turn; null when that turn was not one. */
+  /**
+   * The recurring type of the last answered owner turn; null when that turn
+   * matched none (its text and answer are still kept, see `pendingUntypedAnswer`).
+   */
   taskSlug: string | null;
   ownerText: string | null;
   answerText: string | null;
@@ -193,12 +207,16 @@ export class FollowUpStateStore {
     }
   }
 
-  /** The reply to a recurring-task turn went out: the next message may be a follow-up. */
+  /**
+   * The reply to an owner turn went out: the next message may be a follow-up.
+   * `taskSlug` is the recurring type the turn was typed as, or null when it
+   * matched none.
+   */
   recordAnswer(
     sessionKey: string,
     params: {
       sessionId?: string | null;
-      taskSlug: string;
+      taskSlug: string | null;
       ownerText: string;
       answerText: string;
       now?: number;
@@ -219,9 +237,10 @@ export class FollowUpStateStore {
     );
   }
 
-  /** The last owner turn was not a recurring task: nothing to follow up on. */
+  /** Nothing to follow up on (follow-up learning is off for this turn). */
   clearAnswer(sessionKey: string, now: number = Date.now()): void {
-    if (!this.get(sessionKey)?.taskSlug) {
+    const state = this.get(sessionKey);
+    if (!state?.taskSlug && state?.answeredAt == null) {
       return;
     }
     this.patch(
@@ -292,6 +311,24 @@ export class FollowUpStateStore {
     );
   }
 
+  /** The last answer, while inside the window with its one gap check not spent. */
+  private openAnswer(
+    sessionKey: string | undefined | null,
+    now: number,
+  ): (FollowUpState & { answeredAt: number }) | null {
+    const state = this.get(sessionKey);
+    if (
+      !state ||
+      state.gapChecked ||
+      state.answeredAt === null ||
+      now - state.answeredAt > FOLLOW_UP_WINDOW_MS ||
+      now < state.answeredAt
+    ) {
+      return null;
+    }
+    return { ...state, answeredAt: state.answeredAt };
+  }
+
   /**
    * The recurring-task answer the owner's next message may follow up on:
    * inside the window and its one gap check not spent. Null otherwise.
@@ -300,20 +337,43 @@ export class FollowUpStateStore {
     sessionKey: string | undefined | null,
     now: number = Date.now(),
   ): { taskSlug: string; ownerText: string; answerText: string; answeredAt: number } | null {
-    const state = this.get(sessionKey);
-    if (
-      !state?.taskSlug ||
-      state.gapChecked ||
-      state.answeredAt === null ||
-      now - state.answeredAt > FOLLOW_UP_WINDOW_MS ||
-      now < state.answeredAt
-    ) {
+    const state = this.openAnswer(sessionKey, now);
+    if (!state?.taskSlug) {
       return null;
     }
     return {
       taskSlug: state.taskSlug,
       ownerText: state.ownerText ?? "",
       answerText: state.answerText ?? "",
+      answeredAt: state.answeredAt,
+    };
+  }
+
+  /**
+   * The answer to the owner's previous turn when that turn matched no task
+   * type ("can you check the latest stats?"): the next message is checked as
+   * a follow-up when it matches a recurring type by itself. Same window, same
+   * one check. Null when the previous turn was typed, had no answer text, or
+   * there was no previous turn (a message that opens a session is never a
+   * follow-up).
+   */
+  pendingUntypedAnswer(
+    sessionKey: string | undefined | null,
+    now: number = Date.now(),
+  ): {
+    sessionId: string | null;
+    ownerText: string;
+    answerText: string;
+    answeredAt: number;
+  } | null {
+    const state = this.openAnswer(sessionKey, now);
+    if (!state || state.taskSlug || !state.ownerText?.trim() || !state.answerText?.trim()) {
+      return null;
+    }
+    return {
+      sessionId: state.sessionId,
+      ownerText: state.ownerText,
+      answerText: state.answerText,
       answeredAt: state.answeredAt,
     };
   }
@@ -379,30 +439,52 @@ export function parseOfferAnswer(text: string): "yes" | "no" | null {
 // ── The follow-up check (one model call, or one section of the correction call) ──
 
 export type FollowUpContext = {
+  /** The recurring type a gap is attributed to. */
   taskSlug: string;
   taskLabel: string;
-  /** The owner's recurring request the answer was for. */
+  /** The owner's request the answer was for. */
   previousOwnerMessage: string;
   /** The answer the follow-up may be pointing at a gap in. */
   previousAnswer: string;
+  /**
+   * What made this message a possible follow-up. `answer` (the default): the
+   * previous owner turn was typed as the recurring task. `message`: that turn
+   * matched no type and the follow-up itself matches the recurring type.
+   */
+  typedBy?: "answer" | "message";
 };
 
-export type FollowUpGap = { kind: "gap"; statement: string } | { kind: "other" };
+export type FollowUpGap =
+  | { kind: "gap"; statement: string }
+  | { kind: "other" }
+  /**
+   * The model said `gap` but named one instance (a date, a number, "yesterday"):
+   * a follow-up, not a new topic, and never a candidate.
+   */
+  | { kind: "specific"; statement: string };
 
-const FOLLOW_UP_RULES = `- "gap": the follow-up asks for an item, a breakdown or a time range that belongs to the same request and that the answer left out ("how about our npm downloads", "what has the traffic been like the past few days?", "give me day by day clones and the npm downloads too").
-- "other": a new topic, a reaction, thanks, a correction of a fact, or a deeper question about something the answer did contain ("hmm, I wonder what drove the 68 unique clones").
+const FOLLOW_UP_RULES = `- "gap": the follow-up asks for another metric, item, breakdown or time range of the same report or lookup, one the answer did not give ("how about our npm downloads", "what has the traffic been like the past few days?", "give me day by day clones and the npm downloads too"). It is still a gap when the assistant had offered that item at the end of its answer, and when it is "a different metric": a different metric of the same report is exactly what a gap is.
+- "other": a different task, a reaction, thanks, a correction of a fact, a deeper question about something the answer did contain ("hmm, I wonder what drove the 68 unique clones"), or the whole request made again with other parameters (a new run of the task, not a missing part of this answer).
 - For "gap", "missing" is one short imperative naming the missing element, starting with "Include" ("Include npm downloads"). Name the element with the words the owner used in the follow-up and nothing else: no dates and no numbers from this one instance.
 - When unsure, answer "other".`;
 
 function exchangeBlock(ctx: FollowUpContext, ownerMessage: string): string {
-  return `Owner (recurring request, "${ctx.taskLabel || ctx.taskSlug.replace(/-/g, " ")}"): ${ctx.previousOwnerMessage.slice(0, MAX_STATE_OWNER_CHARS)}
-Assistant (the answer): ${ctx.previousAnswer.slice(0, MAX_STATE_ANSWER_CHARS)}
-Owner (follow-up): ${ownerMessage.slice(0, 1_000)}`;
+  const label = ctx.taskLabel || ctx.taskSlug.replace(/-/g, " ");
+  const previous = ctx.previousOwnerMessage.slice(0, MAX_STATE_OWNER_CHARS);
+  const answer = ctx.previousAnswer.slice(0, MAX_STATE_ANSWER_CHARS);
+  const followUp = ownerMessage.slice(0, 1_000);
+  return ctx.typedBy === "message"
+    ? `Owner (request): ${previous}
+Assistant (the answer): ${answer}
+Owner (follow-up; it reads like "${label}", a request the owner makes regularly): ${followUp}`
+    : `Owner (recurring request, "${label}"): ${previous}
+Assistant (the answer): ${answer}
+Owner (follow-up): ${followUp}`;
 }
 
 /** The stand-alone prompt, used when the correction pre-filter did not fire on this turn. */
 export function buildFollowUpGapPrompt(ctx: FollowUpContext, ownerMessage: string): string {
-  return `The owner of an assistant made a request they make regularly, the assistant answered, and the owner then sent a follow-up. Decide whether the follow-up asks for something the answer should have contained.
+  return `The owner of an assistant made a request${ctx.typedBy === "message" ? "" : " they make regularly"}, the assistant answered, and the owner then sent a follow-up. Decide whether the follow-up asks for something the answer should have contained.
 
 ## Rules
 ${FOLLOW_UP_RULES}
@@ -425,7 +507,7 @@ export function buildFollowUpPromptSection(ctx: FollowUpContext, ownerMessage: s
   return `
 
 ## Follow-up check
-The user message above was sent right after the assistant answered a request the user makes regularly. Decide whether it asks for something that earlier answer should have contained, and add one more top-level key to the JSON object you output:
+The user message above was the user's next message after the assistant answered ${ctx.typedBy === "message" ? "an earlier request" : "a request the user makes regularly"}. Decide whether it asks for something that earlier answer should have contained, and add one more top-level key to the JSON object you output:
 "follow_up":{"kind":"gap","missing":"Include npm downloads"} or "follow_up":{"kind":"other"}
 ${FOLLOW_UP_RULES}
 
@@ -449,26 +531,37 @@ export function gapElementWords(statement: string): string[] {
   return contentWords(gapElement(statement));
 }
 
+const SPECIFIC_WORDS_RX =
+  /\b(?:yesterday|today|tomorrow|tonight|january|february|march|april|june|july|august|september|october|november|december|monday|tuesday|wednesday|thursday|friday|saturday|sunday)s?\b/i;
+/** A number or an ordinal ("24th", "7", "14-day"); a digit inside a name ("p95", "s3") is not one. */
+const SPECIFIC_NUMBER_RX = /(?<![A-Za-z\d])\d/;
+
+/**
+ * Does a gap statement name one instance instead of a standing element: a
+ * number or ordinal, a month or weekday name, or "yesterday / today /
+ * tomorrow"? The prompt asks for none of these; this enforces it. ("May" is
+ * not in the list: as a word it is far more often the verb.)
+ */
+export function isSpecificGapStatement(statement: string): boolean {
+  return SPECIFIC_NUMBER_RX.test(statement) || SPECIFIC_WORDS_RX.test(statement);
+}
+
 /**
  * Parse the follow-up classification, stand-alone (`{"kind":..}`) or as the
- * `follow_up` key of the correction response. Fail-closed: anything
- * unusable is null, and a `gap` without a usable statement is null too. A
- * statement that does not open with an instruction verb gets "Include".
+ * `follow_up` key of the correction response. The answer is the first JSON
+ * object in the response; prose around it is ignored, except that a `gap`
+ * followed by a retraction ("Wait, let me reconsider ...") is unusable.
+ * Fail-closed: anything unusable is null, and a `gap` without a usable
+ * statement is null too. A statement that does not open with an instruction
+ * verb gets "Include". A `gap` whose statement names one instance (a date, a
+ * number) comes back as `specific`.
  */
 export function parseFollowUpGap(raw: string): FollowUpGap | null {
-  let parsed: Record<string, unknown>;
-  try {
-    const cleaned = raw
-      .replace(/^```(?:json)?\s*\n?/m, "")
-      .replace(/\n?```\s*$/m, "")
-      .trim();
-    parsed = JSON.parse(cleaned) as Record<string, unknown>;
-  } catch {
+  const extracted = extractFirstJsonObject(raw);
+  if (!extracted) {
     return null;
   }
-  if (!parsed || typeof parsed !== "object") {
-    return null;
-  }
+  const parsed = extracted.value;
   const node =
     parsed.follow_up && typeof parsed.follow_up === "object"
       ? (parsed.follow_up as Record<string, unknown>)
@@ -477,7 +570,7 @@ export function parseFollowUpGap(raw: string): FollowUpGap | null {
   if (kind === "other") {
     return { kind: "other" };
   }
-  if (kind !== "gap" || typeof node.missing !== "string") {
+  if (kind !== "gap" || typeof node.missing !== "string" || hasRetraction(extracted.rest)) {
     return null;
   }
   let statement = cleanPracticeStatement(node.missing);
@@ -491,7 +584,53 @@ export function parseFollowUpGap(raw: string): FollowUpGap | null {
   if (practiceStatementRejection(statement) || gapElementWords(statement).length === 0) {
     return null;
   }
-  return { kind: "gap", statement };
+  return { kind: isSpecificGapStatement(statement) ? "specific" : "gap", statement };
+}
+
+const TYPO_MIN_WORD_CHARS = 5;
+
+/** One insertion, deletion, substitution or swap of neighbours apart ("vistor", "visitor"). */
+function withinOneEdit(a: string, b: string): boolean {
+  if (a === b) {
+    return true;
+  }
+  const [short, long] = a.length <= b.length ? [a, b] : [b, a];
+  if (long.length - short.length > 1) {
+    return false;
+  }
+  let i = 0;
+  while (i < short.length && short[i] === long[i]) {
+    i += 1;
+  }
+  if (short.length === long.length) {
+    return (
+      short.slice(i + 1) === long.slice(i + 1) ||
+      (short[i] === long[i + 1] &&
+        short[i + 1] === long[i] &&
+        short.slice(i + 2) === long.slice(i + 2))
+    );
+  }
+  return short.slice(i) === long.slice(i + 1);
+}
+
+/**
+ * Is this word of a gap statement in the owner's prose? Exactly, or one edit
+ * away for words of TYPO_MIN_WORD_CHARS letters or more: the owner types
+ * "vistors", the model writes "visitors", and it is still the owner's word.
+ */
+function ownerSaid(prose: ReadonlySet<string>, word: string): boolean {
+  if (prose.has(word)) {
+    return true;
+  }
+  if (word.length < TYPO_MIN_WORD_CHARS) {
+    return false;
+  }
+  for (const said of prose) {
+    if (said.length >= TYPO_MIN_WORD_CHARS && withinOneEdit(said, word)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 /**
@@ -499,7 +638,7 @@ export function parseFollowUpGap(raw: string): FollowUpGap | null {
  * content words are in the owner's own prose (the caller passes prose: code,
  * quotes and pasted blocks already stripped). The Phase 1 content-word rule,
  * applied to the element: the leading "Include" is generated, so it is not
- * asked of the owner.
+ * asked of the owner. A longer word one typo away from the owner's counts.
  */
 export function isGapGrounded(ownerProse: string, statement: string): boolean {
   const wanted = gapElementWords(statement);
@@ -507,7 +646,7 @@ export function isGapGrounded(ownerProse: string, statement: string): boolean {
     return false;
   }
   const prose = new Set(contentWords(ownerProse));
-  const present = wanted.filter((word) => prose.has(word)).length;
+  const present = wanted.filter((word) => ownerSaid(prose, word)).length;
   return present / wanted.length > 0.5;
 }
 

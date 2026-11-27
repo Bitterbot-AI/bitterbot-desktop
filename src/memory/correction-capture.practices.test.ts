@@ -19,6 +19,7 @@ import { CanonicalFactsStore } from "./canonical-facts.js";
 import {
   describePracticeScope,
   formatMemoryUpdatedLine,
+  isExplicitStandingInstruction,
   matchesCorrectionPrefilter,
   ownerProseSupportsStatement,
   type PracticeCaptureDeps,
@@ -115,6 +116,17 @@ describe("behavioural pre-filter patterns (Phase 0 phrasings)", () => {
     expect(matchesCorrectionPrefilter(text)).toBeNull();
   });
 
+  it("reads past the channel's timestamp envelope (the real message, as the transcript holds it)", () => {
+    // 2026-11-27: with the envelope in front, "Give me" was not at the start
+    // of the text, the pattern missed, and the follow-up was not explicit.
+    const real = "[Fri 2026-11-27 11:37 EST] Give me day by day clones and the npm downloads too";
+    expect(matchesCorrectionPrefilter(real)).toBe("give-too");
+    expect(isExplicitStandingInstruction(real)).toBe(true);
+    expect(
+      matchesCorrectionPrefilter("[Fri 2026-11-27 11:37 EST] Give me the latest numbers"),
+    ).toBeNull();
+  });
+
   it("never fires on quoted or pasted text", () => {
     expect(matchesCorrectionPrefilter("> stop asking\nthanks")).toBeNull();
     expect(matchesCorrectionPrefilter("```\nyou should check the docs\n```")).toBeNull();
@@ -173,6 +185,33 @@ describe("parseCorrectionPractices", () => {
         }),
       ),
     ).toEqual([]);
+  });
+
+  it("reads facts, practices and the follow-up from one fenced answer with prose after it", () => {
+    // The shape claude-haiku-4-5 gives on this lane: a fenced object, then an explanation.
+    const raw = `\`\`\`json
+{"facts":[{"key":"infra.deploy_endpoint","value":"api2.acme.com","statement":"The deploy endpoint is api2.acme.com.","correction":true,"scope":"global"}],"practices":[{"statement":"${DAY_BY_DAY_PRACTICE}","scope":"task","explicit":true}],"follow_up":{"kind":"other"}}
+\`\`\`
+
+The user states an endpoint and one standing instruction. The follow-up is a new request {not a gap}.`;
+    expect(parseCorrectionResponse(raw)).toEqual([
+      {
+        key: "infra.deploy_endpoint",
+        value: "api2.acme.com",
+        statement: "The deploy endpoint is api2.acme.com.",
+        correction: true,
+        scope: undefined,
+      },
+    ]);
+    expect(parseCorrectionPractices(raw)).toEqual([
+      { statement: DAY_BY_DAY_PRACTICE, scope: "task", explicit: true },
+    ]);
+    // Prose before the object, no fence.
+    expect(
+      parseCorrectionPractices(
+        `Here is the result: {"facts":[],"practices":[{"statement":"${DAY_BY_DAY_PRACTICE}"}]} Hope that helps.`,
+      ),
+    ).toHaveLength(1);
   });
 
   it("a response with practices and no facts list still parses as no facts", () => {

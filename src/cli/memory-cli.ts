@@ -918,7 +918,7 @@ export function formatBackfillResult(
   const o = result.outcomes;
   lines.push(
     `Model calls: ${result.modelCalls} of at most ${result.maxCalls}. Follow-ups not examined: ${result.notExamined}.`,
-    `Not a gap: ${o.other}; unusable answer: ${o.unusable}; not in your words: ${o.ungrounded}; already an active practice: ${o.repeatOfActive}; declined before: ${o.declinedBefore}; rejected: ${o.rejected}.`,
+    `Not a gap: ${o.other}; unusable answer: ${o.unusable}; about one date or number only: ${o.specific}; not in your words: ${o.ungrounded}; already an active practice: ${o.repeatOfActive}; declined before: ${o.declinedBefore}; rejected: ${o.rejected}.`,
   );
   if (result.taskTypes.length > 0) {
     lines.push("Recurring task types:");

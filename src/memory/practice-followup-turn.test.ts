@@ -138,10 +138,14 @@ async function ownerTurn(params: {
       sessionKey: SESSION,
       turnKey: params.runId,
       now: params.now,
+      // As MemoryIndexManager.observeOwnerTurnTaskType does.
       followUpOf:
         cfg.memory?.practices?.followUps?.enabled === false
           ? null
           : (h.state.pendingAnswer(SESSION, params.now)?.taskSlug ?? null),
+      followsUntypedAnswer:
+        cfg.memory?.practices?.followUps?.enabled !== false &&
+        h.state.pendingUntypedAnswer(SESSION, params.now) !== null,
     },
     null,
   );
@@ -226,6 +230,109 @@ beforeEach(() => {
   seedRepoStats(h);
   llm.mockReset();
   llm.mockResolvedValue(OTHER);
+});
+
+describe("a follow-up to an untyped request (the second trigger)", () => {
+  // Real, 2026-11-27: 11:36 "Can you check the latest stats?" matched no task
+  // type (one content word besides "check"), 11:37 the owner asked for the rest.
+  const VAGUE = "Can you check the latest stats?";
+  const VAGUE_ANSWER = "Clones: 4,022 total, 411 unique. Views: 924 total. Stars: 2,484.";
+  const REST = "Give me day by day clones and the npm downloads too";
+  /** The same request without the "give me X too" shape (that shape earns the correction pass's call by itself). */
+  const PLAIN = "and the day by day clones and npm downloads?";
+  const occurrences = () => h.taskTypes.get("repo-stats")!.occurrences;
+
+  it("is checked when the message itself is a recurring task, and a gap goes to that task", async () => {
+    expect(h.taskTypes.classify(VAGUE)).toBeNull();
+    expect(h.taskTypes.classify(REST)?.slug).toBe("repo-stats");
+    expect(h.taskTypes.classify(PLAIN)?.slug).toBe("repo-stats");
+    llm.mockResolvedValue(gap("Include day by day clones and npm downloads"));
+    const vague = await ownerTurn({ text: VAGUE, reply: VAGUE_ANSWER, now: T0 });
+    expect(vague.calls).toBe(0);
+    const before = occurrences();
+    const rest = await ownerTurn({ text: REST, now: T0 + MIN });
+    expect(rest.calls).toBe(1);
+    expect(rest.turn.gapContext).toEqual({
+      taskSlug: "repo-stats",
+      taskLabel: "repo stats",
+      previousOwnerMessage: VAGUE,
+      previousAnswer: VAGUE_ANSWER,
+      typedBy: "message",
+    });
+    const prompt = llm.mock.calls.at(-1)![0];
+    expect(prompt).toContain(`Owner (request): ${VAGUE}`);
+    expect(prompt).toContain(VAGUE_ANSWER);
+    expect(rest.finished.sighting).toMatchObject({ kind: "candidate", op: "add" });
+    expect(h.practices.list()).toMatchObject([
+      {
+        statement: "Include day by day clones and npm downloads",
+        scope: "task:repo-stats",
+        status: "candidate",
+      },
+    ]);
+    // The missing part of the earlier request, not a fresh occurrence of the task.
+    expect(occurrences()).toBe(before);
+    // Its own answer is a recurring-task answer: the next message can follow up on it.
+    expect(h.state.pendingAnswer(SESSION, T0 + 2 * MIN)?.taskSlug).toBe("repo-stats");
+  });
+
+  it("counts the message as an occurrence, once, when the check says it was not a gap", async () => {
+    await ownerTurn({ text: VAGUE, reply: VAGUE_ANSWER, now: T0 });
+    const before = occurrences();
+    llm.mockResolvedValue(OTHER);
+    const rest = await ownerTurn({ text: STATS, reply: STATS_ANSWER, now: T0 + MIN, runId: "r2" });
+    expect(rest.calls).toBe(1);
+    expect(rest.finished.sighting).toBeNull();
+    expect(occurrences()).toBe(before + 1);
+    expect(h.practices.list()).toEqual([]);
+  });
+
+  it("counts it too when no model answered", async () => {
+    await ownerTurn({ text: VAGUE, reply: VAGUE_ANSWER, now: T0 });
+    const before = occurrences();
+    llm.mockRejectedValue(new Error("no model"));
+    await ownerTurn({ text: STATS, reply: STATS_ANSWER, now: T0 + MIN });
+    expect(occurrences()).toBe(before + 1);
+  });
+
+  it("a message that opens a session is never a follow-up", async () => {
+    const before = occurrences();
+    const first = await ownerTurn({ text: PLAIN, now: T0 });
+    expect(first.calls).toBe(0);
+    expect(first.turn.gapContext).toBeNull();
+    expect(occurrences()).toBe(before + 1);
+    // The untyped request was in the previous transcript of this conversation.
+    await ownerTurn({ text: VAGUE, reply: VAGUE_ANSWER, now: T0 + DAY, sessionId: "s2" });
+    const reset = await ownerTurn({ text: PLAIN, now: T0 + DAY + MIN, sessionId: "s3" });
+    expect(reset.calls).toBe(0);
+    expect(reset.turn.gapContext).toBeNull();
+    // Held back by the prompt path, counted by the reply path: once.
+    expect(occurrences()).toBe(before + 2);
+  });
+
+  it("needs an answer with text, the window, and an untyped message is not checked at all", async () => {
+    await ownerTurn({ text: VAGUE, reply: "", now: T0 });
+    expect((await ownerTurn({ text: PLAIN, now: T0 + MIN })).calls).toBe(0);
+    await ownerTurn({ text: VAGUE, reply: VAGUE_ANSWER, now: T0 + DAY });
+    expect((await ownerTurn({ text: PLAIN, now: T0 + DAY + 6 * 60 * MIN + MIN })).calls).toBe(0);
+    // (A third "latest stats" on a third day would be a recurring type itself.)
+    await ownerTurn({ text: "Anything new going on?", reply: "Not much.", now: T0 + 2 * DAY });
+    const chat = await ownerTurn({
+      text: "tell me a joke about penguins",
+      now: T0 + 2 * DAY + MIN,
+    });
+    expect(chat.calls).toBe(0);
+    expect(h.practices.list()).toEqual([]);
+  });
+
+  it("memory.practices.followUps.enabled=false: no check, and the message is counted as usual", async () => {
+    const cfg: BitterbotConfig = { memory: { practices: { followUps: { enabled: false } } } };
+    await ownerTurn({ text: VAGUE, reply: VAGUE_ANSWER, now: T0, cfg });
+    const before = occurrences();
+    const rest = await ownerTurn({ text: PLAIN, now: T0 + MIN, cfg });
+    expect(rest.calls).toBe(0);
+    expect(occurrences()).toBe(before + 1);
+  });
 });
 
 describe("follow-up gap detection", () => {
@@ -398,21 +505,40 @@ describe("follow-up gap detection", () => {
     llm.mockResolvedValue(gap("Include npm downloads"));
     await statsThenFollowUp({ followUp: "how about our npm downloads", now: T0 });
     expect(llm).toHaveBeenCalledTimes(1);
-    // The next message, still inside 15 minutes: the answer's check is spent.
+    // The next message, still inside the window: the answer's check is spent.
     const third = await ownerTurn({ text: "and what about views?", now: T0 + 4 * MIN });
     expect(third.calls).toBe(0);
     expect(third.turn.gapContext).toBeNull();
     expect(llm).toHaveBeenCalledTimes(1);
   });
 
-  it("makes no call without a recurring-task answer just before, after 15 minutes, or in another session", async () => {
+  it("checks the next message hours later in the same session (real timings)", async () => {
+    // 2026-11-07: the stats question at 11:05, "how about our npm downloads" at 12:43.
+    llm.mockResolvedValue(gap("Include npm downloads"));
+    await ownerTurn({ text: STATS, reply: STATS_ANSWER, now: T0 });
+    const first = await ownerTurn({ text: "how about our npm downloads", now: T0 + 98 * MIN });
+    expect(first.calls).toBe(1);
+    expect(first.finished.sighting).toMatchObject({ kind: "candidate", op: "add" });
+    // 2026-11-11: 10:24, then "how did npm do?" at 13:06, in another session.
+    llm.mockResolvedValue(gap("Include npm"));
+    await ownerTurn({ text: STATS, reply: STATS_ANSWER, now: T0 + 4 * DAY, sessionId: "s2" });
+    const second = await ownerTurn({
+      text: "how did npm do?",
+      now: T0 + 4 * DAY + 162 * MIN,
+      sessionId: "s2",
+    });
+    expect(second.finished.sighting).toMatchObject({ kind: "candidate", op: "strengthen" });
+    expect(second.lines).toEqual([OFFER_TWICE]);
+  });
+
+  it("makes no call without a recurring-task answer just before, after six hours, or in another session", async () => {
     // No answer before.
     expect((await ownerTurn({ text: "how about our npm downloads", now: T0 })).calls).toBe(0);
     // Too late.
     await ownerTurn({ text: STATS, reply: STATS_ANSWER, now: T0 + DAY });
     const late = await ownerTurn({
       text: "how about our npm downloads",
-      now: T0 + DAY + 16 * MIN,
+      now: T0 + DAY + 6 * 60 * MIN + MIN,
     });
     expect(late.calls).toBe(0);
     // The session was reset in between (same key, new transcript).
@@ -431,13 +557,50 @@ describe("follow-up gap detection", () => {
       now: T0 + 3 * DAY + MIN,
       sessionId: "s4",
     });
+    // (Not "how about our npm downloads": asked on a fourth day it is a
+    // recurring request of its own by now, which the second trigger checks.)
     const afterGap = await ownerTurn({
-      text: "how about our npm downloads",
+      text: "how did npm do?",
       now: T0 + 3 * DAY + 2 * MIN,
       sessionId: "s4",
     });
     expect(afterGap.calls).toBe(0);
     expect(h.practices.list()).toEqual([]);
+  });
+
+  it("a gap about one date or number is not kept, and is not counted as a new kind of request", async () => {
+    // Real: "geez, not clones stats for the 24th to 27th?" produced this statement.
+    llm.mockResolvedValue(gap("Include clone stats for the 24th to 27th"));
+    const types = h.taskTypes.list().length;
+    const { followUp } = await statsThenFollowUp({
+      followUp: "geez, not clones stats for the 24th to 27th?",
+      now: T0,
+    });
+    expect(followUp.calls).toBe(1);
+    expect(followUp.capture.followUp).toMatchObject({ kind: "specific" });
+    expect(followUp.finished.sighting).toBeNull();
+    expect(followUp.lines).toEqual([]);
+    expect(h.practices.list()).toEqual([]);
+    expect(h.taskTypes.list()).toHaveLength(types);
+  });
+
+  it("a fenced answer followed by an explanation is used; a retracted gap is not (real model answers)", async () => {
+    llm.mockResolvedValue(
+      '```json\n{"kind":"gap","missing":"Include npm downloads"}\n```\n\nThe owner asks for a metric the answer left out.',
+    );
+    const kept = await statsThenFollowUp({ followUp: "how about our npm downloads", now: T0 });
+    expect(kept.followUp.finished.sighting).toMatchObject({ kind: "candidate", op: "add" });
+    llm.mockResolvedValue(
+      '```json\n{"kind":"gap","missing":"Include views"}\n```\n\nWait, let me reconsider. The answer did give the views.',
+    );
+    const retracted = await statsThenFollowUp({
+      followUp: "what about views?",
+      now: T0 + DAY,
+      sessionId: "s2",
+    });
+    expect(retracted.followUp.calls).toBe(1);
+    expect(retracted.followUp.capture.followUp).toBeNull();
+    expect(h.practices.list()).toHaveLength(1);
   });
 
   it("an answer with no text (delivered by block streaming) arms no check", async () => {

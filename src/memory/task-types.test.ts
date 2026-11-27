@@ -14,6 +14,7 @@ import { ensureMemoryIndexSchema } from "./memory-schema.js";
 import { PracticesStore } from "./practices.js";
 import {
   buildTaskLabelPrompt,
+  closestExistingType,
   contentWords,
   fallbackTaskSlug,
   MAX_PENDING_TYPES,
@@ -323,17 +324,125 @@ describe("merging task types (PLAN-64 Phase 1b)", () => {
     });
   });
 
-  it("the naming prompt lists existing recurring types with two exemplars each", () => {
+  it("the naming prompt lists existing recurring types with up to four exemplars each", () => {
+    const six = [...REPO_STATS, "Any update on the repo clones?", "Repo clones this week?"];
     const prompt = buildTaskLabelPrompt(NPM_VARIANTS, [
-      { slug: "repo-stats", label: "repo stats", exemplars: REPO_STATS },
+      { slug: "repo-stats", label: "repo stats", exemplars: six },
     ]);
     expect(prompt).toContain("repo-stats (repo stats)");
-    expect(prompt).toContain(REPO_STATS[0]);
-    expect(prompt).toContain(REPO_STATS[1]);
-    expect(prompt).not.toContain(REPO_STATS[2]);
+    for (const exemplar of six.slice(0, 4)) {
+      expect(prompt).toContain(exemplar);
+    }
+    expect(prompt).not.toContain(six[4]);
     expect(prompt).toContain('{"same_as":"repo-stats"}');
+    // The merge criterion, stated plainly, and general labels.
+    expect(prompt).toContain("answered by the same kind of report or lookup");
+    expect(prompt).toContain("asked in the same breath");
+    expect(prompt).toContain("even if they name a different metric");
+    expect(prompt).toContain("Name the general task, not one metric");
+    expect(prompt).not.toContain("\u2014");
     // No existing types: the Phase 1 prompt, no same_as offer.
     expect(buildTaskLabelPrompt(NPM_VARIANTS)).not.toContain("same_as");
+  });
+
+  it("points out the existing type that shares the most exemplar words, as a hint", () => {
+    const existing = [
+      {
+        slug: "deep-recall-check",
+        label: "deep recall check",
+        exemplars: ["Run deep_recall with scope recent_sessions and report the stored value"],
+      },
+      { slug: "repo-stats", label: "repo stats", exemplars: REPO_STATS },
+    ];
+    expect(closestExistingType(NPM_VARIANTS, existing)).toMatchObject({ slug: "repo-stats" });
+    expect(closestExistingType(NPM_VARIANTS, existing)!.shared).toEqual(
+      expect.arrayContaining(["npm", "clone"]),
+    );
+    const prompt = buildTaskLabelPrompt(NPM_VARIANTS, existing);
+    expect(prompt).toMatch(/"repo-stats" shares the most words with the requests above \([^)]*npm/);
+    expect(prompt).toContain("That is a hint, not a decision.");
+    // The example answer names the hinted type, not merely the first listed.
+    expect(prompt).toContain('{"same_as":"repo-stats"}');
+    expect(prompt).not.toContain('{"same_as":"deep-recall-check"}');
+    // Nothing shares enough: no hint, and nothing is merged by the code itself.
+    const unrelated = [
+      "Summarise the wikiskills paper for me",
+      "Review the wikiskills paper again",
+    ];
+    expect(closestExistingType(unrelated, existing)).toBeNull();
+    expect(buildTaskLabelPrompt(unrelated, existing)).not.toContain("shares the most words");
+    // One shared word is not enough.
+    expect(closestExistingType(["how is the repo?"], existing)).toBeNull();
+  });
+
+  it("reads a name or a same_as out of an answer with a fence and trailing prose", () => {
+    const offered = new Set(["repo-stats"]);
+    expect(
+      parseTaskNamingResponse(
+        '```json\n{"same_as":"repo-stats"}\n```\n\nThese are the same report with one more metric.',
+        offered,
+      ),
+    ).toEqual({ kind: "same", slug: "repo-stats" });
+    expect(
+      parseTaskLabelResponse(
+        'Here you go:\n```json\n{"slug":"npm-downloads","label":"npm downloads"}\n```\nIt names the general task.',
+      ),
+    ).toEqual({ slug: "npm-downloads", label: "npm downloads" });
+  });
+
+  it("relabel can be limited to merge targets that already have their name", async () => {
+    seedRecurring(REPO_STATS.slice(0, 3), 0, "repo-stats");
+    seedRecurring(NPM_VARIANTS, 20, "npm-download-clone");
+    const prompts: string[] = [];
+    const sameAs = async (prompt: string) => {
+      prompts.push(prompt);
+      return '{"same_as":"npm-download-clone"}';
+    };
+    // The larger type is named first: the unnamed smaller one is not offered to it.
+    const kept = await store.relabel("repo-stats", sameAs, { mergeInto: new Set() });
+    expect(prompts[0]).not.toContain("same_as");
+    expect(kept?.slug).toBe("repo-stats");
+    expect(store.get("npm-download-clone")).not.toBeNull();
+    // The smaller one may then fold into it.
+    const folded = await store.relabel(
+      "npm-download-clone",
+      async () => '{"same_as":"repo-stats"}',
+      { mergeInto: new Set(["repo-stats"]) },
+    );
+    expect(folded?.slug).toBe("repo-stats");
+    expect(store.get("npm-download-clone")).toBeNull();
+  });
+
+  it("a recurring request right after an untyped one is typed but not counted until the check is in", () => {
+    seedRecurring(REPO_STATS.slice(0, 3), 0, "repo-stats");
+    const before = store.get("repo-stats")!.occurrences;
+    const held = store.observe(REPO_STATS[0]!, {
+      now: T0 + 5 * DAY,
+      sessionKey: "agent:main:main",
+      followsUntypedAnswer: true,
+    });
+    expect(held).toMatchObject({ type: { slug: "repo-stats" }, deferred: true });
+    expect(store.get("repo-stats")!.occurrences).toBe(before);
+    // Not a gap after all: counted once.
+    expect(store.countDeferred("agent:main:main", REPO_STATS[0]!, T0 + 5 * DAY)).toBe(true);
+    expect(store.countDeferred("agent:main:main", REPO_STATS[0]!, T0 + 5 * DAY)).toBe(false);
+    expect(store.get("repo-stats")!.occurrences).toBe(before + 1);
+    // A gap: dropped, never counted.
+    store.observe(REPO_STATS[1]!, {
+      now: T0 + 6 * DAY,
+      sessionKey: "agent:main:main",
+      followsUntypedAnswer: true,
+    });
+    store.dropDeferred("agent:main:main", REPO_STATS[1]!);
+    expect(store.countDeferred("agent:main:main", REPO_STATS[1]!)).toBe(false);
+    expect(store.get("repo-stats")!.occurrences).toBe(before + 1);
+    // A message that matches no recurring type is counted as always.
+    const plain = store.observe("Please review the wikiskills paper again", {
+      now: T0 + 6 * DAY,
+      followsUntypedAnswer: true,
+    });
+    expect(plain.deferred).toBeUndefined();
+    expect(plain.type?.recurring).toBe(false);
   });
 
   it("same_as counts only for a slug that was offered", () => {

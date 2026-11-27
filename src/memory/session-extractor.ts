@@ -23,6 +23,7 @@ import {
   normalizeCanonicalKey,
   normalizeCanonicalScope,
 } from "./canonical-facts.js";
+import { extractFirstJsonObject } from "./model-json.js";
 import {
   cleanPracticeStatement,
   practiceStatementHash,
@@ -344,16 +345,7 @@ export type CorrectionPractice = {
  * credential-shaped text; an unknown scope hint is dropped, not guessed.
  */
 export function parseCorrectionPractices(raw: string): CorrectionPractice[] {
-  let parsed: { practices?: unknown };
-  try {
-    const cleaned = raw
-      .replace(/^```(?:json)?\s*\n?/m, "")
-      .replace(/\n?```\s*$/m, "")
-      .trim();
-    parsed = JSON.parse(cleaned) as { practices?: unknown };
-  } catch {
-    return [];
-  }
+  const parsed = extractFirstJsonObject(raw)?.value as { practices?: unknown } | undefined;
   if (!parsed || !Array.isArray(parsed.practices)) {
     return [];
   }
@@ -396,16 +388,7 @@ const KNOWN_CATEGORY_PREFIXES = new Set(
  * nothing could match falls back to global.
  */
 export function parseCorrectionResponse(raw: string): CorrectionFact[] {
-  let parsed: { facts?: unknown };
-  try {
-    const cleaned = raw
-      .replace(/^```(?:json)?\s*\n?/m, "")
-      .replace(/\n?```\s*$/m, "")
-      .trim();
-    parsed = JSON.parse(cleaned) as { facts?: unknown };
-  } catch {
-    return [];
-  }
+  const parsed = extractFirstJsonObject(raw)?.value as { facts?: unknown } | undefined;
   if (!parsed || !Array.isArray(parsed.facts)) {
     return [];
   }
