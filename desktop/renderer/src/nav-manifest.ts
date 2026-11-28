@@ -1,12 +1,15 @@
 /**
- * PLAN-41 Phase 2 (p0-13): ONE nav manifest as the single source of truth
- * for which views exist and where they live. `TabId` derives from this list
- * (plus "chat", which is entered through the session list, not a nav row),
- * so a view cannot exist without a nav decision and the audit's
- * "8 unreachable compiled views" class of drift cannot recur.
+ * ONE nav manifest as the single source of truth for which views exist and
+ * where they live (PLAN-41 p0-13, regrouped by PLAN-65). `TabId` derives from
+ * this list (plus "chat", which is entered through the conversation list), so
+ * a view cannot exist without a nav decision.
  *
- * Groups: "main" is the SHIP set — what a fresh install needs. "advanced"
- * holds the power-user / experimental surfaces behind a collapsible header.
+ * Placement (PLAN-65):
+ *   - "sidebar": the few destinations about the person's own work. They sit
+ *     in the sidebar above the conversation list.
+ *   - "control": everything used to operate the agent. These open inside the
+ *     Control Center, grouped by `section`.
+ *
  * Debug, Instances, Projects and Sessions were deleted outright
  * (adjudicated D-H; restorable from git).
  */
@@ -20,6 +23,7 @@ import {
   BrainCircuit,
   Clock,
   Coins,
+  Cpu,
   FolderOpen,
   Gauge,
   Globe,
@@ -35,47 +39,62 @@ import {
   Wallet,
 } from "lucide-react";
 
-export type NavGroup = "main" | "advanced";
+export type NavPlace = "sidebar" | "control";
+
+/** Control Center groups, in display order. */
+export const CONTROL_SECTIONS = [
+  { id: "agent", label: "Agent" },
+  { id: "models", label: "Models & usage" },
+  { id: "network", label: "Channels & network" },
+  { id: "money", label: "Money" },
+  { id: "safety", label: "Safety" },
+  { id: "system", label: "System" },
+] as const;
+
+export type ControlSection = (typeof CONTROL_SECTIONS)[number]["id"];
 
 export interface NavItem {
   id: string;
   label: string;
   icon: LucideIcon;
-  group: NavGroup;
+  place: NavPlace;
+  /** Required for, and only for, place "control". */
+  section?: ControlSection;
   /** Shown only when the connected gateway advertises this feature. */
   requireFeature?: string;
 }
 
 const NAV_MANIFEST_LITERAL = [
-  // ── SHIP set ──
-  { id: "overview", label: "Overview", icon: Gauge, group: "main" },
-  // PLAN-50: cost is a daily-glance surface, second only to health.
-  { id: "usage", label: "Usage", icon: BarChart3, group: "main" },
-  { id: "channels", label: "Channels", icon: Radio, group: "main" },
-  { id: "agents", label: "Agents", icon: Bot, group: "main" },
-  { id: "skills", label: "Skills", icon: Puzzle, group: "main" },
-  { id: "connectors", label: "Connectors", icon: Plug, group: "main" },
-  { id: "memory", label: "Memory", icon: Brain, group: "main" },
-  { id: "curiosity", label: "Curiosity", icon: Lightbulb, group: "main" },
-  { id: "cron", label: "Automations", icon: Clock, group: "main" },
-  { id: "models", label: "Models & Keys", icon: KeyRound, group: "main" },
-  { id: "config", label: "Settings", icon: Settings, group: "main" },
-  { id: "compute", label: "Compute", icon: Server, group: "main" },
-  // ── Advanced ──
-  { id: "people", label: "Circles", icon: Users, group: "advanced" },
-  { id: "p2p", label: "P2P Network", icon: Globe, group: "advanced" },
-  { id: "guards", label: "Active Guards", icon: ShieldCheck, group: "advanced" },
-  { id: "dreams", label: "Dreams", icon: BrainCircuit, group: "advanced" },
-  { id: "wallet", label: "Wallet", icon: Wallet, group: "advanced" },
-  { id: "spendGrants", label: "Spend Grants", icon: Coins, group: "advanced" },
-  { id: "workspace", label: "Workspace", icon: FolderOpen, group: "advanced" },
-  { id: "nodes", label: "Nodes", icon: Server, group: "advanced" },
-  { id: "logs", label: "Logs", icon: ScrollText, group: "advanced" },
+  // ── Sidebar: the person's own work ──
+  { id: "memory", label: "Memory", icon: Brain, place: "sidebar" },
+  { id: "cron", label: "Automations", icon: Clock, place: "sidebar" },
+  { id: "workspace", label: "Files", icon: FolderOpen, place: "sidebar" },
+  { id: "people", label: "Circles", icon: Users, place: "sidebar" },
+  // ── Control Center ──
+  { id: "agents", label: "Agents", icon: Bot, place: "control", section: "agent" },
+  { id: "skills", label: "Skills", icon: Puzzle, place: "control", section: "agent" },
+  { id: "connectors", label: "Connectors", icon: Plug, place: "control", section: "agent" },
+  { id: "curiosity", label: "Curiosity", icon: Lightbulb, place: "control", section: "agent" },
+  { id: "dreams", label: "Dreams", icon: BrainCircuit, place: "control", section: "agent" },
+  { id: "models", label: "Models & Keys", icon: KeyRound, place: "control", section: "models" },
+  // PLAN-50: cost is a daily-glance surface.
+  { id: "usage", label: "Usage", icon: BarChart3, place: "control", section: "models" },
+  { id: "channels", label: "Channels", icon: Radio, place: "control", section: "network" },
+  { id: "nodes", label: "Nodes", icon: Server, place: "control", section: "network" },
+  { id: "p2p", label: "P2P Network", icon: Globe, place: "control", section: "network" },
+  { id: "compute", label: "Compute", icon: Cpu, place: "control", section: "network" },
+  { id: "wallet", label: "Wallet", icon: Wallet, place: "control", section: "money" },
+  { id: "spendGrants", label: "Spend Grants", icon: Coins, place: "control", section: "money" },
+  { id: "guards", label: "Active Guards", icon: ShieldCheck, place: "control", section: "safety" },
+  { id: "overview", label: "Overview", icon: Gauge, place: "control", section: "system" },
+  { id: "config", label: "Settings", icon: Settings, place: "control", section: "system" },
+  { id: "logs", label: "Logs", icon: ScrollText, place: "control", section: "system" },
   {
     id: "management",
     label: "Management",
     icon: Shield,
-    group: "advanced",
+    place: "control",
+    section: "system",
     requireFeature: "management",
   },
 ] as const satisfies readonly NavItem[];
@@ -85,3 +104,21 @@ export type TabId = "chat" | (typeof NAV_MANIFEST_LITERAL)[number]["id"];
 
 /** Widened view so optional fields (requireFeature) are accessible. */
 export const NAV_MANIFEST: readonly (NavItem & { id: TabId })[] = NAV_MANIFEST_LITERAL;
+
+/** Where the Control Center opens the first time. */
+export const DEFAULT_CONTROL_TAB: TabId = "overview";
+
+export function navItem(id: TabId): (NavItem & { id: TabId }) | undefined {
+  return NAV_MANIFEST.find((item) => item.id === id);
+}
+
+export function isControlTab(id: TabId): boolean {
+  return navItem(id)?.place === "control";
+}
+
+/** Items the connected gateway can actually show. */
+export function visibleNavItems(features: readonly string[]): (NavItem & { id: TabId })[] {
+  return NAV_MANIFEST.filter(
+    (item) => !item.requireFeature || features.includes(item.requireFeature),
+  );
+}

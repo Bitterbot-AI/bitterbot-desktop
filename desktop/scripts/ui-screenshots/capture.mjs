@@ -10,6 +10,8 @@
 //
 //   node desktop/scripts/ui-screenshots/capture.mjs [--out <dir>] [--no-build]
 //        [--only <state,...>] [--theme light|dark]
+//   node desktop/scripts/ui-screenshots/capture.mjs --no-build --serve 5199
+//        (no screenshots: serve the build with fixture data to click around)
 //
 // Chromium: BITTERBOT_UI_CHROME_PATH, else Playwright's own download, else a
 // system chromium. No real gateway is contacted and nothing is written
@@ -43,6 +45,7 @@ function parseArgs(argv) {
     else if (a === "--no-build") out.build = false;
     else if (a === "--only") out.only = new Set(argv[++i].split(",").map((s) => s.trim()));
     else if (a === "--theme") out.themes = [argv[++i]];
+    else if (a === "--serve") out.serve = Number(argv[++i] ?? 5199);
     else {
       console.error(`unknown argument: ${a}`);
       process.exit(2);
@@ -66,7 +69,7 @@ const MIME = {
 };
 
 /** Static files + token handoff + fake gateway WebSocket, all on one port. */
-async function startFakeGateway(unanswered) {
+async function startFakeGateway(unanswered, port = 0) {
   const { WebSocketServer } = require("ws");
   const server = http.createServer((req, res) => {
     const url = new URL(req.url ?? "/", "http://localhost");
@@ -117,10 +120,10 @@ async function startFakeGateway(unanswered) {
       ws.send(JSON.stringify({ type: "res", id: frame.id, ok: true, payload }));
     });
   });
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-  const { port } = server.address();
+  await new Promise((resolve) => server.listen(port, "127.0.0.1", resolve));
+  const bound = server.address().port;
   return {
-    origin: `http://127.0.0.1:${port}`,
+    origin: `http://localhost:${bound}`,
     close: () =>
       new Promise((resolve) => {
         for (const c of wss.clients) c.terminate();
@@ -181,8 +184,28 @@ async function launchBrowser() {
   );
 }
 
+const click = (page, name) =>
+  page
+    .getByRole("button", typeof name === "string" ? { name, exact: true } : { name })
+    .first()
+    .click();
+
+/** A sidebar destination. */
 const navTo = (label) => async (page) => {
-  await page.getByRole("button", { name: label, exact: true }).first().click();
+  await click(page, label);
+  await page.waitForTimeout(600);
+};
+
+/** A Control Center view: open the Control Center, then pick the view. */
+const controlTo = (label) => async (page) => {
+  await page
+    .getByRole("button", { name: /^Control Center/ })
+    .first()
+    .click();
+  await page
+    .getByRole("navigation", { name: "Control Center" })
+    .getByRole("button", { name: label, exact: true })
+    .click();
   await page.waitForTimeout(600);
 };
 
@@ -213,10 +236,23 @@ const STATES = [
       await page.getByText("Downloads rose and clones fell").waitFor({ timeout: 10_000 });
     },
   },
-  { name: "view-overview", setup: navTo("Overview") },
+  {
+    name: "search-open",
+    setup: async (page) => {
+      await click(page, /^Search/);
+      await page.getByPlaceholder(/Search conversations/).fill("clone");
+    },
+  },
+  {
+    name: "sidebar-closed",
+    setup: async (page) => {
+      await click(page, "Close sidebar");
+    },
+  },
   { name: "view-memory", setup: navTo("Memory") },
-  { name: "view-skills", setup: navTo("Skills") },
-  { name: "view-settings", setup: navTo("Settings") },
+  { name: "view-overview", setup: controlTo("Overview") },
+  { name: "view-skills", setup: controlTo("Skills") },
+  { name: "view-settings", setup: controlTo("Settings") },
 ];
 
 async function main() {
@@ -234,6 +270,14 @@ async function main() {
 
   const unanswered = new Map();
   const failures = [];
+  if (args.serve !== undefined) {
+    // Preview mode: keep the stand-in gateway up so a person can click
+    // around the build with fixture data. Nothing here is real, and
+    // actions (rename, delete, send) are refused by the stand-in.
+    const preview = await startFakeGateway(unanswered, args.serve);
+    console.log(`preview with fixture data: ${preview.origin}  (Ctrl+C to stop)`);
+    await new Promise(() => {});
+  }
   const gateway = await startFakeGateway(unanswered);
   const browser = await launchBrowser();
   try {

@@ -2,7 +2,7 @@ import { create } from "zustand";
 // PLAN-41 p0-13: the nav manifest is the single source of truth for TabId.
 // Re-exported here so the many existing `from "../stores/ui-store"` imports
 // keep working.
-import type { TabId } from "../nav-manifest";
+import { DEFAULT_CONTROL_TAB, isControlTab, type TabId } from "../nav-manifest";
 
 export type { TabId };
 
@@ -14,7 +14,9 @@ export type ThemePreference = Theme | "system";
 interface UIState {
   activeTab: TabId;
   sidebarOpen: boolean;
-  sidebarCollapsed: boolean;
+  /** The Control Center view to return to. */
+  controlTab: TabId;
+  paletteOpen: boolean;
   toolPanelOpen: boolean;
   /** Width of the right-hand "computer" pane in pixels; the person can drag it. */
   toolPanelWidth: number;
@@ -23,7 +25,8 @@ interface UIState {
   themePreference: ThemePreference;
   setActiveTab: (tab: TabId) => void;
   toggleSidebar: () => void;
-  setSidebarCollapsed: (collapsed: boolean) => void;
+  setSidebarOpen: (open: boolean) => void;
+  setPaletteOpen: (open: boolean) => void;
   setToolPanelOpen: (open: boolean) => void;
   toggleToolPanel: () => void;
   setToolPanelWidth: (width: number) => void;
@@ -51,6 +54,31 @@ function loadSavedToolPanelWidth(): number {
     if (Number.isFinite(saved) && saved > 0) return clampToolPanelWidth(saved);
   } catch {}
   return TOOL_PANEL_DEFAULT_WIDTH;
+}
+
+const SIDEBAR_OPEN_KEY = "bitterbot-sidebar-open";
+const CONTROL_TAB_KEY = "bitterbot-control-tab";
+
+function loadSidebarOpen(): boolean {
+  try {
+    return localStorage.getItem(SIDEBAR_OPEN_KEY) !== "0";
+  } catch {
+    return true;
+  }
+}
+
+function saveSidebarOpen(open: boolean) {
+  try {
+    localStorage.setItem(SIDEBAR_OPEN_KEY, open ? "1" : "0");
+  } catch {}
+}
+
+function loadControlTab(): TabId {
+  try {
+    const saved = localStorage.getItem(CONTROL_TAB_KEY) as TabId | null;
+    if (saved && isControlTab(saved)) return saved;
+  } catch {}
+  return DEFAULT_CONTROL_TAB;
 }
 
 const THEME_KEY = "bitterbot-theme";
@@ -100,15 +128,34 @@ const initialTheme = resolveTheme(initialPreference);
 
 export const useUIStore = create<UIState>((set) => ({
   activeTab: "chat",
-  sidebarOpen: true,
-  sidebarCollapsed: false,
+  sidebarOpen: loadSidebarOpen(),
+  controlTab: loadControlTab(),
+  paletteOpen: false,
   toolPanelOpen: false,
   toolPanelWidth: loadSavedToolPanelWidth(),
   theme: initialTheme,
   themePreference: initialPreference,
-  setActiveTab: (tab) => set({ activeTab: tab }),
-  toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
-  setSidebarCollapsed: (collapsed) => set({ sidebarCollapsed: collapsed }),
+  setActiveTab: (tab) => {
+    if (!isControlTab(tab)) {
+      set({ activeTab: tab });
+      return;
+    }
+    // Remember the last Control Center view so re-entry returns to it.
+    try {
+      localStorage.setItem(CONTROL_TAB_KEY, tab);
+    } catch {}
+    set({ activeTab: tab, controlTab: tab });
+  },
+  toggleSidebar: () =>
+    set((s) => {
+      saveSidebarOpen(!s.sidebarOpen);
+      return { sidebarOpen: !s.sidebarOpen };
+    }),
+  setSidebarOpen: (open) => {
+    saveSidebarOpen(open);
+    set({ sidebarOpen: open });
+  },
+  setPaletteOpen: (open) => set({ paletteOpen: open }),
   setToolPanelOpen: (open) => set({ toolPanelOpen: open }),
   toggleToolPanel: () => set((s) => ({ toolPanelOpen: !s.toolPanelOpen })),
   setToolPanelWidth: (width) => {

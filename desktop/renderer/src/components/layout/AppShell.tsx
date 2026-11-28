@@ -1,3 +1,6 @@
+import { PanelLeftOpen } from "lucide-react";
+import { useSessionsSync } from "../../hooks/useSessionsSync";
+import { isControlTab } from "../../nav-manifest";
 import { useUIStore, type TabId } from "../../stores/ui-store";
 import { AgentsView } from "../agents/AgentsView";
 import { ChannelsView } from "../channels/ChannelsView";
@@ -26,7 +29,8 @@ import { UsageBudgetToasts } from "../usage/UsageBudgetToasts";
 import { UsageView } from "../usage/UsageView";
 import { WalletView } from "../wallet/WalletView";
 import { WorkspaceView } from "../workspace/WorkspaceView";
-import { ConnectionBadge } from "./ConnectionBadge";
+import { CommandPalette } from "./CommandPalette";
+import { ControlCenter } from "./ControlCenter";
 import { Sidebar } from "./Sidebar";
 import { StaleBundleBanner } from "./StaleBundleBanner";
 import { UpdateBanner } from "./UpdateBanner";
@@ -60,10 +64,16 @@ const VIEW_MAP: Record<TabId, () => JSX.Element> = {
 export function AppShell() {
   const activeTab = useUIStore((s) => s.activeTab);
   const sidebarOpen = useUIStore((s) => s.sidebarOpen);
+  const setSidebarOpen = useUIStore((s) => s.setSidebarOpen);
   const toolPanelOpen = useUIStore((s) => s.toolPanelOpen);
   const toolPanelWidth = useUIStore((s) => s.toolPanelWidth);
 
   const isChat = activeTab === "chat";
+  const view = VIEW_MAP[activeTab]();
+
+  // One owner for the conversation list: sidebar, palette and usage strip
+  // all read the sessions store this keeps fresh.
+  useSessionsSync();
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-background">
@@ -77,18 +87,31 @@ export function AppShell() {
         // current width, which the person can drag.
         style={isChat && toolPanelOpen ? { marginRight: toolPanelWidth } : undefined}
       >
-        {/* Title bar area for drag region */}
-        <div className="h-8 flex-shrink-0 flex items-center justify-end px-4 drag-region">
-          <ConnectionBadge />
-        </div>
+        {/* With the sidebar closed, the way back is always here. */}
+        {!sidebarOpen && (
+          <div className="flex h-10 shrink-0 items-center px-2">
+            <button
+              type="button"
+              onClick={() => setSidebarOpen(true)}
+              aria-label="Open sidebar"
+              title="Open sidebar"
+              className="grid size-8 place-items-center rounded-md text-ink-secondary transition-colors hover:bg-hover hover:text-ink"
+            >
+              <PanelLeftOpen className="size-[18px]" strokeWidth={1.75} />
+            </button>
+          </div>
+        )}
         <StaleBundleBanner />
         <UpdateBanner />
         <UsageBudgetToasts />
         <OwnerNoticeToasts />
         {/* Main content */}
-        <div className="flex-1 overflow-hidden">{VIEW_MAP[activeTab]()}</div>
+        <div className="flex-1 overflow-hidden">
+          {isControlTab(activeTab) ? <ControlCenter>{view}</ControlCenter> : view}
+        </div>
       </main>
       {isChat && toolPanelOpen && <ToolCallPanel />}
+      <CommandPalette />
     </div>
   );
 }

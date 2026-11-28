@@ -87,3 +87,28 @@ describe("the theme", () => {
     expect(document.documentElement.classList.contains("dark")).toBe(true);
   });
 });
+
+describe("navigation memory", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    useUIStore.setState({ activeTab: "chat", controlTab: "overview", sidebarOpen: true });
+  });
+
+  it("remembers the last Control Center view, and only those", () => {
+    useUIStore.getState().setActiveTab("skills");
+    expect(useUIStore.getState().controlTab).toBe("skills");
+    expect(localStorage.getItem("bitterbot-control-tab")).toBe("skills");
+
+    useUIStore.getState().setActiveTab("memory");
+    useUIStore.getState().setActiveTab("chat");
+    expect(useUIStore.getState().controlTab).toBe("skills");
+  });
+
+  it("remembers whether the sidebar is open", () => {
+    useUIStore.getState().setSidebarOpen(false);
+    expect(localStorage.getItem("bitterbot-sidebar-open")).toBe("0");
+    useUIStore.getState().toggleSidebar();
+    expect(useUIStore.getState().sidebarOpen).toBe(true);
+    expect(localStorage.getItem("bitterbot-sidebar-open")).toBe("1");
+  });
+});
