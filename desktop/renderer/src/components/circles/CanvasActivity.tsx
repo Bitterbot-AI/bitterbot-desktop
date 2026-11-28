@@ -122,7 +122,7 @@ export function CanvasLiveStrip({
               onClick={() =>
                 void run(() => store.publishDraft(circle.circleId, p.draftId, p.content))
               }
-              className="rounded bg-success hover:bg-success/90 px-2 py-0.5 text-2xs font-semibold text-white"
+              className="rounded bg-success hover:bg-success/90 px-2 py-0.5 text-2xs font-semibold text-success-foreground"
             >
               Add it
             </button>
@@ -158,7 +158,7 @@ export function CanvasLiveStrip({
             type="button"
             disabled={busy}
             onClick={() => void run(() => store.closeSandbox(circle.circleId, s.cardId, "done"))}
-            className="ml-auto shrink-0 rounded bg-success hover:bg-success/90 px-2 py-0.5 text-2xs font-semibold text-white"
+            className="ml-auto shrink-0 rounded bg-success hover:bg-success/90 px-2 py-0.5 text-2xs font-semibold text-success-foreground"
           >
             Lock it in
           </button>

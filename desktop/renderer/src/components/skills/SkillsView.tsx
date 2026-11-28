@@ -800,7 +800,7 @@ export function SkillApiKeyField({ skill }: { skill: SkillStatus }) {
       <button
         type="submit"
         disabled={saving || !value.trim()}
-        className="px-2 py-1 text-xs rounded bg-brand text-white disabled:opacity-50"
+        className="px-2 py-1 text-xs rounded bg-brand text-brand-foreground disabled:opacity-50"
       >
         Save
       </button>

@@ -4,7 +4,7 @@ import { useGatewayStore } from "../../stores/gateway-store";
 import { ComputeProfiles } from "./ComputeProfiles";
 import { SoapboxLogo } from "./SoapboxLogo";
 
-const button = "rounded-lg bg-brand px-4 py-2 text-sm text-white disabled:opacity-40";
+const button = "rounded-lg bg-brand px-4 py-2 text-sm text-brand-foreground disabled:opacity-40";
 const field = "w-full rounded-lg border border-border bg-background px-3 py-2 text-sm";
 const emptyCredentials = { apiKeyId: "", apiKeySecret: "", walletSecret: "" };
 

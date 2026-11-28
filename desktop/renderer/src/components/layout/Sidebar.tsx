@@ -247,7 +247,7 @@ export function Sidebar() {
             <img src="/Bitterbot_logo.svg" alt="BitterBot" className="w-7 h-7" />
             <span className="text-lg font-bold tracking-tight">
               <span className="text-foreground">Bitter</span>
-              <span className="text-brand">Bot</span>
+              <span className="text-wordmark">Bot</span>
             </span>
           </div>
           <button
@@ -397,7 +397,7 @@ export function Sidebar() {
                         className={cn(
                           "w-4 h-4 rounded border flex-shrink-0 mr-2 flex items-center justify-center transition-colors",
                           isSelected
-                            ? "bg-brand border-brand text-white"
+                            ? "bg-brand border-brand text-brand-foreground"
                             : "border-muted-foreground/40 hover:border-brand",
                         )}
                       >

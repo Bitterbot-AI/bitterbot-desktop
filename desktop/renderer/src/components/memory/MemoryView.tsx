@@ -245,7 +245,7 @@ export function MemoryView() {
             className={cn(
               "px-3 py-1 text-xs rounded-full border",
               kind === k
-                ? "bg-brand text-white border-brand"
+                ? "bg-brand text-brand-foreground border-brand"
                 : "border-border/30 text-muted-foreground",
             )}
           >
@@ -331,7 +331,7 @@ export function MemoryView() {
                     <div className="flex gap-2">
                       <button
                         onClick={() => void saveEdit()}
-                        className="px-3 py-1 text-xs rounded-lg bg-brand text-white"
+                        className="px-3 py-1 text-xs rounded-lg bg-brand text-brand-foreground"
                       >
                         Save
                       </button>

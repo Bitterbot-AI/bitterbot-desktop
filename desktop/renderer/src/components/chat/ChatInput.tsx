@@ -106,7 +106,7 @@ export function ChatInput() {
               onClick={handleAbort}
               className={cn(
                 "w-8 h-8 rounded-lg flex items-center justify-center",
-                "bg-danger/80 hover:bg-danger/90 text-white",
+                "bg-danger/80 hover:bg-danger/90 text-danger-foreground",
                 "transition-all",
               )}
               title="Stop generating"

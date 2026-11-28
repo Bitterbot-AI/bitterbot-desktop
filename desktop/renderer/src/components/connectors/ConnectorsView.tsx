@@ -179,7 +179,7 @@ export function ConnectorsView() {
           <button
             type="submit"
             disabled={busy || !name.trim() || !target.trim()}
-            className="px-4 py-1.5 text-xs rounded-lg font-medium bg-brand text-white hover:bg-brand/90 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-4 py-1.5 text-xs rounded-lg font-medium bg-brand text-brand-foreground hover:bg-brand/90 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Add connector
           </button>
@@ -215,7 +215,7 @@ export function ConnectorsView() {
                     href={c.signInUrl}
                     target="_blank"
                     rel="noreferrer"
-                    className="inline-block mt-1 px-3 py-1 text-xs rounded-lg font-medium bg-brand text-white hover:bg-brand/90"
+                    className="inline-block mt-1 px-3 py-1 text-xs rounded-lg font-medium bg-brand text-brand-foreground hover:bg-brand/90"
                   >
                     Sign in to {c.name}
                   </a>
