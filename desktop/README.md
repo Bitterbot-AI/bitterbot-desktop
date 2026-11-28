@@ -40,6 +40,18 @@ pnpm build              # production build → dist-renderer/
 pnpm preview            # preview the production build locally
 ```
 
+## Navigation
+
+`renderer/src/nav-manifest.ts` is the single list of views and decides where each one lives (PLAN-65).
+
+- **Sidebar** (`place: "sidebar"`): New chat, Search, then Memory, Automations, Files and Circles, then recent conversations grouped Today / Previous 7 days / Older. A conversation's menu has Rename and Delete.
+- **Control Center** (`place: "control"`): every view used to operate the agent, grouped by `section` (Agent, Models & usage, Channels & network, Money, Safety, System). One sidebar row opens it and returns to the last view used.
+- **Search** (Ctrl/Cmd+K) finds a conversation by title, jumps to any view the gateway offers, and switches appearance. It does not search conversation contents yet.
+
+To add a view: add it to the manifest with a place (and a section if it is a Control Center view) and to `VIEW_MAP` in `components/layout/AppShell.tsx`. `nav-manifest.test.ts` fails if a view has no place.
+
+The conversation list has one owner, `stores/sessions-store.ts`, kept fresh by `hooks/useSessionsSync.ts`. Read it from there; do not fetch `sessions.list` in a component.
+
 ## Theme and tokens
 
 The palette lives in `renderer/src/styles/globals.css` as paired light and dark values (PLAN-65).

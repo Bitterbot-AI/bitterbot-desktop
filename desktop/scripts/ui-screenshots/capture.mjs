@@ -181,8 +181,28 @@ async function launchBrowser() {
   );
 }
 
+const click = (page, name) =>
+  page
+    .getByRole("button", typeof name === "string" ? { name, exact: true } : { name })
+    .first()
+    .click();
+
+/** A sidebar destination. */
 const navTo = (label) => async (page) => {
-  await page.getByRole("button", { name: label, exact: true }).first().click();
+  await click(page, label);
+  await page.waitForTimeout(600);
+};
+
+/** A Control Center view: open the Control Center, then pick the view. */
+const controlTo = (label) => async (page) => {
+  await page
+    .getByRole("button", { name: /^Control Center/ })
+    .first()
+    .click();
+  await page
+    .getByRole("navigation", { name: "Control Center" })
+    .getByRole("button", { name: label, exact: true })
+    .click();
   await page.waitForTimeout(600);
 };
 
@@ -213,10 +233,23 @@ const STATES = [
       await page.getByText("Downloads rose and clones fell").waitFor({ timeout: 10_000 });
     },
   },
-  { name: "view-overview", setup: navTo("Overview") },
+  {
+    name: "search-open",
+    setup: async (page) => {
+      await click(page, /^Search/);
+      await page.getByPlaceholder(/Search conversations/).fill("clone");
+    },
+  },
+  {
+    name: "sidebar-closed",
+    setup: async (page) => {
+      await click(page, "Close sidebar");
+    },
+  },
   { name: "view-memory", setup: navTo("Memory") },
-  { name: "view-skills", setup: navTo("Skills") },
-  { name: "view-settings", setup: navTo("Settings") },
+  { name: "view-overview", setup: controlTo("Overview") },
+  { name: "view-skills", setup: controlTo("Skills") },
+  { name: "view-settings", setup: controlTo("Settings") },
 ];
 
 async function main() {
