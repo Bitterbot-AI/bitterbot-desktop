@@ -40,6 +40,10 @@ export const ChatSendParamsSchema = Type.Object(
     attachments: Type.Optional(Type.Array(Type.Unknown())),
     timeoutMs: Type.Optional(Type.Integer({ minimum: 0 })),
     idempotencyKey: NonEmptyString,
+    // Project the message belongs to. The handler reads it to assemble project
+    // context; without it here, additionalProperties:false rejected every send
+    // from a client with an active project.
+    projectId: Type.Optional(NonEmptyString),
   },
   { additionalProperties: false },
 );

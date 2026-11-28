@@ -269,3 +269,6 @@ docs/reviews/circles-p2p-security-remediation-2026-08-14.md
 
 benchmarks/longmemeval/.work-official/
 benchmarks/longmemeval/.work-official-scorer/
+
+# PLAN-65 screenshot harness output
+desktop/.ui-screenshots/
