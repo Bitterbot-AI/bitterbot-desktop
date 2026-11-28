@@ -139,7 +139,7 @@ export function TemperamentCard() {
           onClick={() => void add()}
           disabled={busy}
           className={cn(
-            "px-2 py-1 text-xs rounded bg-brand text-white hover:bg-brand/80 transition-colors",
+            "px-2 py-1 text-xs rounded bg-brand text-brand-foreground hover:bg-brand/80 transition-colors",
             busy && "opacity-50",
           )}
         >

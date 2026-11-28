@@ -6,7 +6,10 @@ import type { TabId } from "../nav-manifest";
 
 export type { TabId };
 
+/** The theme actually painted. */
 export type Theme = "dark" | "light";
+/** What the person chose. "system" follows the OS and is the default. */
+export type ThemePreference = Theme | "system";
 
 interface UIState {
   activeTab: TabId;
@@ -15,14 +18,18 @@ interface UIState {
   toolPanelOpen: boolean;
   /** Width of the right-hand "computer" pane in pixels; the person can drag it. */
   toolPanelWidth: number;
+  /** The effective theme. Components read this, never the preference. */
   theme: Theme;
+  themePreference: ThemePreference;
   setActiveTab: (tab: TabId) => void;
   toggleSidebar: () => void;
   setSidebarCollapsed: (collapsed: boolean) => void;
   setToolPanelOpen: (open: boolean) => void;
   toggleToolPanel: () => void;
   setToolPanelWidth: (width: number) => void;
-  setTheme: (theme: Theme) => void;
+  /** Choose light, dark, or follow the system. */
+  setTheme: (preference: ThemePreference) => void;
+  /** Flip to the opposite of what is showing, as an explicit choice. */
   toggleTheme: () => void;
 }
 
@@ -46,20 +53,50 @@ function loadSavedToolPanelWidth(): number {
   return TOOL_PANEL_DEFAULT_WIDTH;
 }
 
-function applyTheme(theme: Theme) {
-  document.documentElement.classList.toggle("dark", theme === "dark");
-  localStorage.setItem("bitterbot-theme", theme);
+const THEME_KEY = "bitterbot-theme";
+const DARK_QUERY = "(prefers-color-scheme: dark)";
+
+function systemPrefersDark(): boolean {
+  try {
+    return typeof window.matchMedia === "function" && window.matchMedia(DARK_QUERY).matches;
+  } catch {
+    return false;
+  }
 }
 
-function loadSavedTheme(): Theme {
+/** Keep in step with the pre-paint script in index.html. */
+export function resolveTheme(preference: ThemePreference): Theme {
+  if (preference === "system") return systemPrefersDark() ? "dark" : "light";
+  return preference;
+}
+
+/**
+ * A stored "light" or "dark" is an explicit choice and is kept. Anything else,
+ * including nothing at all on a new profile, means follow the system.
+ */
+export function loadThemePreference(): ThemePreference {
   try {
-    const saved = localStorage.getItem("bitterbot-theme");
+    const saved = localStorage.getItem(THEME_KEY);
     if (saved === "light" || saved === "dark") return saved;
   } catch {}
-  return "dark";
+  return "system";
 }
 
-const initialTheme = loadSavedTheme();
+function paintTheme(theme: Theme) {
+  document.documentElement.classList.toggle("dark", theme === "dark");
+}
+
+function persistThemePreference(preference: ThemePreference) {
+  try {
+    // "system" is stored as absence, so a profile that never chose keeps
+    // following the OS and the pre-paint script needs no third case.
+    if (preference === "system") localStorage.removeItem(THEME_KEY);
+    else localStorage.setItem(THEME_KEY, preference);
+  } catch {}
+}
+
+const initialPreference = loadThemePreference();
+const initialTheme = resolveTheme(initialPreference);
 
 export const useUIStore = create<UIState>((set) => ({
   activeTab: "chat",
@@ -68,6 +105,7 @@ export const useUIStore = create<UIState>((set) => ({
   toolPanelOpen: false,
   toolPanelWidth: loadSavedToolPanelWidth(),
   theme: initialTheme,
+  themePreference: initialPreference,
   setActiveTab: (tab) => set({ activeTab: tab }),
   toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
   setSidebarCollapsed: (collapsed) => set({ sidebarCollapsed: collapsed }),
@@ -80,17 +118,32 @@ export const useUIStore = create<UIState>((set) => ({
     } catch {}
     set({ toolPanelWidth });
   },
-  setTheme: (theme) => {
-    applyTheme(theme);
-    set({ theme });
+  setTheme: (preference) => {
+    const theme = resolveTheme(preference);
+    persistThemePreference(preference);
+    paintTheme(theme);
+    set({ theme, themePreference: preference });
   },
   toggleTheme: () =>
     set((s) => {
-      const next = s.theme === "dark" ? "light" : "dark";
-      applyTheme(next);
-      return { theme: next };
+      const next: Theme = s.theme === "dark" ? "light" : "dark";
+      persistThemePreference(next);
+      paintTheme(next);
+      return { theme: next, themePreference: next };
     }),
 }));
 
-// Apply saved theme on load (in case index.html has class="dark" hardcoded)
-applyTheme(initialTheme);
+// Paint on load. index.html already did this before first paint; repeating it
+// covers hosts that serve the bundle without that script.
+paintTheme(initialTheme);
+
+// While following the system, track OS changes live.
+try {
+  window.matchMedia?.(DARK_QUERY).addEventListener("change", () => {
+    const state = useUIStore.getState();
+    if (state.themePreference !== "system") return;
+    const theme = resolveTheme("system");
+    paintTheme(theme);
+    useUIStore.setState({ theme });
+  });
+} catch {}

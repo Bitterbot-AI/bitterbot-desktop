@@ -448,7 +448,7 @@ export function CircleChat({ circle, selfPubkey }: Props) {
                 setConfirmDelete(null);
                 if (m.envelopeId) void deleteMessage(circle.circleId, m.envelopeId, own);
               }}
-              className="font-medium px-2.5 py-0.5 rounded bg-destructive text-white"
+              className="font-medium px-2.5 py-0.5 rounded bg-destructive text-danger-foreground"
             >
               {confirmDelete.own ? "Delete" : "Hide"}
             </button>

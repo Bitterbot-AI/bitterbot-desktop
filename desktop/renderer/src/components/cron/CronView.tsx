@@ -269,7 +269,7 @@ function AddCronForm({ onAdd }: { onAdd: (params: Record<string, unknown>) => vo
         disabled={!text.trim() || chatIncomplete}
         className={cn(
           "px-4 py-1.5 text-xs rounded-lg font-medium",
-          "bg-brand text-white hover:bg-brand/90",
+          "bg-brand text-brand-foreground hover:bg-brand/90",
           "disabled:opacity-50 disabled:cursor-not-allowed",
           "transition-colors",
         )}

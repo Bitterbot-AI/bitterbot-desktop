@@ -345,7 +345,7 @@ export function SettingsForm({
           disabled={saving || dirty.size === 0}
           className={cn(
             "px-3 py-1.5 text-xs rounded-lg font-medium transition-colors",
-            "bg-brand text-white hover:bg-brand/90 disabled:opacity-40",
+            "bg-brand text-brand-foreground hover:bg-brand/90 disabled:opacity-40",
           )}
         >
           {saving ? "Saving…" : "Save"}

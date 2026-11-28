@@ -107,7 +107,7 @@ function ApprovalCard({
             disabled={busy}
             className={cn(
               "flex items-center gap-1 px-3 py-1.5 text-xs rounded-lg font-medium transition-colors",
-              "bg-success text-white hover:bg-success/90 disabled:opacity-50",
+              "bg-success text-success-foreground hover:bg-success/90 disabled:opacity-50",
             )}
           >
             <Check className="h-3.5 w-3.5" /> Approve
@@ -204,7 +204,7 @@ function StepUpModal({
               disabled={typed.trim().toUpperCase() !== "APPROVE"}
               className={cn(
                 "px-3 py-1.5 text-xs rounded-lg font-medium transition-colors",
-                "bg-success text-white hover:bg-success/90 disabled:opacity-50 disabled:cursor-not-allowed",
+                "bg-success text-success-foreground hover:bg-success/90 disabled:opacity-50 disabled:cursor-not-allowed",
               )}
             >
               Confirm
@@ -361,7 +361,7 @@ function AddGrantForm({
         disabled={busy || !allowanceUsd || Number(allowanceUsd) <= 0}
         className={cn(
           "px-4 py-1.5 text-xs rounded-lg font-medium transition-colors",
-          "bg-brand text-white hover:bg-brand/90 disabled:opacity-50 disabled:cursor-not-allowed",
+          "bg-brand text-brand-foreground hover:bg-brand/90 disabled:opacity-50 disabled:cursor-not-allowed",
         )}
       >
         Create Grant

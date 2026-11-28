@@ -1,5 +1,4 @@
 @import "tailwindcss";
-@import "./bitterbot-theme.css";
 @import "./motion.css";
 @import "./scrollbars.css";
 
@@ -29,6 +28,41 @@
      Ad-hoc box-shadows elsewhere are decoration — use these or none. */
   --shadow-content-edge: 0 0 0 1px oklch(0 0 0 / 0.06);
   --shadow-panel-left: -1px 0 0 0 oklch(0 0 0 / 0.08), -16px 0 32px -12px oklch(0 0 0 / 0.18);
+  /* PLAN-65: the two neutral lifts. Menus and popovers get --shadow-menu,
+     the composer the lighter --shadow-composer. Values differ per theme. */
+  --shadow-menu: var(--elevation-menu);
+  --shadow-composer: var(--elevation-composer);
+
+  /* PLAN-65 type additions. Stock sizes cover the rest of the scale:
+     sm 14/20, base 16/24, lg 18/28, xl 20/28, 2xl 24/32. */
+  --text-xs--line-height: 1.125rem; /* 12/18 */
+  --text-code: 0.8125rem; /* 13/20 mono: code, paths, numeric detail */
+  --text-code--line-height: 1.25rem;
+  --text-greeting: 1.75rem; /* 28/36 empty-chat greeting */
+  --text-greeting--line-height: 2.25rem;
+
+  /* PLAN-65 named surfaces and inks (docs/plans/PLAN-65-VISUAL-REFERENCE §2).
+     New code uses these names; the shadcn names below are mapped onto the
+     same values so existing components follow without edits. */
+  --color-canvas: var(--canvas);
+  --color-raised: var(--raised);
+  --color-subtle: var(--subtle);
+  --color-hover: var(--hover);
+  --color-selected: var(--selected);
+  --color-ink: var(--ink);
+  --color-ink-secondary: var(--ink-secondary);
+  --color-ink-muted: var(--ink-muted);
+  --color-line: var(--line);
+  --color-control: var(--control);
+  --color-button: var(--button);
+  --color-on-button: var(--on-button);
+  --color-link: var(--link);
+  --color-focus: var(--focus);
+  --color-accent-soft: var(--accent-soft);
+  --color-wordmark: var(--wordmark);
+  --color-success-soft: var(--success-soft);
+  --color-warning-soft: var(--warning-soft);
+  --color-danger-soft: var(--danger-soft);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -88,10 +122,12 @@
   --color-brand: var(--brand);
   --color-brand-foreground: var(--brand-foreground);
   --color-brand-cyan: var(--brand-cyan);
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
+  /* PLAN-65 radii: controls 8, menus and cards 12, composer 24. */
+  --radius-sm: 0.375rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+  --radius-composer: 1.5rem;
   --animate-accordion-down: accordion-down 0.2s ease-out;
   --animate-accordion-up: accordion-up 0.2s ease-out;
 
@@ -112,20 +148,6 @@
       height: 0;
     }
   }
-
-  @keyframes gradient-x {
-    0% {
-      background-position: 0% 50%;
-    }
-    50% {
-      background-position: 100% 50%;
-    }
-    100% {
-      background-position: 0% 50%;
-    }
-  }
-
-  --animate-gradient-x: gradient-x 3s ease infinite;
 }
 
 :root {
@@ -133,49 +155,96 @@
      theme — without this, dark mode gets white OS dropdowns with light text. */
   color-scheme: light;
 
-  /* Sidebar theme colors - Light mode */
-  --sidebar-bg-primary: oklch(98% 0 0);
-  --sidebar-bg-secondary: oklch(96% 0 0);
-  --sidebar-hover: oklch(94% 0 0);
-  --sidebar-active: oklch(92% 0 0);
-  --sidebar-border-subtle: oklch(90% 0 0);
-  --sidebar-text-primary: oklch(20% 0 0);
-  --sidebar-text-secondary: oklch(45% 0 0);
-  --sidebar-text-muted: oklch(60% 0 0);
+  /* PLAN-65 palette, light. Two broad flat surfaces (sidebar, canvas), one
+     raised surface, neutral fills for state. Every text pair is >= 4.5:1 and
+     every control and focus pair >= 3:1. */
+  --canvas: #ffffff;
+  --sidebar: #f7f7f6;
+  --raised: #ffffff;
+  --subtle: #f1f1f0;
+  --hover: #ededec;
+  --selected: #e6e6e4;
+  --ink: #202120;
+  --ink-secondary: #515451;
+  --ink-muted: #626661;
+  --line: #dadcd8;
+  --control: #7c807b;
+  --button: #252624;
+  --on-button: #ffffff;
+  --link: #165ca6;
+  --focus: #654397;
 
-  --background: oklch(98.46% 0.002 247.84);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(54.65% 0.246 262.87);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.145 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --destructive-foreground: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
+  /* The accent. One muted purple with a job description: the active
+     destination, a focus ring, a toggle that is on, a small "this is
+     Bitterbot" detail. Surfaces, borders and primary buttons stay neutral.
+     --wordmark is the logo's own brighter purple and is used by the
+     wordmark only. */
+  --brand: #654397;
+  --brand-foreground: #ffffff;
+  --accent-soft: #f2ecf8;
+  --wordmark: oklch(0.55 0.24 300);
+  /* Section labels used a cyan; they are plain muted text now. */
+  --brand-cyan: var(--ink-muted);
+
+  /* Status: only for an actual status, with a text label. */
+  --success: #216447;
+  --success-foreground: #ffffff;
+  --success-soft: #edf6f0;
+  --warning: #805411;
+  --warning-foreground: #ffffff;
+  --warning-soft: #fbf3e3;
+  --danger: #a33436;
+  --danger-foreground: #ffffff;
+  --danger-soft: #fbeeee;
+  --info: #165ca6;
+  --info-foreground: #ffffff;
+
+  --elevation-menu: 0 4px 16px rgb(0 0 0 / 0.1);
+  --elevation-composer: 0 2px 8px rgb(0 0 0 / 0.06);
+
+  /* shadcn names, mapped onto the palette above. */
+  --background: var(--canvas);
+  --foreground: var(--ink);
+  --card: var(--raised);
+  --card-foreground: var(--ink);
+  --popover: var(--raised);
+  --popover-foreground: var(--ink);
+  --primary: var(--button);
+  --primary-foreground: var(--on-button);
+  --secondary: var(--subtle);
+  --secondary-foreground: var(--ink);
+  --muted: var(--subtle);
+  --muted-foreground: var(--ink-muted);
+  --accent: var(--hover);
+  --accent-foreground: var(--ink);
+  --destructive: var(--danger);
+  --destructive-foreground: var(--danger);
+  --border: var(--line);
+  --input: var(--control);
+  --ring: var(--focus);
   --chart-1: oklch(0.646 0.222 41.116);
   --chart-2: oklch(0.6 0.118 184.704);
   --chart-3: oklch(0.398 0.07 227.392);
   --chart-4: oklch(0.828 0.189 84.429);
   --chart-5: oklch(0.769 0.188 70.08);
-  --radius: 0.625rem;
-  --sidebar: oklch(98.46% 0.002 247.84);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  --radius: 0.75rem;
+  --sidebar-foreground: var(--ink);
+  --sidebar-primary: var(--button);
+  --sidebar-primary-foreground: var(--on-button);
+  --sidebar-accent: var(--selected);
+  --sidebar-accent-foreground: var(--ink);
+  --sidebar-border: var(--line);
+  --sidebar-ring: var(--focus);
+
+  /* Older sidebar names still used by Sidebar.tsx until PLAN-65 Phase 2. */
+  --sidebar-bg-primary: var(--sidebar);
+  --sidebar-bg-secondary: var(--sidebar);
+  --sidebar-hover: var(--hover);
+  --sidebar-active: var(--selected);
+  --sidebar-border-subtle: var(--line);
+  --sidebar-text-primary: var(--ink);
+  --sidebar-text-secondary: var(--ink-secondary);
+  --sidebar-text-muted: var(--ink-muted);
 
   /* Circles grammar — light */
   --circle-you: #3a5bd9;
@@ -189,25 +258,55 @@
   --circle-you-fg: #ffffff;
   --circle-agent-fg: #ffffff;
   --circle-consent-fg: #ffffff;
-
-  /* Status + brand — light: deep enough to read as text on white and to
-     carry white labels as a solid fill. */
-  --success: oklch(0.55 0.14 158);
-  --success-foreground: #ffffff;
-  --warning: oklch(0.56 0.13 65);
-  --warning-foreground: #ffffff;
-  --danger: oklch(0.55 0.21 27);
-  --danger-foreground: #ffffff;
-  --info: oklch(0.55 0.16 255);
-  --info-foreground: #ffffff;
-  --brand: oklch(0.55 0.24 300);
-  --brand-foreground: #ffffff;
-  /* Cyan accent (section labels, wordmark half) — darkened for white bg */
-  --brand-cyan: oklch(0.52 0.1 210);
 }
 
 .dark {
   color-scheme: dark;
+
+  /* PLAN-65 palette, dark. The sidebar is the darkest large surface, the
+     canvas one step lighter, raised surfaces lighter again. Surfaces are told
+     apart by fill and edge, not by shadow. */
+  --canvas: #202120;
+  --sidebar: #191a19;
+  --raised: #2b2c2b;
+  --subtle: #303230;
+  --hover: #323432;
+  --selected: #393b39;
+  --ink: #f1f2ef;
+  --ink-secondary: #c6c8c3;
+  --ink-muted: #abb0a8;
+  --line: #434641;
+  --control: #8a8f88;
+  --button: #e8eae5;
+  --on-button: #202120;
+  --link: #85b9f4;
+  --focus: #cca9f0;
+
+  --brand: #cca9f0;
+  --brand-foreground: #202120;
+  --accent-soft: #352e3e;
+  --wordmark: oklch(0.67 0.22 300);
+
+  --success: #8ed2ab;
+  --success-foreground: #202120;
+  --success-soft: #23352a;
+  --warning: #ebc17c;
+  --warning-foreground: #202120;
+  --warning-soft: #3a3222;
+  --danger: #ffaaaa;
+  --danger-foreground: #202120;
+  --danger-soft: #3d292b;
+  --info: #85b9f4;
+  --info-foreground: #202120;
+
+  --elevation-menu: 0 4px 16px rgb(0 0 0 / 0.24);
+  --elevation-composer: 0 2px 8px rgb(0 0 0 / 0.14);
+
+  --chart-1: oklch(0.488 0.243 264.376);
+  --chart-2: oklch(0.696 0.17 162.48);
+  --chart-3: oklch(0.769 0.188 70.08);
+  --chart-4: oklch(0.627 0.265 303.9);
+  --chart-5: oklch(0.645 0.246 16.439);
 
   /* Circles grammar — dark */
   --circle-you: #6d8cff;
@@ -219,68 +318,11 @@
   --circle-you-fg: #0e1016;
   --circle-agent-fg: #0e1016;
   --circle-consent-fg: #1a1205;
-
-  /* Status + brand — dark: bright enough to read as text on near-black;
-     as solid fills they sit at the old bg-*-500 level, so white labels
-     keep roughly the contrast the dark UI always had. */
-  --success: oklch(0.72 0.17 162);
-  --success-foreground: #ffffff;
-  --warning: oklch(0.78 0.16 75);
-  --warning-foreground: oklch(0.28 0.06 70);
-  --danger: oklch(0.68 0.2 25);
-  --danger-foreground: #ffffff;
-  --info: oklch(0.68 0.15 255);
-  --info-foreground: #ffffff;
-  --brand: oklch(0.67 0.22 300);
-  --brand-foreground: #ffffff;
-
-  /* Sidebar theme colors - Dark mode (purple-ish) */
-  --sidebar-bg-primary: hsl(262, 20%, 8%);
-  --sidebar-bg-secondary: hsl(262, 25%, 6%);
-  --sidebar-hover: hsl(262, 20%, 12%);
-  --sidebar-active: hsl(262, 20%, 15%);
-  --sidebar-border-subtle: hsl(262, 20%, 15%);
-  --sidebar-text-primary: oklch(98% 0 0);
-  --sidebar-text-secondary: oklch(70% 0 0);
-  --sidebar-text-muted: oklch(55% 0 0);
-
-  --background: oklch(0.185 0.005 285.823);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.145 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.145 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.985 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(54.65% 0.246 262.87);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(27.39% 0.005 286.03);
-  --accent-foreground: oklch(98.46% 0.002 247.84);
-  --destructive: oklch(0.396 0.141 25.723);
-  --destructive-foreground: oklch(0.637 0.237 25.331);
-  --border: oklch(0.269 0 0);
-  --input: oklch(0.269 0 0);
-  --ring: oklch(0.439 0 0);
-  --chart-1: oklch(0.488 0.243 264.376);
-  --chart-2: oklch(0.696 0.17 162.48);
-  --chart-3: oklch(0.769 0.188 70.08);
-  --chart-4: oklch(0.627 0.265 303.9);
-  --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: oklch(21.03% 0.006 285.89);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(0.269 0 0);
-  --sidebar-ring: oklch(0.439 0 0);
 }
 
 /* Sidebar utility classes */
 .sidebar-bg {
-  background: linear-gradient(to bottom, var(--sidebar-bg-primary), var(--sidebar-bg-secondary));
+  background-color: var(--sidebar);
 }
 
 .sidebar-hover {
@@ -291,15 +333,27 @@
   border-color: var(--sidebar-border-subtle);
 }
 
-/* Animated gradient border */
-.animate-gradient-x {
-  background-size: 200% 200%;
-  animation: gradient-x 3s ease infinite;
-}
-
 @layer base {
   * {
     @apply border-border outline-ring/50;
+  }
+  /* Keyboard focus: a 2px outline, 2px off the control, independent of
+     hover. Text fields keep their own ring (the composer shows focus on its
+     container), so they are not listed here. */
+  :where(
+    button,
+    a,
+    summary,
+    [role="button"],
+    [role="tab"],
+    [role="menuitem"],
+    [role="option"],
+    [role="switch"],
+    [role="checkbox"],
+    [tabindex]:not([tabindex="-1"])
+  ):focus-visible {
+    outline: 2px solid var(--focus);
+    outline-offset: 2px;
   }
   html {
     scroll-behavior: smooth;
@@ -314,49 +368,53 @@
   }
 }
 
-/* Custom styles for Markdown chat content */
+/* Markdown in chat (PLAN-65): reads like a set document. Body 16/24 with a
+   12px paragraph gap, headings 20/28 and 18/26 semibold, code 13/20 mono on
+   the subtle fill, tables with a quiet header and 1px rules. */
 .prose.chat-markdown {
+  font-size: 1rem;
+  line-height: 1.5rem;
+
   & > * + * {
-    margin-top: 0.75em;
+    margin-top: 0.75rem;
   }
 
-  & h1 {
-    font-size: 1.5rem;
-    font-weight: 700;
-    margin-top: 1em;
-    margin-bottom: 0.5em;
-    line-height: 1.2;
-  }
-
+  & h1,
   & h2 {
     font-size: 1.25rem;
+    line-height: 1.75rem;
     font-weight: 600;
-    margin-top: 0.8em;
-    margin-bottom: 0.4em;
-    line-height: 1.3;
+    margin-top: 1.5rem;
+    margin-bottom: 0.5rem;
   }
 
   & h3 {
     font-size: 1.125rem;
+    line-height: 1.625rem;
     font-weight: 600;
-    margin-top: 0.6em;
-    margin-bottom: 0.3em;
+    margin-top: 1.25rem;
+    margin-bottom: 0.5rem;
   }
 
   & h4,
   & h5,
   & h6 {
     font-size: 1rem;
+    line-height: 1.5rem;
     font-weight: 600;
-    margin-top: 0.5em;
-    margin-bottom: 0.25em;
+    margin-top: 1rem;
+    margin-bottom: 0.25rem;
+  }
+
+  & > :first-child {
+    margin-top: 0;
   }
 
   & ul,
   & ol {
-    padding-left: 1.5em;
-    margin-top: 0.5em;
-    margin-bottom: 0.5em;
+    padding-left: 1.5rem;
+    margin-top: 0.5rem;
+    margin-bottom: 0.5rem;
   }
 
   & ul {
@@ -368,22 +426,22 @@
   }
 
   & li {
-    margin-top: 0.25em;
-    margin-bottom: 0.25em;
+    margin-top: 0.25rem;
+    margin-bottom: 0.25rem;
   }
 
   & li > ul,
   & li > ol {
-    margin-top: 0.25em;
-    margin-bottom: 0.25em;
+    margin-top: 0.25rem;
+    margin-bottom: 0.25rem;
   }
 
   & pre {
-    margin-top: 0.5em;
-    margin-bottom: 0.5em;
-    padding: 0.75em 1em;
-    background-color: color-mix(in oklab, var(--foreground) 8%, transparent);
-    border-radius: 0.375rem;
+    margin-top: 0.75rem;
+    margin-bottom: 0.75rem;
+    padding: 0.75rem 1rem;
+    background-color: var(--subtle);
+    border-radius: var(--radius-md);
     overflow-x: auto;
     font-family: var(--font-mono);
   }
@@ -391,7 +449,8 @@
   & pre code {
     background-color: transparent;
     padding: 0;
-    font-size: 0.9em;
+    font-size: 0.8125rem;
+    line-height: 1.25rem;
     color: inherit;
     font-family: var(--font-mono);
     white-space: pre;
@@ -400,61 +459,58 @@
   }
 
   & code:not([class*="language-"]) {
-    padding: 0.2em 0.4em;
-    font-size: 0.85em;
+    padding: 0.125rem 0.375rem;
+    font-size: 0.8125rem;
     font-family: var(--font-mono);
-    background-color: color-mix(in oklab, var(--brand) 12%, transparent);
-    border-radius: 3px;
+    background-color: var(--subtle);
+    border-radius: 0.25rem;
     word-break: break-word;
   }
 
   & table {
     width: 100%;
     border-collapse: collapse;
-    margin-top: 0.75em;
-    margin-bottom: 0.75em;
-    font-size: 0.9em;
+    margin-top: 0.75rem;
+    margin-bottom: 0.75rem;
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+    font-variant-numeric: tabular-nums;
   }
 
   & th {
-    background-color: color-mix(in oklab, var(--foreground) 5%, transparent);
+    background-color: var(--subtle);
     font-weight: 600;
     text-align: left;
-    padding: 0.5em 0.75em;
-    border: 1px solid color-mix(in oklab, var(--foreground) 12%, transparent);
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--line);
   }
 
   & td {
-    padding: 0.5em 0.75em;
-    border: 1px solid color-mix(in oklab, var(--foreground) 12%, transparent);
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--line);
   }
 
   & blockquote {
-    border-left: 3px solid color-mix(in oklab, var(--brand) 50%, transparent);
-    padding-left: 1em;
+    border-left: 2px solid var(--line);
+    padding-left: 1rem;
     margin-left: 0;
-    font-style: italic;
-    color: var(--muted-foreground);
+    color: var(--ink-secondary);
   }
 
   & a {
-    color: var(--brand);
+    color: var(--link);
     text-decoration: underline;
-    text-decoration-color: color-mix(in oklab, var(--brand) 30%, transparent);
-  }
-
-  & a:hover {
-    text-decoration-color: color-mix(in oklab, var(--brand) 80%, transparent);
+    text-underline-offset: 2px;
   }
 
   & hr {
-    border-color: color-mix(in oklab, var(--foreground) 12%, transparent);
-    margin-top: 1em;
-    margin-bottom: 1em;
+    border-color: var(--line);
+    margin-top: 1.5rem;
+    margin-bottom: 1.5rem;
   }
 
   & strong {
-    font-weight: 700;
+    font-weight: 600;
   }
 }
 
@@ -466,23 +522,4 @@
   display: none;
   width: 0;
   height: 0;
-}
-
-/* Utility animations */
-@keyframes float {
-  from {
-    transform: translateY(100vh) translateX(0);
-  }
-  to {
-    transform: translateY(-100px) translateX(100px);
-  }
-}
-
-@keyframes shimmer {
-  0% {
-    transform: translateX(-100%);
-  }
-  100% {
-    transform: translateX(200%);
-  }
 }

@@ -22,7 +22,9 @@ export function AttentionBadge({
       title={title}
       className={cn(
         "min-w-[16px] h-4 px-1 rounded-full text-badge font-bold grid place-items-center",
-        tone === "consent" ? "bg-circle-consent text-circle-consent-fg" : "bg-danger text-white",
+        tone === "consent"
+          ? "bg-circle-consent text-circle-consent-fg"
+          : "bg-danger text-danger-foreground",
         className,
       )}
     >

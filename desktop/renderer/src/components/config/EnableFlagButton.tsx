@@ -46,7 +46,7 @@ export function EnableFlagButton({
         disabled={busy}
         className={cn(
           "px-3 py-1.5 text-sm rounded-lg font-medium transition-colors",
-          "bg-brand text-white hover:bg-brand/90 disabled:opacity-50",
+          "bg-brand text-brand-foreground hover:bg-brand/90 disabled:opacity-50",
         )}
       >
         {busy ? "Enabling…" : label}

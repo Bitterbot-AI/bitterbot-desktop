@@ -1,6 +1,8 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   clampToolPanelWidth,
+  loadThemePreference,
+  resolveTheme,
   TOOL_PANEL_DEFAULT_WIDTH,
   TOOL_PANEL_MIN_WIDTH,
   useUIStore,
@@ -25,5 +27,63 @@ describe("the computer pane's width", () => {
 
     expect(useUIStore.getState().toolPanelWidth).toBe(TOOL_PANEL_MIN_WIDTH);
     expect(localStorage.getItem("bitterbot-tool-panel-width")).toBe(String(TOOL_PANEL_MIN_WIDTH));
+  });
+});
+
+describe("the theme", () => {
+  const stubSystem = (dark: boolean) =>
+    vi.stubGlobal(
+      "matchMedia",
+      vi.fn(() => ({ matches: dark, addEventListener: () => {}, removeEventListener: () => {} })),
+    );
+
+  beforeEach(() => {
+    localStorage.clear();
+    document.documentElement.classList.remove("dark");
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("follows the system on a profile that never chose", () => {
+    expect(loadThemePreference()).toBe("system");
+    stubSystem(true);
+    expect(resolveTheme("system")).toBe("dark");
+    stubSystem(false);
+    expect(resolveTheme("system")).toBe("light");
+  });
+
+  it("keeps a choice an existing profile already stored", () => {
+    localStorage.setItem("bitterbot-theme", "dark");
+    expect(loadThemePreference()).toBe("dark");
+    stubSystem(false);
+    expect(resolveTheme(loadThemePreference())).toBe("dark");
+  });
+
+  it("treats an unknown stored value as no choice", () => {
+    localStorage.setItem("bitterbot-theme", "sepia");
+    expect(loadThemePreference()).toBe("system");
+  });
+
+  it("stores an explicit choice and paints it", () => {
+    useUIStore.getState().setTheme("dark");
+    expect(document.documentElement.classList.contains("dark")).toBe(true);
+    expect(localStorage.getItem("bitterbot-theme")).toBe("dark");
+    expect(useUIStore.getState().theme).toBe("dark");
+
+    useUIStore.getState().toggleTheme();
+    expect(document.documentElement.classList.contains("dark")).toBe(false);
+    expect(useUIStore.getState().themePreference).toBe("light");
+  });
+
+  it("goes back to following the system by clearing the stored choice", () => {
+    useUIStore.getState().setTheme("light");
+    stubSystem(true);
+    useUIStore.getState().setTheme("system");
+
+    expect(localStorage.getItem("bitterbot-theme")).toBeNull();
+    expect(useUIStore.getState().themePreference).toBe("system");
+    expect(useUIStore.getState().theme).toBe("dark");
+    expect(document.documentElement.classList.contains("dark")).toBe(true);
   });
 });

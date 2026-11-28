@@ -336,7 +336,7 @@ export function PracticesSection() {
             <button
               type="submit"
               disabled={!newStatement.trim()}
-              className="px-3 py-1 text-xs rounded-lg bg-brand text-white disabled:opacity-50"
+              className="px-3 py-1 text-xs rounded-lg bg-brand text-brand-foreground disabled:opacity-50"
             >
               Add
             </button>
@@ -373,7 +373,7 @@ export function PracticesSection() {
                         <div className="flex gap-2">
                           <button
                             onClick={() => void saveEdit()}
-                            className="px-3 py-1 text-xs rounded-lg bg-brand text-white"
+                            className="px-3 py-1 text-xs rounded-lg bg-brand text-brand-foreground"
                           >
                             Save
                           </button>
@@ -442,7 +442,7 @@ export function PracticesSection() {
                         <>
                           <button
                             onClick={() => void answer(p, true)}
-                            className="px-3 py-1 text-xs rounded-lg bg-brand text-white"
+                            className="px-3 py-1 text-xs rounded-lg bg-brand text-brand-foreground"
                           >
                             Yes, every time
                           </button>
@@ -532,7 +532,7 @@ export function PracticesSection() {
                         <button
                           onClick={() => void merge()}
                           disabled={!mergeInto}
-                          className="px-3 py-1 text-xs rounded-lg bg-brand text-white disabled:opacity-50"
+                          className="px-3 py-1 text-xs rounded-lg bg-brand text-brand-foreground disabled:opacity-50"
                         >
                           Merge
                         </button>

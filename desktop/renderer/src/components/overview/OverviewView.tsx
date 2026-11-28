@@ -210,7 +210,7 @@ export function OverviewView() {
             </p>
             <button
               onClick={() => setActiveTab("channels")}
-              className="flex-shrink-0 px-3 py-1.5 text-xs rounded-lg bg-brand text-white hover:bg-brand/90 transition-colors"
+              className="flex-shrink-0 px-3 py-1.5 text-xs rounded-lg bg-brand text-brand-foreground hover:bg-brand/90 transition-colors"
             >
               Set up channels
             </button>

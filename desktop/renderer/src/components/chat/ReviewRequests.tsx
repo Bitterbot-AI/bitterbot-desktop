@@ -71,7 +71,7 @@ function ReviewCard({ action }: { action: ReviewAction }) {
               className={cn(
                 "flex items-center gap-1 px-3 py-1 rounded-md text-xs font-medium border transition-colors disabled:opacity-50",
                 confirming
-                  ? "bg-success text-white border-success"
+                  ? "bg-success text-success-foreground border-success"
                   : "bg-success/15 text-success border-success/30 hover:bg-success/25",
               )}
             >

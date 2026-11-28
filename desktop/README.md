@@ -40,11 +40,27 @@ pnpm build              # production build → dist-renderer/
 pnpm preview            # preview the production build locally
 ```
 
+## Theme and tokens
+
+The palette lives in `renderer/src/styles/globals.css` as paired light and dark values (PLAN-65).
+
+- **Surfaces are neutral and flat:** `canvas` (chat and pages), `sidebar`, `raised` (composer, menus), `subtle`, `hover`, `selected`. Text is `ink`, `ink-secondary`, `ink-muted`. Borders are `line`, or `control` where an outline has to identify a control.
+- **Primary buttons are neutral** (`button` / `on-button`).
+- **One accent.** `brand` is a muted purple for the active destination, the focus ring, a toggle that is on. Keep it to small details. `wordmark` is the logo's own brighter purple and is for the wordmark only.
+- **Status colours** (`success`, `warning`, `danger`, each with a `-soft` background and a `-foreground` for solid fills) are for an actual status with a text label.
+- The shadcn names (`background`, `card`, `primary`, `muted`, `border`, ...) are mapped onto the same values, so existing components follow without edits. On a solid fill use the matching `-foreground` class, never `text-white`: the dark theme's fills are light.
+
+Radii: controls 8 px (`rounded-md`), menus and cards 12 px (`rounded-lg`), composer 24 px (`rounded-composer`). Shadows: `shadow-menu` and `shadow-composer` only.
+
+The theme follows the operating system on a new profile. A stored Light or Dark choice is kept. `index.html` applies it before first paint and `stores/ui-store.ts` keeps it in step; change both together.
+
+`renderer/src/styles/tokens.test.ts` holds the palette to its contract: surfaces stay neutral, every text pair is at least 4.5:1, controls and focus at least 3:1.
+
 ## Look and feel checks
 
 Two tools keep restyling work honest (PLAN-65).
 
-**Decorative effects.** `node desktop/scripts/check-decorative-effects.mjs` counts gradients, glass blur, coloured glow shadows and bounce or shimmer animations in `renderer/src`. `pnpm lint` runs it with `--max 92`, the count when the check was added, so the number can go down and not up. Lower the limit as views are converted. `--list` prints every hit; `--enforce components/chat,components/layout` fails on any hit under those directories. A line can opt out with a `decorative-ok: <reason>` comment where colour or motion carries meaning.
+**Decorative effects.** `node desktop/scripts/check-decorative-effects.mjs` counts gradients, glass blur, coloured glow shadows and bounce or shimmer animations in `renderer/src`. `pnpm lint` runs it with `--max` set to the current count (87; it was 92 when the check was added), so the number can go down and not up. Lower the limit as views are converted. `--list` prints every hit; `--enforce components/chat,components/layout` fails on any hit under those directories. A line can opt out with a `decorative-ok: <reason>` comment where colour or motion carries meaning.
 
 **Screenshots.** `pnpm ui:screenshots` builds the renderer, serves it from a local stand-in gateway that answers from `desktop/scripts/ui-screenshots/fixtures.mjs`, and captures a fixed set of screens in light and dark into `desktop/.ui-screenshots/` (ignored by git). No real gateway is contacted. Use it for before and after images on a UI pull request; it is not a pixel-diff gate.
 

@@ -40,7 +40,7 @@ export function ComputeProfiles({
         </div>
       ))}
       <button
-        className="rounded-lg bg-brand px-4 py-2 text-sm text-white disabled:opacity-40"
+        className="rounded-lg bg-brand px-4 py-2 text-sm text-brand-foreground disabled:opacity-40"
         disabled={busy}
         onClick={add}
       >

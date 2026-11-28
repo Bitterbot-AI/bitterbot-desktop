@@ -159,7 +159,7 @@ export function MonitorsSection() {
         <button
           type="submit"
           disabled={!url.trim()}
-          className="md:col-span-4 justify-self-start px-4 py-1.5 text-xs rounded-lg font-medium bg-brand text-white hover:bg-brand/90 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="md:col-span-4 justify-self-start px-4 py-1.5 text-xs rounded-lg font-medium bg-brand text-brand-foreground hover:bg-brand/90 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           Add monitor
         </button>

@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en" class="dark">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -45,8 +45,27 @@
       }
     </style>
     <title>Bitterbot</title>
+    <!--
+      Theme before first paint (PLAN-65). A stored "light" or "dark" wins;
+      anything else, including no value on a new profile, follows the OS.
+      Keep in step with resolveTheme() in src/stores/ui-store.ts.
+    -->
+    <script>
+      (function () {
+        var pref = null;
+        try {
+          pref = localStorage.getItem("bitterbot-theme");
+        } catch (e) {}
+        var dark =
+          pref === "dark" ||
+          (pref !== "light" &&
+            typeof matchMedia === "function" &&
+            matchMedia("(prefers-color-scheme: dark)").matches);
+        document.documentElement.classList.toggle("dark", dark);
+      })();
+    </script>
   </head>
-  <body class="bitterbot-theme">
+  <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

@@ -53,7 +53,7 @@ export function VoiceButton({ disabled }: { disabled?: boolean }) {
       title={on ? `${LABEL[phase]}. Click to stop talking.` : "Talk to BitterBot"}
       className={cn(
         "w-8 h-8 rounded-lg flex items-center justify-center transition-all disabled:opacity-30",
-        on ? "bg-brand text-white" : "text-muted-foreground hover:text-foreground",
+        on ? "bg-brand text-brand-foreground" : "text-muted-foreground hover:text-foreground",
         phase === "hearing" && "animate-pulse",
       )}
     >

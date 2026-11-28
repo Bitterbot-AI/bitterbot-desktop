@@ -14,7 +14,7 @@ import { SoapboxLogo } from "./SoapboxLogo";
 import { WorkerPanel } from "./WorkerPanel";
 
 const field = "w-full rounded-lg border border-border bg-background px-3 py-2 text-sm";
-const button = "rounded-lg bg-brand px-4 py-2 text-sm text-white disabled:opacity-40";
+const button = "rounded-lg bg-brand px-4 py-2 text-sm text-brand-foreground disabled:opacity-40";
 function microUsdc(value: string): number | undefined {
   if (!/^\d{1,3}(?:\.\d{1,6})?$/.test(value)) return undefined;
   const [whole, fraction = ""] = value.split(".");
