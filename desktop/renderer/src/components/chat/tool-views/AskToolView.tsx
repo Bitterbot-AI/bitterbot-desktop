@@ -44,7 +44,7 @@ export function AskToolView({ toolCall }: ToolViewProps) {
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="flex items-center gap-2.5 px-4 py-3 border-b bg-gradient-to-r from-info/10 to-info/5 border-info/20">
+      <div className="flex items-center gap-2.5 px-4 py-3 border-b border-line bg-info/5">
         <div className="w-8 h-8 rounded-lg bg-info/15 flex items-center justify-center">
           <MessageCircleQuestion className="w-4 h-4 text-info" />
         </div>

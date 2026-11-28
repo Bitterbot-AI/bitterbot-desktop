@@ -237,6 +237,14 @@ const STATES = [
     },
   },
   {
+    name: "chat-computer-open",
+    setup: async (page) => {
+      await page.getByText("Clone and download numbers, week 47").first().click();
+      await page.getByText("Downloads rose and clones fell").waitFor({ timeout: 10_000 });
+      await page.getByRole("button", { name: /Computer/ }).click();
+    },
+  },
+  {
     name: "search-open",
     setup: async (page) => {
       await click(page, /^Search/);

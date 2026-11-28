@@ -76,7 +76,7 @@ export function GenericToolView({ toolCall }: ToolViewProps) {
           </div>
         ) : isRunning ? (
           <div className="flex items-center gap-2 text-muted-foreground py-4">
-            <span className="w-2 h-2 rounded-full bg-brand animate-bounce" />
+            <span className="w-2 h-2 rounded-full bg-ink-muted motion-safe:animate-pulse" />
             <span className="text-sm">Executing...</span>
           </div>
         ) : null}

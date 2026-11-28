@@ -145,7 +145,7 @@ export function BitterBotAvatar({
       style={{
         width: size,
         height: size,
-        background: "linear-gradient(135deg, #8b5cf6, #7c3aed)",
+        background: "linear-gradient(135deg, #8b5cf6, #7c3aed)", // decorative-ok: logo fallback keeps the brand colours
         borderRadius: "50%",
         boxShadow: "0 2px 8px rgba(139, 92, 246, 0.3)",
       }}

@@ -9,17 +9,17 @@ import {
   parseAgentEvent,
   formatToolOutput,
 } from "../../lib/message-utils";
+import { cn } from "../../lib/utils";
 import { useArtifactStore, type ArtifactType } from "../../stores/artifact-store";
 import { isInjectedRunId, useChatStore, nextMsgId } from "../../stores/chat-store";
 import { useCoworkStore, type TaskStatus } from "../../stores/cowork-store";
 import { useGatewayStore } from "../../stores/gateway-store";
 import { useUIStore } from "../../stores/ui-store";
-import { UsageStatusStrip } from "../usage/UsageStatusStrip";
+import { ChatHeader } from "./ChatHeader";
 import { ChatInput } from "./ChatInput";
+import { ConnectionBanner } from "./ConnectionBanner";
 import { MessageList } from "./MessageList";
-import { ModelPicker } from "./ModelPicker";
 import { ReviewRequests } from "./ReviewRequests";
-import { SessionSelector } from "./SessionSelector";
 
 const ARTIFACT_TOOL_NAMES = new Set(["create_artifact", "create-artifact"]);
 const PLAN_TOOL_NAMES = new Set(["plan"]);
@@ -411,21 +411,25 @@ export function ChatView() {
   );
   useGatewayEvent("usage", handleUsageEvent);
 
+  const empty = useChatStore((s) => s.messages.length === 0 && !s.activeRun && !s.loading);
+
+  // The composer keeps its place in this list whether the chat is empty or
+  // not, so the first send moves it to the bottom without losing focus.
   return (
-    <div className="flex flex-col h-full">
-      {/* Session + model controls */}
-      <div className="flex-shrink-0 flex items-center justify-between gap-2 px-3 py-1.5 border-b border-border/50">
-        <SessionSelector />
-        <UsageStatusStrip />
-        <ModelPicker />
+    <div className="flex h-full flex-col bg-canvas">
+      <ChatHeader />
+      <div className={cn("flex min-h-0 flex-1 flex-col", empty && "justify-center pb-[12vh]")}>
+        {empty ? (
+          <h2 className="px-5 pb-5 text-center text-2xl font-semibold text-ink md:text-greeting">
+            What are we working on?
+          </h2>
+        ) : (
+          <MessageList />
+        )}
+        <ConnectionBanner />
+        <ReviewRequests />
+        <ChatInput />
       </div>
-
-      {/* Messages */}
-      <ReviewRequests />
-      <MessageList />
-
-      {/* Input */}
-      <ChatInput />
     </div>
   );
 }

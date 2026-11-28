@@ -36,10 +36,10 @@ interface UIState {
   toggleTheme: () => void;
 }
 
-export const TOOL_PANEL_DEFAULT_WIDTH = 550;
-export const TOOL_PANEL_MIN_WIDTH = 380;
+export const TOOL_PANEL_DEFAULT_WIDTH = 420;
+export const TOOL_PANEL_MIN_WIDTH = 360;
 /** Whatever the pane takes, the chat keeps at least this much. */
-const TOOL_PANEL_CHAT_RESERVE = 420;
+const TOOL_PANEL_CHAT_RESERVE = 560;
 const TOOL_PANEL_WIDTH_KEY = "bitterbot-tool-panel-width";
 
 /** Keep the pane usable and leave room for the chat beside it. */

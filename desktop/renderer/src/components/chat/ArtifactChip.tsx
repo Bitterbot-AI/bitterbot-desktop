@@ -1,6 +1,5 @@
 import { Code, Image, BarChart3, GitBranch, FileCode } from "lucide-react";
 import { useCallback } from "react";
-import { cn } from "../../lib/utils";
 import { useArtifactStore, type Artifact } from "../../stores/artifact-store";
 import { useUIStore } from "../../stores/ui-store";
 
@@ -43,19 +42,13 @@ export function ArtifactChip({ artifactId }: ArtifactChipProps) {
 
   return (
     <button
+      type="button"
       onClick={handleClick}
-      className={cn(
-        "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-2xs font-medium",
-        "border transition-all cursor-pointer hover:scale-[1.02]",
-        "bg-info/5 border-info/20 text-info hover:bg-info/20",
-      )}
+      className="inline-flex h-7 max-w-full items-center gap-1.5 rounded-md border border-line px-2 text-xs text-ink-secondary transition-colors hover:bg-hover hover:text-ink"
     >
-      <Icon className="w-3 h-3 flex-shrink-0" />
-      <span className="truncate max-w-[200px]">{artifact.title}</span>
-      <span className="text-muted-foreground/40">|</span>
-      <span className="text-muted-foreground/70 text-badge font-normal uppercase">
-        {artifact.type}
-      </span>
+      <Icon className="size-3.5 shrink-0" strokeWidth={1.75} />
+      <span className="max-w-[200px] truncate font-medium">{artifact.title}</span>
+      <span className="text-ink-muted">{artifact.type}</span>
     </button>
   );
 }

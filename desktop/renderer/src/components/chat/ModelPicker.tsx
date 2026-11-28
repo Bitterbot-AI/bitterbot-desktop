@@ -22,7 +22,7 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 
 /**
- * Chat-header model switcher. Reads the session's effective model, lists the
+ * The composer's model switcher. Reads the session's effective model, lists the
  * gateway's model catalog grouped by provider, and applies a per-session
  * override via sessions.patch — live, no gateway restart. "Default" clears
  * the override so the session follows the node's configured default again.
@@ -76,7 +76,7 @@ export function ModelPicker() {
     }
   };
 
-  const label = current?.model ?? "model";
+  const label = current?.model ?? "Choose model";
   // Only offer models the node will actually accept (sessions.patch enforces
   // the same policy). `allowed` is absent on older gateways, which means allow.
   const selectable = catalog.filter((m) => m.allowed !== false);
@@ -98,7 +98,7 @@ export function ModelPicker() {
       >
         <Check className={cn("h-3.5 w-3.5 mr-2", isCurrent ? "opacity-100" : "opacity-0")} />
         <span className="truncate">{entry.name || entry.id}</span>
-        {entry.isDefault && <span className="ml-2 text-2xs text-success/90">recommended</span>}
+        {entry.isDefault && <span className="ml-2 text-2xs text-ink-muted">recommended</span>}
         <span className="ml-auto flex items-center gap-2 pl-2 text-2xs text-muted-foreground">
           {opts?.showProvider && <span className="truncate max-w-[90px]">{entry.provider}</span>}
           {entry.reasoning && <span>reasoning</span>}
@@ -122,11 +122,8 @@ export function ModelPicker() {
         <button
           disabled={saving || status !== "connected"}
           className={cn(
-            "h-6 px-2 text-xs rounded-md inline-flex items-center gap-1",
-            "border transition-colors truncate max-w-[240px]",
-            current?.overridden
-              ? "bg-warning/10 text-warning border-warning/20 hover:bg-warning/30"
-              : "bg-muted/40 text-muted-foreground border-border hover:bg-muted/90",
+            "inline-flex h-8 max-w-[220px] items-center gap-1 truncate rounded-md px-2 text-sm",
+            "text-ink-secondary transition-colors hover:bg-hover hover:text-ink",
             (saving || status !== "connected") && "opacity-60",
           )}
           title={
@@ -136,10 +133,10 @@ export function ModelPicker() {
           }
         >
           <span className="truncate">{saving ? "switching…" : label}</span>
-          <ChevronDown className="h-3 w-3 flex-shrink-0" />
+          <ChevronDown className="size-3.5 shrink-0" strokeWidth={1.75} />
         </button>
       </PopoverTrigger>
-      <PopoverContent className="w-[320px] p-0" align="end">
+      <PopoverContent className="w-[320px] p-0" align="end" side="top">
         <Command>
           <CommandInput placeholder="Search models…" value={query} onValueChange={setQuery} />
           <CommandList>
