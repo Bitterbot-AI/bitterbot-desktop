@@ -458,7 +458,7 @@
     overflow-wrap: normal;
   }
 
-  & code:not([class*="language-"]) {
+  & :not(pre) > code:not([class*="language-"]) {
     padding: 0.125rem 0.375rem;
     font-size: 0.8125rem;
     font-family: var(--font-mono);

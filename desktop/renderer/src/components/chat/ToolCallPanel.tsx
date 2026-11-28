@@ -36,21 +36,17 @@ import {
 import { ToolView } from "./tool-views/ToolViewRegistry";
 
 /** Map tool names to icons + colors */
-function getToolMeta(name: string): { icon: typeof Terminal; color: string; gradient: string } {
+function getToolMeta(name: string): { icon: typeof Terminal } {
   const lower = name.toLowerCase();
   if (lower === "complete" || lower.includes("task_complete") || lower.includes("task-complete"))
     return {
       icon: CheckCircle,
-      color: "text-success",
-      gradient: "from-success/20 to-success/10",
     };
   if (lower === "ask" || lower.includes("ask_user") || lower.includes("ask-user"))
-    return { icon: Wrench, color: "text-info", gradient: "from-info/20 to-info/10" };
+    return { icon: Wrench };
   if (lower === "plan")
     return {
       icon: ListTree,
-      color: "text-brand",
-      gradient: "from-brand/20 to-brand/10",
     };
   if (
     lower === "exec" ||
@@ -63,14 +59,10 @@ function getToolMeta(name: string): { icon: typeof Terminal; color: string; grad
   )
     return {
       icon: Terminal,
-      color: "text-brand",
-      gradient: "from-brand/20 to-brand/10",
     };
   if (lower.includes("str-replace") || lower.includes("str_replace"))
     return {
       icon: FileEdit,
-      color: "text-warning",
-      gradient: "from-warning/20 to-warning/10",
     };
   if (
     lower.includes("file") ||
@@ -78,9 +70,9 @@ function getToolMeta(name: string): { icon: typeof Terminal; color: string; grad
     lower.includes("read") ||
     lower.includes("edit")
   )
-    return { icon: FileCode, color: "text-info", gradient: "from-info/20 to-info/10" };
+    return { icon: FileCode };
   if (lower.includes("search") || lower.includes("find") || lower.includes("grep"))
-    return { icon: Search, color: "text-info", gradient: "from-info/20 to-info/10" };
+    return { icon: Search };
   if (
     lower.includes("browser") ||
     lower.includes("web") ||
@@ -89,11 +81,9 @@ function getToolMeta(name: string): { icon: typeof Terminal; color: string; grad
     lower.includes("fetch") ||
     lower.includes("screenshot")
   )
-    return { icon: Globe, color: "text-success", gradient: "from-success/20 to-success/10" };
+    return { icon: Globe };
   return {
     icon: Wrench,
-    color: "text-brand",
-    gradient: "from-brand/20 to-brand/10",
   };
 }
 
@@ -247,7 +237,7 @@ export function ToolCallPanel() {
   return (
     <div
       style={{ width: toolPanelWidth }}
-      className="fixed inset-y-0 right-0 z-30 flex flex-col bg-card/95 backdrop-blur-xl border-l border-border/50"
+      className="fixed inset-y-0 right-0 z-30 flex flex-col border-l border-line bg-canvas"
     >
       <div
         role="separator"
@@ -257,20 +247,32 @@ export function ToolCallPanel() {
         onMouseDown={startResize}
         onDoubleClick={() => setToolPanelWidth(TOOL_PANEL_DEFAULT_WIDTH)}
         title="Drag to resize · double-click to reset"
-        className="absolute left-0 top-0 h-full w-1.5 -translate-x-1/2 cursor-col-resize z-40 hover:bg-brand/40"
+        className="absolute left-0 top-0 h-full w-1.5 -translate-x-1/2 cursor-col-resize z-40 transition-colors hover:bg-control"
       />
       {/* An artifact or the live browser is an iframe or an image that would
           swallow the mouse mid-drag; cover the pane while resizing. */}
       {resizing && <div className="absolute inset-0 z-30 cursor-col-resize" />}
-      {/* Header with tab bar */}
-      <div className="flex-shrink-0 border-b border-border/30">
-        {/* Branding */}
-        <div className="px-3 pt-2 pb-0.5">
-          <span className="text-badge font-semibold uppercase tracking-widest text-muted-foreground/50">
-            BitterBot&apos;s Computer
-          </span>
+      {/* Header: what this pane is, then its tabs */}
+      <div className="shrink-0 border-b border-line">
+        <div className="flex h-14 items-center justify-between gap-2 pl-5 pr-3">
+          <h2 className="text-base font-semibold text-ink">Computer</h2>
+          <div className="flex items-center gap-2">
+            {/* Live/Manual status button (tools mode only) */}
+            {panelMode === "tools" && toolCalls.length > 0 && (
+              <StatusButton navMode={navMode} isRunning={anyRunning} onJumpToLive={jumpToLive} />
+            )}
+            <button
+              type="button"
+              onClick={() => setToolPanelOpen(false)}
+              aria-label="Close Computer"
+              title="Close"
+              className="grid size-8 place-items-center rounded-md text-ink-secondary transition-colors hover:bg-hover hover:text-ink"
+            >
+              <X className="size-[18px]" strokeWidth={1.75} />
+            </button>
+          </div>
         </div>
-        <div className="h-12 flex items-center justify-between px-3">
+        <div className="flex items-center overflow-x-auto px-3 pb-2">
           <div className="flex items-center gap-1">
             {/* Tab bar */}
             <TabButton
@@ -314,20 +316,6 @@ export function ToolCallPanel() {
               onClick={() => setPanelMode("activity")}
             />
           </div>
-
-          <div className="flex items-center gap-2">
-            {/* Live/Manual status button (tools mode only) */}
-            {panelMode === "tools" && toolCalls.length > 0 && (
-              <StatusButton navMode={navMode} isRunning={anyRunning} onJumpToLive={jumpToLive} />
-            )}
-
-            <button
-              onClick={() => setToolPanelOpen(false)}
-              className="w-7 h-7 flex items-center justify-center rounded-md hover:bg-accent transition-colors text-muted-foreground hover:text-foreground"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
         </div>
       </div>
 
@@ -367,7 +355,7 @@ export function ToolCallPanel() {
 
           {/* Navigation bar */}
           {toolCalls.length > 1 && (
-            <div className="flex-shrink-0 px-3 py-2 border-t border-border/30 bg-card/60">
+            <div className="flex-shrink-0 px-3 py-2 border-t border-line">
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => navigateTo(displayIndex - 1)}
@@ -409,8 +397,8 @@ export function ToolCallPanel() {
                     onChange={(e) => navigateTo(Number(e.target.value))}
                     className="w-full h-1.5 rounded-full bg-muted/50 appearance-none cursor-pointer
                       [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3
-                      [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-brand
-                      [&::-webkit-slider-thumb]:hover:bg-brand/90 [&::-webkit-slider-thumb]:transition-colors"
+                      [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-ink-secondary
+                      [&::-webkit-slider-thumb]:hover:bg-ink [&::-webkit-slider-thumb]:transition-colors"
                   />
                 </div>
 
@@ -441,12 +429,14 @@ function TabButton({
 }) {
   return (
     <button
+      type="button"
       onClick={onClick}
+      aria-pressed={active}
       className={cn(
-        "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors",
+        "flex h-8 shrink-0 items-center gap-1.5 rounded-md px-2.5 text-sm transition-colors",
         active
-          ? "bg-brand/10 text-brand border border-brand/20"
-          : "text-muted-foreground hover:text-foreground hover:bg-accent",
+          ? "bg-selected font-medium text-ink"
+          : "text-ink-secondary hover:bg-hover hover:text-ink",
       )}
     >
       {icon}
@@ -629,19 +619,14 @@ function getToolFooterBadges(toolCall: ActiveToolCall): Array<{ label: string; c
 
 /** Tool header bar showing icon, name, subtitle, and status badge. */
 function ToolHeader({ toolCall }: { toolCall: ActiveToolCall }) {
-  const { icon: Icon, color, gradient } = getToolMeta(toolCall.name);
+  const { icon: Icon } = getToolMeta(toolCall.name);
   const displayName = getToolDisplayName(toolCall.name);
   const subtitle = getToolSubtitle(toolCall);
 
   return (
-    <div className="flex items-center gap-2.5 px-3 py-2 border-b border-border/20 flex-shrink-0">
-      <div
-        className={cn(
-          "w-7 h-7 rounded-lg bg-gradient-to-br flex items-center justify-center flex-shrink-0",
-          gradient,
-        )}
-      >
-        <Icon className={cn("w-3.5 h-3.5", color)} />
+    <div className="flex items-center gap-2.5 px-3 py-2 border-b border-line flex-shrink-0">
+      <div className="grid size-7 shrink-0 place-items-center rounded-md bg-subtle">
+        <Icon className="size-4 text-ink-secondary" strokeWidth={1.75} />
       </div>
       <div className="flex-1 min-w-0">
         <span className="text-xs font-medium text-foreground">{displayName}</span>
@@ -658,7 +643,7 @@ function ToolHeader({ toolCall }: { toolCall: ActiveToolCall }) {
             ? "bg-success/10 text-success"
             : toolCall.status === "error"
               ? "bg-danger/10 text-danger"
-              : "bg-brand/10 text-brand",
+              : "bg-subtle text-ink-secondary",
         )}
       >
         {toolCall.status === "running" && (
@@ -683,7 +668,7 @@ function ToolFooter({ toolCall }: { toolCall: ActiveToolCall }) {
   const badges = getToolFooterBadges(toolCall);
 
   return (
-    <div className="flex items-center justify-between px-3 py-1.5 border-t border-border/20 flex-shrink-0">
+    <div className="flex items-center justify-between px-3 py-1.5 border-t border-line flex-shrink-0">
       <div className="flex items-center gap-1.5">
         {badges.map((badge, i) => (
           <span

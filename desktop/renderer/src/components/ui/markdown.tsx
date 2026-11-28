@@ -1,5 +1,6 @@
+import { Check, Copy } from "lucide-react";
 import { marked } from "marked";
-import { memo, useId, useMemo } from "react";
+import { memo, useId, useMemo, useState } from "react";
 import ReactMarkdown, { Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { CodeBlock, CodeBlockCode } from "@/components/ui/code-block";
@@ -25,6 +26,29 @@ export function extractLanguage(className?: string): string {
   return match?.[1] ?? "plaintext";
 }
 
+function CopyCodeButton({ code }: { code: string }) {
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // Clipboard access can be refused; the code is still selectable.
+    }
+  };
+  return (
+    <button
+      type="button"
+      onClick={() => void copy()}
+      className="flex h-7 items-center gap-1.5 rounded-md px-2 text-xs text-ink-secondary transition-colors hover:bg-hover hover:text-ink"
+    >
+      {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
+      {copied ? "Copied" : "Copy"}
+    </button>
+  );
+}
+
 const INITIAL_COMPONENTS: Partial<Components> = {
   code: function CodeComponent({ className, children, ...props }: any) {
     const isInline =
@@ -34,10 +58,7 @@ const INITIAL_COMPONENTS: Partial<Components> = {
     if (isInline) {
       return (
         <span
-          className={cn(
-            "bg-primary-foreground dark:bg-muted dark:border dark:border-border rounded-sm px-1 font-mono text-sm",
-            className,
-          )}
+          className={cn("rounded-sm bg-subtle px-1.5 py-0.5 font-mono text-code", className)}
           {...props}
         >
           {children}
@@ -47,10 +68,18 @@ const INITIAL_COMPONENTS: Partial<Components> = {
 
     const language = extractLanguage(className);
 
+    const code = typeof children === "string" ? children.replace(/\n$/, "") : "";
+
     return (
-      <CodeBlock className="rounded-md overflow-hidden my-4 border border-border dark:border-border max-w-full min-w-0 w-full">
-        <CodeBlockCode code={children as string} language={language} className="text-sm" />
-      </CodeBlock>
+      <div className="not-prose my-3 w-full min-w-0 max-w-full overflow-hidden rounded-md border border-line bg-subtle">
+        <div className="flex h-9 items-center justify-between pl-4 pr-1 text-xs text-ink-secondary">
+          <span>{language === "plaintext" ? "Text" : language}</span>
+          <CopyCodeButton code={code} />
+        </div>
+        <CodeBlock className="w-full min-w-0 max-w-full">
+          <CodeBlockCode code={code} language={language} className="text-code" />
+        </CodeBlock>
+      </div>
     );
   },
   pre: function PreComponent({ children }: any) {

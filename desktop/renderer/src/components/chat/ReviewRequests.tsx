@@ -1,4 +1,4 @@
-import { Check, MousePointerClick, ShieldAlert, Terminal, X } from "lucide-react";
+import { MousePointerClick, ShieldAlert, Terminal } from "lucide-react";
 import { useEffect, useState } from "react";
 import { cn } from "../../lib/utils";
 import { useArtifactStore } from "../../stores/artifact-store";
@@ -7,8 +7,9 @@ import { type ReviewAction, useReviewStore } from "../../stores/review-store";
 import { useUIStore } from "../../stores/ui-store";
 
 /**
- * Actions waiting for the owner (PLAN-53 Track B), shown above the chat so a
- * held spend or post is never missed. Approving a spend asks twice.
+ * Actions waiting for the owner (PLAN-53 Track B), shown in the conversation
+ * column just above the composer so a held spend or post is never missed.
+ * Approving a spend asks twice.
  */
 export function ReviewRequests() {
   const pending = useReviewStore((s) => s.pending);
@@ -20,16 +21,18 @@ export function ReviewRequests() {
     return null;
   }
   return (
-    <div className="flex-shrink-0 px-2 pt-2 space-y-2" data-testid="review-requests">
-      {pending.map((action) =>
-        action.cls === "handoff" ? (
-          <HandoffCard key={action.id} action={action} />
-        ) : action.cls === "command" ? (
-          <CommandCard key={action.id} action={action} />
-        ) : (
-          <ReviewCard key={action.id} action={action} />
-        ),
-      )}
+    <div className="shrink-0 px-3 pb-2 md:px-5" data-testid="review-requests">
+      <div className="mx-auto w-full max-w-[800px] space-y-2">
+        {pending.map((action) =>
+          action.cls === "handoff" ? (
+            <HandoffCard key={action.id} action={action} />
+          ) : action.cls === "command" ? (
+            <CommandCard key={action.id} action={action} />
+          ) : (
+            <ReviewCard key={action.id} action={action} />
+          ),
+        )}
+      </div>
     </div>
   );
 }
@@ -49,11 +52,11 @@ function ReviewCard({ action }: { action: ReviewAction }) {
   };
 
   return (
-    <div className="rounded-lg border border-warning/30 bg-warning/5 p-3">
+    <div className="rounded-xl border border-line bg-raised p-3">
       <div className="flex items-start gap-2">
-        <ShieldAlert className="w-4 h-4 text-warning flex-shrink-0 mt-0.5" />
+        <ShieldAlert className="mt-0.5 size-[18px] shrink-0 text-warning" strokeWidth={1.75} />
         <div className="flex-1 min-w-0">
-          <p className="text-xs font-medium text-warning">
+          <p className="text-sm font-medium text-ink">
             {isSpend
               ? "Spending needs your approval"
               : action.cls === "contact"
@@ -61,27 +64,25 @@ function ReviewCard({ action }: { action: ReviewAction }) {
                 : action.cls === "connector"
                   ? "A change through a connector needs your approval"
                   : "A public post needs your approval"}
-            <span className="ml-2 font-mono text-2xs text-muted-foreground">{action.id}</span>
+            <span className="ml-2 font-mono text-xs font-normal text-ink-muted">{action.id}</span>
           </p>
-          <p className="text-sm text-foreground mt-0.5 break-words">{action.preview}</p>
+          <p className="mt-0.5 break-words text-sm text-ink">{action.preview}</p>
           <div className="flex items-center gap-2 mt-2">
             <button
               onClick={approve}
               disabled={busy}
               className={cn(
-                "flex items-center gap-1 px-3 py-1 rounded-md text-xs font-medium border transition-colors disabled:opacity-50",
-                confirming
-                  ? "bg-success text-success-foreground border-success"
-                  : "bg-success/15 text-success border-success/30 hover:bg-success/25",
+                "h-8 rounded-md border border-control px-3 text-sm font-medium text-ink transition-colors hover:bg-hover disabled:opacity-50",
+                confirming &&
+                  "border-button bg-button text-on-button hover:bg-button hover:opacity-85",
               )}
             >
-              <Check className="w-3.5 h-3.5" />
               {confirming ? "Yes, send it" : "Approve"}
             </button>
             {confirming && (
               <button
                 onClick={() => setConfirming(false)}
-                className="px-2 py-1 rounded-md text-xs text-muted-foreground hover:text-foreground"
+                className="h-8 rounded-md px-2 text-sm text-ink-secondary transition-colors hover:bg-hover hover:text-ink"
               >
                 Not yet
               </button>
@@ -89,9 +90,8 @@ function ReviewCard({ action }: { action: ReviewAction }) {
             <button
               onClick={() => void resolve(action.id, "deny")}
               disabled={busy}
-              className="flex items-center gap-1 px-3 py-1 rounded-md text-xs font-medium border border-danger/30 bg-danger/10 text-danger hover:bg-danger/20 transition-colors disabled:opacity-50"
+              className="h-8 rounded-md border border-control px-3 text-sm font-medium text-ink transition-colors hover:bg-hover disabled:opacity-50"
             >
-              <X className="w-3.5 h-3.5" />
               Deny
             </button>
           </div>
@@ -137,37 +137,39 @@ function HandoffCard({ action }: { action: ReviewAction }) {
   };
 
   return (
-    <div className="rounded-lg border border-brand/30 bg-brand/5 p-3" data-testid="handoff-card">
+    <div className="rounded-xl border border-line bg-raised p-3" data-testid="handoff-card">
       <div className="flex items-start gap-2">
-        <MousePointerClick className="w-4 h-4 text-brand flex-shrink-0 mt-0.5" />
+        <MousePointerClick
+          className="mt-0.5 size-[18px] shrink-0 text-warning"
+          strokeWidth={1.75}
+        />
         <div className="flex-1 min-w-0">
-          <p className="text-xs font-medium text-brand">
+          <p className="text-sm font-medium text-ink">
             Your agent needs you in the browser
-            <span className="ml-2 font-mono text-2xs text-muted-foreground">{action.id}</span>
+            <span className="ml-2 font-mono text-xs font-normal text-ink-muted">{action.id}</span>
           </p>
-          <p className="text-sm text-foreground mt-0.5 break-words">{handoffReason(action)}</p>
+          <p className="mt-0.5 break-words text-sm text-ink">{handoffReason(action)}</p>
           {site && (
-            <p className="text-xs text-muted-foreground mt-0.5">
-              Page: <span className="font-mono text-foreground">{site}</span>. Check it is the site
-              you expect before you type anything.
+            <p className="mt-0.5 text-sm text-ink-secondary">
+              Page: <span className="font-mono text-ink">{site}</span>. Check it is the site you
+              expect before you type anything.
             </p>
           )}
-          <p className="text-xs text-muted-foreground mt-0.5">
+          <p className="mt-0.5 text-sm text-ink-secondary">
             It is waiting. Hand the browser back when you are done and it will carry on.
           </p>
           <div className="flex items-center gap-2 mt-2">
             <button
               onClick={takeOver}
               disabled={busy}
-              className="flex items-center gap-1 px-3 py-1 rounded-md text-xs font-medium border bg-brand/15 text-brand border-brand/30 hover:bg-brand/25 transition-colors disabled:opacity-50"
+              className="h-8 rounded-md border border-control px-3 text-sm font-medium text-ink transition-colors hover:bg-hover disabled:opacity-50"
             >
-              <MousePointerClick className="w-3.5 h-3.5" />
               Take over
             </button>
             <button
               onClick={() => void resolve(action.id, "deny")}
               disabled={busy}
-              className="px-3 py-1 rounded-md text-xs font-medium border border-border/40 text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+              className="h-8 rounded-md border border-control px-3 text-sm font-medium text-ink transition-colors hover:bg-hover disabled:opacity-50"
             >
               Not now
             </button>
@@ -193,45 +195,40 @@ function CommandCard({ action }: { action: ReviewAction }) {
   ].filter(Boolean);
 
   return (
-    <div
-      className="rounded-lg border border-warning/30 bg-warning/5 p-3"
-      data-testid="command-card"
-    >
+    <div className="rounded-xl border border-line bg-raised p-3" data-testid="command-card">
       <div className="flex items-start gap-2">
-        <Terminal className="w-4 h-4 text-warning flex-shrink-0 mt-0.5" />
+        <Terminal className="mt-0.5 size-[18px] shrink-0 text-warning" strokeWidth={1.75} />
         <div className="flex-1 min-w-0">
-          <p className="text-xs font-medium text-warning">
+          <p className="text-sm font-medium text-ink">
             A command needs your approval
-            <span className="ml-2 font-mono text-2xs text-muted-foreground">{action.id}</span>
+            <span className="ml-2 font-mono text-xs font-normal text-ink-muted">{action.id}</span>
           </p>
-          <pre className="text-xs font-mono text-foreground mt-1 whitespace-pre-wrap break-all max-h-32 overflow-auto">
+          <pre className="text-xs font-mono text-ink mt-1 whitespace-pre-wrap break-all max-h-32 overflow-auto">
             {command}
           </pre>
           {where.length > 0 && (
-            <p className="text-2xs font-mono text-muted-foreground mt-0.5">{where.join(" · ")}</p>
+            <p className="mt-1 font-mono text-xs text-ink-muted">{where.join(" · ")}</p>
           )}
           <div className="flex items-center gap-2 mt-2">
             <button
               onClick={() => void resolve(action.id, "approve")}
               disabled={busy}
-              className="flex items-center gap-1 px-3 py-1 rounded-md text-xs font-medium border bg-success/15 text-success border-success/30 hover:bg-success/25 transition-colors disabled:opacity-50"
+              className="h-8 rounded-md border border-control px-3 text-sm font-medium text-ink transition-colors hover:bg-hover disabled:opacity-50"
             >
-              <Check className="w-3.5 h-3.5" />
               Allow once
             </button>
             <button
               onClick={() => void resolve(action.id, "approve", { always: true })}
               disabled={busy}
-              className="px-3 py-1 rounded-md text-xs font-medium border border-border/40 text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+              className="h-8 rounded-md border border-control px-3 text-sm font-medium text-ink transition-colors hover:bg-hover disabled:opacity-50"
             >
               Always allow
             </button>
             <button
               onClick={() => void resolve(action.id, "deny")}
               disabled={busy}
-              className="flex items-center gap-1 px-3 py-1 rounded-md text-xs font-medium border border-danger/30 bg-danger/10 text-danger hover:bg-danger/20 transition-colors disabled:opacity-50"
+              className="h-8 rounded-md border border-control px-3 text-sm font-medium text-ink transition-colors hover:bg-hover disabled:opacity-50"
             >
-              <X className="w-3.5 h-3.5" />
               Deny
             </button>
           </div>

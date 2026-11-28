@@ -1,23 +1,24 @@
 import {
-  Terminal,
-  FileCode,
-  Search,
-  Globe,
-  Wrench,
-  CheckCircle,
-  CheckCircle2,
   AlertTriangle,
+  Check,
+  Copy,
+  FileCode,
+  Globe,
+  Info,
   KeyRound,
+  Search,
+  Terminal,
   Trophy,
+  Wrench,
 } from "lucide-react";
-import { memo, useCallback } from "react";
+import { memo, type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { formatCost, formatTokens } from "../../lib/format";
 import { cn } from "../../lib/utils";
 import type { ChatMessage, ToolCallItem } from "../../stores/chat-store";
 import { useUIStore } from "../../stores/ui-store";
 import { Markdown } from "../ui/markdown";
+import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import { ArtifactChip } from "./ArtifactChip";
-import { BitterBotAvatar } from "./BitterBotAvatar";
 
 interface MessageBubbleProps {
   message: ChatMessage;
@@ -122,6 +123,14 @@ function truncateParam(s: string, max: number): string {
   return s.slice(0, max - 1) + "\u2026";
 }
 
+const ACTION_BUTTON =
+  "grid size-8 place-items-center rounded-md text-ink-secondary transition-colors hover:bg-hover hover:text-ink";
+
+/**
+ * One turn. The person's message is a small neutral bubble on the right; the
+ * reply is set straight on the canvas like a document, with Copy and Reply
+ * details underneath.
+ */
 export const MessageBubble = memo(function MessageBubble({
   message,
   onToolCallClick,
@@ -142,187 +151,213 @@ export const MessageBubble = memo(function MessageBubble({
   );
 
   return (
-    <div className={cn("flex gap-3 px-4 py-2 group", isUser ? "flex-row-reverse" : "flex-row")}>
-      {/* Avatar */}
-      <div className="flex-shrink-0 mt-1">
-        {isAssistant ? (
-          <BitterBotAvatar size={28} />
-        ) : isUser ? (
-          <div
-            className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-medium"
-            style={{
-              background: "linear-gradient(135deg, #6366f1, #8b5cf6)",
-            }}
-          >
-            <span className="text-white">U</span>
+    <div
+      className={cn("group flex min-w-0 flex-col", isUser ? "items-end" : "items-stretch")}
+      data-message-role={message.role}
+    >
+      {/* Thinking block (collapsible) */}
+      {message.thinking && (
+        <details className="mb-2">
+          <summary className="cursor-pointer text-sm text-ink-secondary transition-colors hover:text-ink">
+            Reasoning
+          </summary>
+          <div className="mt-1 border-l-2 border-line pl-3 text-sm text-ink-secondary">
+            {message.thinking}
           </div>
+        </details>
+      )}
+
+      {/* Images. Inline bytes (base64) and loopback URLs render directly.
+          A REMOTE url renders as a click-to-open link, never an <img>: the
+          CSP no longer permits remote image hosts, because loading one
+          beacons this viewer's IP and read-time to whoever chose the URL.
+          Making it a link keeps the content reachable while turning that
+          disclosure into an explicit human choice. */}
+      {message.images && message.images.length > 0 && (
+        <div className="mb-2 flex flex-wrap gap-2">
+          {message.images.map((img, i) =>
+            img.type === "url" && !isLocalImageUrl(img.data) ? (
+              <a
+                key={i}
+                href={img.data}
+                target="_blank"
+                rel="noreferrer noopener"
+                title={img.data}
+                className="max-w-[300px] truncate rounded-md border border-line px-2.5 py-1.5 text-sm text-link hover:underline"
+              >
+                Remote image: open in browser
+              </a>
+            ) : (
+              <img
+                key={i}
+                src={
+                  img.type === "url"
+                    ? img.data
+                    : `data:${img.mimeType ?? "image/png"};base64,${img.data}`
+                }
+                alt="attachment"
+                className="max-h-[200px] max-w-[300px] rounded-lg border border-line object-contain"
+              />
+            ),
+          )}
+        </div>
+      )}
+
+      {/* Message content */}
+      {message.content &&
+        (isUser ? (
+          <p className="max-w-[76%] whitespace-pre-wrap break-words rounded-2xl bg-subtle px-4 py-3 text-base text-ink">
+            {message.content}
+          </p>
         ) : (
-          <div className="w-7 h-7 rounded-full bg-muted flex items-center justify-center text-xs text-muted-foreground">
-            S
-          </div>
-        )}
-      </div>
-
-      {/* Content */}
-      <div className={cn("max-w-[80%] min-w-0", isUser ? "items-end" : "items-start")}>
-        {/* Thinking block (collapsible) */}
-        {message.thinking && (
-          <details className="mb-2">
-            <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground transition-colors">
-              Reasoning
-            </summary>
-            <div className="mt-1 text-xs text-muted-foreground/80 italic pl-3 border-l-2 border-brand/20">
-              {message.thinking}
-            </div>
-          </details>
-        )}
-
-        {/* Images. Inline bytes (base64) and loopback URLs render directly.
-            A REMOTE url renders as a click-to-open link, never an <img>: the
-            CSP no longer permits remote image hosts, because loading one
-            beacons this viewer's IP and read-time to whoever chose the URL.
-            Making it a link keeps the content reachable while turning that
-            disclosure into an explicit human choice. */}
-        {message.images && message.images.length > 0 && (
-          <div className="flex flex-wrap gap-2 mb-2">
-            {message.images.map((img, i) =>
-              img.type === "url" && !isLocalImageUrl(img.data) ? (
-                <a
-                  key={i}
-                  href={img.data}
-                  target="_blank"
-                  rel="noreferrer noopener"
-                  title={img.data}
-                  className="max-w-[300px] rounded-lg border border-border/30 px-2.5 py-1.5 text-xs text-muted-foreground hover:text-foreground truncate"
-                >
-                  🖼 remote image — open in browser
-                </a>
-              ) : (
-                <img
-                  key={i}
-                  src={
-                    img.type === "url"
-                      ? img.data
-                      : `data:${img.mimeType ?? "image/png"};base64,${img.data}`
-                  }
-                  alt="attachment"
-                  className="max-w-[300px] max-h-[200px] rounded-lg border border-border/30 object-contain"
-                />
-              ),
-            )}
-          </div>
-        )}
-
-        {/* Message content */}
-        {message.content && (
           <div
             className={cn(
-              "rounded-2xl px-4 py-2.5 text-sm leading-relaxed",
-              isUser
-                ? "bg-gradient-to-br from-[#8b5cf6] to-[#7c3aed] text-white"
-                : "bg-card/80 border border-border/30 backdrop-blur-sm text-foreground",
+              "prose chat-markdown max-w-none",
+              isAssistant ? "text-ink" : "text-ink-secondary",
             )}
-            data-message-role={message.role}
           >
-            {isUser ? (
-              <p className="whitespace-pre-wrap break-words">{message.content}</p>
-            ) : (
-              <div className="prose prose-sm max-w-none chat-markdown">
-                <Markdown>{message.content}</Markdown>
-              </div>
-            )}
-            {isAssistant && isNoApiKeyError(message.content) && (
-              <button
-                type="button"
-                onClick={() => setActiveTab("models")}
-                className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-border/50 bg-background/60 px-3 py-1.5 text-xs font-medium text-foreground hover:bg-accent transition-colors"
-              >
-                <KeyRound className="w-3.5 h-3.5" />
-                Open Models &amp; Keys
-              </button>
-            )}
+            <Markdown>{message.content}</Markdown>
           </div>
-        )}
+        ))}
 
-        {/* PLAN-50: per-message token badge (assistant turns only; cost lives in the Usage tab). */}
-        {isAssistant && message.usage && message.usage.total > 0 && (
-          <div
-            className="mt-1 text-3xs text-muted-foreground/60 tabular-nums"
-            title="Tokens for this reply: prompt (including cached) · output"
-          >
-            ⬆ {formatTokens(message.usage.input)} · ⬇ {formatTokens(message.usage.output)}
-            {typeof message.usage.cost === "number" ? ` · ${formatCost(message.usage.cost)}` : ""}
-          </div>
-        )}
-
-        {/* Inline tool call chips */}
-        {message.toolCalls && message.toolCalls.length > 0 && (
-          <div className="flex flex-wrap gap-1.5 mt-2">
-            {message.toolCalls.map((tc, i) => {
-              // Render artifact chips for create_artifact tool calls
-              const isArtifactTool = tc.name === "create_artifact" || tc.name === "create-artifact";
-              if (isArtifactTool) {
-                const args = tc.args as Record<string, unknown> | undefined;
-                const identifier = typeof args?.identifier === "string" ? args.identifier : "";
-                if (identifier) {
-                  return <ArtifactChip key={tc.id ?? i} artifactId={identifier} />;
-                }
-              }
-
-              const Icon = getToolChipIcon(tc.name);
-              const primaryParam = extractPrimaryParam(tc);
-              const isError = tc.isSuccess === false;
-              const isComplete = COMPLETE_CHIP_NAMES.has(tc.name.toLowerCase());
-              return (
-                <button
-                  key={tc.id ?? i}
-                  onClick={() => handleChipClick(tc.id)}
-                  className={cn(
-                    "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-2xs font-medium",
-                    "border transition-all cursor-pointer hover:scale-[1.02]",
-                    isError
-                      ? "bg-danger/5 border-danger/20 text-danger hover:bg-danger/20"
-                      : isComplete
-                        ? "bg-gradient-to-r from-success/10 to-success/5 border-success/30 text-success hover:from-success/15 hover:to-success/10"
-                        : "bg-brand/5 border-brand/20 text-brand hover:bg-brand/20",
-                  )}
-                >
-                  <Icon className="w-3 h-3 flex-shrink-0" />
-                  <span className="truncate max-w-[180px]">{tc.name}</span>
-                  {primaryParam && (
-                    <>
-                      <span className="text-muted-foreground/40">|</span>
-                      <span className="text-muted-foreground/70 truncate max-w-[150px] font-normal">
-                        {primaryParam}
-                      </span>
-                    </>
-                  )}
-                  {isError ? (
-                    <AlertTriangle className="w-2.5 h-2.5 text-danger flex-shrink-0" />
-                  ) : isComplete ? (
-                    <CheckCircle2 className="w-2.5 h-2.5 text-success flex-shrink-0" />
-                  ) : tc.result !== undefined ? (
-                    <CheckCircle className="w-2.5 h-2.5 text-success flex-shrink-0" />
-                  ) : null}
-                </button>
-              );
-            })}
-          </div>
-        )}
-
-        {/* Timestamp */}
-        <div
-          className={cn(
-            "text-badge text-muted-foreground/50 mt-1 opacity-0 group-hover:opacity-100 transition-opacity",
-            isUser ? "text-right" : "text-left",
-          )}
+      {isAssistant && isNoApiKeyError(message.content) && (
+        <button
+          type="button"
+          onClick={() => setActiveTab("models")}
+          className="mt-3 inline-flex h-9 items-center gap-2 self-start rounded-md border border-control px-3 text-sm font-medium text-ink transition-colors hover:bg-hover"
         >
-          {formatTime(message.timestamp)}
+          <KeyRound className="size-4" strokeWidth={1.75} />
+          Open Models &amp; Keys
+        </button>
+      )}
+
+      {/* What the reply did: one quiet chip per tool call. */}
+      {message.toolCalls && message.toolCalls.length > 0 && (
+        <div className="mt-3 flex flex-wrap gap-1.5">
+          {message.toolCalls.map((tc, i) => {
+            // Render artifact chips for create_artifact tool calls
+            const isArtifactTool = tc.name === "create_artifact" || tc.name === "create-artifact";
+            if (isArtifactTool) {
+              const args = tc.args as Record<string, unknown> | undefined;
+              const identifier = typeof args?.identifier === "string" ? args.identifier : "";
+              if (identifier) {
+                return <ArtifactChip key={tc.id ?? i} artifactId={identifier} />;
+              }
+            }
+
+            const Icon = getToolChipIcon(tc.name);
+            const primaryParam = extractPrimaryParam(tc);
+            const isError = tc.isSuccess === false;
+            return (
+              <button
+                key={tc.id ?? i}
+                type="button"
+                onClick={() => handleChipClick(tc.id)}
+                className="inline-flex h-7 max-w-full items-center gap-1.5 rounded-md border border-line px-2 text-xs text-ink-secondary transition-colors hover:bg-hover hover:text-ink"
+              >
+                <Icon className="size-3.5 shrink-0" strokeWidth={1.75} />
+                <span className="max-w-[180px] truncate font-medium">{tc.name}</span>
+                {primaryParam && (
+                  <span className="max-w-[180px] truncate font-mono text-ink-muted">
+                    {primaryParam}
+                  </span>
+                )}
+                {isError ? (
+                  <AlertTriangle className="size-3.5 shrink-0 text-danger" strokeWidth={1.75} />
+                ) : tc.result !== undefined ? (
+                  <Check className="size-3.5 shrink-0 text-success" strokeWidth={1.75} />
+                ) : null}
+                {isError && <span className="sr-only">failed</span>}
+              </button>
+            );
+          })}
         </div>
-      </div>
+      )}
+
+      {isAssistant && message.content && <ReplyActions message={message} />}
     </div>
   );
 });
+
+/**
+ * Copy and Reply details under a finished reply. Shown on hover or keyboard
+ * focus, and always on a touch screen where there is no hover.
+ */
+function ReplyActions({ message }: { message: ChatMessage }) {
+  const [copied, setCopied] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (timer.current) clearTimeout(timer.current);
+    },
+    [],
+  );
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(message.content);
+      setCopied(true);
+      if (timer.current) clearTimeout(timer.current);
+      timer.current = setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // Clipboard access can be refused; the text is still selectable.
+    }
+  };
+
+  const usage = message.usage;
+  return (
+    <div className="mt-1 flex h-8 items-center gap-0.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100 has-[[data-state=open]]:opacity-100 [@media(hover:none)]:opacity-100">
+      <button
+        type="button"
+        onClick={() => void copy()}
+        aria-label={copied ? "Copied" : "Copy"}
+        title={copied ? "Copied" : "Copy"}
+        className={ACTION_BUTTON}
+      >
+        {copied ? (
+          <Check className="size-4" strokeWidth={1.75} />
+        ) : (
+          <Copy className="size-4" strokeWidth={1.75} />
+        )}
+      </button>
+      <Popover>
+        <PopoverTrigger asChild>
+          <button
+            type="button"
+            aria-label="Reply details"
+            title="Reply details"
+            className={ACTION_BUTTON}
+          >
+            <Info className="size-4" strokeWidth={1.75} />
+          </button>
+        </PopoverTrigger>
+        <PopoverContent align="start" className="w-64 p-3 text-sm">
+          <dl className="space-y-2 tabular-nums">
+            <Detail label="Sent">{formatTime(message.timestamp) || "Unavailable"}</Detail>
+            <Detail label="Prompt tokens">
+              {usage && usage.total > 0 ? formatTokens(usage.input) : "Unavailable"}
+            </Detail>
+            <Detail label="Reply tokens">
+              {usage && usage.total > 0 ? formatTokens(usage.output) : "Unavailable"}
+            </Detail>
+            <Detail label="Cost">
+              {typeof usage?.cost === "number" ? formatCost(usage.cost) : "Unavailable"}
+            </Detail>
+          </dl>
+        </PopoverContent>
+      </Popover>
+    </div>
+  );
+}
+
+function Detail({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <dt className="text-ink-secondary">{label}</dt>
+      <dd className="text-ink">{children}</dd>
+    </div>
+  );
+}
 
 function formatTime(ts: number): string {
   if (!ts) return "";

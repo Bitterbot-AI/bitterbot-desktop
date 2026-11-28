@@ -124,7 +124,7 @@ export function BrowserToolView({ toolCall }: ToolViewProps) {
         <div className="absolute top-[90px] right-3 z-10">
           <div
             className={cn(
-              "flex items-center gap-1.5 px-2.5 py-1 rounded-full text-badge font-medium shadow-lg backdrop-blur-sm",
+              "flex items-center gap-1.5 px-2.5 py-1 rounded-full text-badge font-medium",
               isRunning
                 ? "bg-info/15 text-info border border-info/20"
                 : isError

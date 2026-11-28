@@ -1,31 +1,53 @@
-import { useCallback, useRef, useState, type KeyboardEvent } from "react";
+import { ArrowUp, Square } from "lucide-react";
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { sendChatText } from "../../lib/chat-send";
 import { cn } from "../../lib/utils";
 import { useChatStore } from "../../stores/chat-store";
+import { useDraftStore } from "../../stores/draft-store";
 import { useGatewayStore } from "../../stores/gateway-store";
+import { ModelPicker } from "./ModelPicker";
 import { VoiceButton } from "./VoiceButton";
 
+/** Six lines of 16/24 text; past that the draft scrolls inside the composer. */
+const MAX_TEXT_HEIGHT = 144;
+
+/**
+ * The composer: the draft on top, and under it the model, voice and the
+ * round Send control, which becomes Stop while a reply is streaming. Each
+ * conversation keeps its own draft.
+ */
 export function ChatInput() {
-  const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const sessionKey = useChatStore((s) => s.sessionKey);
   const activeRun = useChatStore((s) => s.activeRun);
+  const text = useDraftStore((s) => s.drafts[sessionKey] ?? "");
+  const setDraft = useDraftStore((s) => s.setDraft);
   const request = useGatewayStore((s) => s.request);
   const status = useGatewayStore((s) => s.status);
 
   const isConnected = status === "connected";
   const isStreaming = activeRun !== null;
+  const canSend = text.trim().length > 0 && isConnected && !sending;
+
+  // Fit the draft, including the one restored when the conversation changes.
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, MAX_TEXT_HEIGHT)}px`;
+  }, [text, sessionKey]);
+
+  // Opening a conversation puts the cursor in its draft.
+  useEffect(() => {
+    textareaRef.current?.focus();
+  }, [sessionKey]);
 
   const handleSend = useCallback(async () => {
     const trimmed = text.trim();
     if (!trimmed || sending || !isConnected) return;
-    setText("");
+    setDraft(sessionKey, "");
     setSending(true);
-    // Auto-resize textarea back to initial
-    if (textareaRef.current) {
-      textareaRef.current.style.height = "auto";
-    }
     try {
       await sendChatText(trimmed);
     } catch (err) {
@@ -33,7 +55,7 @@ export function ChatInput() {
     } finally {
       setSending(false);
     }
-  }, [text, sending, isConnected]);
+  }, [text, sending, isConnected, sessionKey, setDraft]);
 
   const handleAbort = useCallback(async () => {
     if (!activeRun) return;
@@ -49,119 +71,65 @@ export function ChatInput() {
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLTextAreaElement>) => {
-      if (e.key === "Enter" && !e.shiftKey) {
-        e.preventDefault();
-        if (isStreaming) return;
-        handleSend();
-      }
+      if (e.key !== "Enter" || e.shiftKey) return;
+      // Enter that confirms an input-method candidate is not a send.
+      if (e.nativeEvent.isComposing || e.keyCode === 229) return;
+      e.preventDefault();
+      if (isStreaming) return;
+      void handleSend();
     },
     [handleSend, isStreaming],
   );
 
-  // Auto-resize textarea
-  const handleInput = useCallback(() => {
-    const el = textareaRef.current;
-    if (!el) return;
-    el.style.height = "auto";
-    el.style.height = Math.min(el.scrollHeight, 200) + "px";
-  }, []);
-
   return (
-    <div className="px-4 pb-4 pt-2">
+    <div className="shrink-0 px-3 pb-3 md:px-5 md:pb-5">
       <div
-        className={cn(
-          "relative flex items-end gap-2 rounded-xl border transition-all",
-          "bg-brand/5 border-brand/20",
-          "backdrop-blur-xl",
-          "shadow-[0_8px_32px_rgba(139,92,246,0.1),inset_0_1px_0_rgba(255,255,255,0.1)]",
-          "focus-within:border-brand focus-within:shadow-[0_8px_32px_rgba(139,92,246,0.2)]",
-        )}
+        className="mx-auto w-full max-w-[800px] rounded-composer border border-line bg-raised shadow-composer transition-colors focus-within:border-control"
         data-slot="chat-input-wrapper"
       >
         <textarea
           ref={textareaRef}
           value={text}
-          onChange={(e) => {
-            setText(e.target.value);
-            handleInput();
-          }}
+          onChange={(e) => setDraft(sessionKey, e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder={isConnected ? "Message BitterBot..." : "Connecting to gateway..."}
-          disabled={!isConnected}
+          placeholder="Message Bitterbot"
+          aria-label="Message Bitterbot"
           rows={1}
-          className={cn(
-            "flex-1 resize-none bg-transparent py-3 px-4 text-sm",
-            "placeholder:text-muted-foreground/50",
-            "focus:outline-none",
-            "min-h-[44px] max-h-[200px]",
-            "disabled:opacity-50",
-          )}
+          className="block max-h-36 w-full resize-none bg-transparent px-4 pt-4 text-base text-ink placeholder:text-ink-muted focus:outline-none"
         />
 
-        {/* Voice, then Send / Stop */}
-        <div className="flex-shrink-0 p-2 flex items-center gap-1">
+        <div className="flex items-center gap-1 px-2 pb-2 pt-2">
+          {/* The "+" menu takes this side once attachments ship. */}
+          <div className="flex-1" />
+          <ModelPicker />
           <VoiceButton disabled={!isConnected} />
           {isStreaming ? (
             <button
-              onClick={handleAbort}
-              className={cn(
-                "w-8 h-8 rounded-lg flex items-center justify-center",
-                "bg-danger/80 hover:bg-danger/90 text-danger-foreground",
-                "transition-all",
-              )}
-              title="Stop generating"
+              type="button"
+              onClick={() => void handleAbort()}
+              aria-label="Stop"
+              title="Stop"
+              className="grid size-9 shrink-0 place-items-center rounded-full bg-button text-on-button transition-opacity hover:opacity-85"
             >
-              <StopIcon />
+              <Square className="size-3.5" fill="currentColor" strokeWidth={0} />
             </button>
           ) : (
             <button
-              onClick={handleSend}
-              disabled={!text.trim() || !isConnected || sending}
+              type="button"
+              onClick={() => void handleSend()}
+              disabled={!canSend}
+              aria-label="Send"
+              title={isConnected ? "Send" : "Not connected to the gateway"}
               className={cn(
-                "w-8 h-8 rounded-lg flex items-center justify-center",
-                "bg-gradient-to-br from-[#a855f7] to-[#ec4899] text-white",
-                "hover:shadow-[0_4px_15px_rgba(168,85,247,0.4)] hover:scale-105",
-                "active:scale-95",
-                "transition-all",
-                "disabled:opacity-30 disabled:hover:scale-100 disabled:hover:shadow-none",
+                "grid size-9 shrink-0 place-items-center rounded-full transition-colors",
+                canSend ? "bg-button text-on-button hover:opacity-85" : "bg-subtle text-ink-muted",
               )}
-              title="Send message"
             >
-              <SendIcon />
+              <ArrowUp className="size-[18px]" strokeWidth={2} />
             </button>
           )}
         </div>
       </div>
-
-      <p className="text-badge text-muted-foreground/40 text-center mt-2">
-        Press Enter to send, Shift+Enter for newline
-      </p>
     </div>
-  );
-}
-
-function SendIcon() {
-  return (
-    <svg
-      width="16"
-      height="16"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M22 2L11 13" />
-      <path d="M22 2L15 22L11 13L2 9L22 2Z" />
-    </svg>
-  );
-}
-
-function StopIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-      <rect x="4" y="4" width="16" height="16" rx="2" />
-    </svg>
   );
 }

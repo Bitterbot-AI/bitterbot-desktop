@@ -58,9 +58,7 @@ export function CompleteToolView({ toolCall }: ToolViewProps) {
       <div
         className={cn(
           "flex items-center gap-2.5 px-4 py-3 border-b",
-          isError
-            ? "bg-gradient-to-r from-danger/10 to-danger/5 border-danger/20"
-            : "bg-gradient-to-r from-success/10 to-success/5 border-success/20",
+          isError ? "border-line bg-danger-soft" : "border-line bg-success-soft",
         )}
       >
         <div
@@ -105,7 +103,7 @@ export function CompleteToolView({ toolCall }: ToolViewProps) {
             </div>
             <div className="h-1.5 rounded-full bg-muted overflow-hidden">
               <div
-                className="h-full rounded-full bg-gradient-to-r from-success to-success transition-all duration-1000"
+                className="h-full rounded-full bg-success transition-all duration-1000"
                 style={{ width: "85%" }}
               />
             </div>

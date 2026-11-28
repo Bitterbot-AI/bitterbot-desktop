@@ -107,7 +107,18 @@ const models = [
  * quiet instead of receiving an empty object in a shape they do not expect.
  */
 export const RESPONSES = {
-  "sessions.list": { sessions, count: sessions.length },
+  "sessions.list": {
+    sessions,
+    count: sessions.length,
+    defaults: { model: models[0].id, modelProvider: models[0].provider },
+  },
+  // Accepted and forgotten: enough for the model picker and a rename to
+  // behave, and nothing is stored, so the next list refresh puts it back.
+  "sessions.patch": {
+    ok: true,
+    entry: {},
+    resolved: { model: models[0].id, modelProvider: models[0].provider },
+  },
   "chat.history": (params) => ({
     sessionKey: params?.sessionKey,
     messages: params?.sessionKey === DEMO_SESSION_KEY ? conversation : [],

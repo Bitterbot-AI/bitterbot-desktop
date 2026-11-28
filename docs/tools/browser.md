@@ -191,7 +191,7 @@ Notes:
 
 ## Live view and take over
 
-The Control UI's side panel ("BitterBot's Computer") has a **Browser** tab that shows the agent's real page as it works. While a browser tool call is running, the same picture appears in the Tools tab in place of a placeholder.
+The Control UI's side panel ("Computer") has a **Browser** tab that shows the agent's real page as it works. While a browser tool call is running, the same picture appears in the Tools tab in place of a placeholder.
 
 How it behaves:
 

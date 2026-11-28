@@ -52,12 +52,16 @@ export function VoiceButton({ disabled }: { disabled?: boolean }) {
       aria-pressed={on}
       title={on ? `${LABEL[phase]}. Click to stop talking.` : "Talk to BitterBot"}
       className={cn(
-        "w-8 h-8 rounded-lg flex items-center justify-center transition-all disabled:opacity-30",
-        on ? "bg-brand text-brand-foreground" : "text-muted-foreground hover:text-foreground",
+        "grid size-8 shrink-0 place-items-center rounded-full transition-colors disabled:opacity-40",
+        on ? "bg-brand text-brand-foreground" : "text-ink-secondary hover:bg-hover hover:text-ink",
         phase === "hearing" && "animate-pulse",
       )}
     >
-      {on ? <Mic className="w-4 h-4" /> : <MicOff className="w-4 h-4" />}
+      {on ? (
+        <Mic className="size-[18px]" strokeWidth={1.75} />
+      ) : (
+        <MicOff className="size-[18px]" strokeWidth={1.75} />
+      )}
       <span className="sr-only">{on ? LABEL[phase] : "Talk"}</span>
     </button>
   );

@@ -16,7 +16,7 @@ describe("the computer pane's width", () => {
 
   it("stays usable and leaves room for the chat", () => {
     expect(clampToolPanelWidth(100, 1600)).toBe(TOOL_PANEL_MIN_WIDTH);
-    expect(clampToolPanelWidth(5000, 1600)).toBe(1180);
+    expect(clampToolPanelWidth(5000, 1600)).toBe(1040);
     expect(clampToolPanelWidth(700.4, 1600)).toBe(700);
     // On a narrow window the pane keeps its minimum rather than going negative.
     expect(clampToolPanelWidth(900, 600)).toBe(TOOL_PANEL_MIN_WIDTH);

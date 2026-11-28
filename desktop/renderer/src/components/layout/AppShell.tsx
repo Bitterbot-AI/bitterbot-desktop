@@ -87,8 +87,9 @@ export function AppShell() {
         // current width, which the person can drag.
         style={isChat && toolPanelOpen ? { marginRight: toolPanelWidth } : undefined}
       >
-        {/* With the sidebar closed, the way back is always here. */}
-        {!sidebarOpen && (
+        {/* With the sidebar closed, the way back is always here; the chat
+            header carries its own. */}
+        {!sidebarOpen && !isChat && (
           <div className="flex h-10 shrink-0 items-center px-2">
             <button
               type="button"
